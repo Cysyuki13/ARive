@@ -2992,6 +2992,8 @@
 
     let hitFlash = 0;
 
+    let nextProjId = 1;
+
     function useTool() {
         if (toolCooldown > 0) return;
 
@@ -3028,9 +3030,25 @@
             const v = dir.clone().multiplyScalar(13); v.y += 2.4;
             const m = new THREE.Mesh(projGeo, projMat);
             m.position.copy(p); scene.add(m);
-            projectiles.push({ mesh: m, pos: p.clone(), vel: v, life: 2.8 });
+
+            const proj = {
+                mesh: m,
+                pos: p.clone(),
+                vel: v,
+                life: 2.8,
+                projId: 'P' + (nextProjId++),
+                isRemote: false
+            };
+            projectiles.push(proj);
             toolCooldown = t.cd; renderHotbar();
+
+            // NEW — tell the network a grenade left our hand.
+            if (window.ARiveMP && window.ARiveMP.connected &&
+                window.ARiveMP.onLocalProjectileSpawn) {
+                window.ARiveMP.onLocalProjectileSpawn(proj);
+            }
         }
+
         else if (t.id === 'rifle') {
             if (t.count <= 0) { toolCooldown = 0.15; return; }
             t.count--; fireRifle();
@@ -3062,34 +3080,79 @@
         }
     }
 
+    function spawnRemoteProjectile(msg) {
+        if (!msg || msg.projId === undefined) return;
+
+        // Dedupe — protects against any accidental double-delivery.
+        for (const p of projectiles) {
+            if (p.projId === msg.projId) return;
+        }
+
+        const pos = new THREE.Vector3(msg.px, msg.py, msg.pz);
+        const vel = new THREE.Vector3(msg.vx, msg.vy, msg.vz);
+        const m = new THREE.Mesh(projGeo, projMat);
+        m.position.copy(pos);
+        scene.add(m);
+
+        projectiles.push({
+            mesh: m,
+            pos: pos.clone(),
+            vel: vel,
+            life: (msg.life !== undefined) ? msg.life : 2.8,
+            projId: msg.projId,
+            isRemote: true
+        });
+    }
+
     function updateProjectiles(dt) {
         for (let i = projectiles.length - 1; i >= 0; i--) {
             const p = projectiles[i];
             p.life -= dt;
+
             if (p.life <= 0) {
-                const vx = Math.round(p.pos.x / VOXEL), vy = Math.round(p.pos.y / VOXEL), vz = Math.round(p.pos.z / VOXEL);
-                explodeAt(vx, vy, vz, CHARGE_RADIUS);
-                scene.remove(p.mesh); projectiles.splice(i, 1);
+                /* Locally-owned projectiles detonate.  Remote ones are
+                   purely visual — the thrower already broadcast a 'boom'
+                   that will carve the world and spawn the burst. */
+                if (!p.isRemote) {
+                    const vx = Math.round(p.pos.x / VOXEL),
+                        vy = Math.round(p.pos.y / VOXEL),
+                        vz = Math.round(p.pos.z / VOXEL);
+                    explodeAt(vx, vy, vz, CHARGE_RADIUS);
+                }
+                scene.remove(p.mesh);
+                projectiles.splice(i, 1);
                 continue;
             }
+
             p.vel.y -= GRAVITY * dt;
             p.pos.addScaledVector(p.vel, dt);
             p.mesh.position.copy(p.pos);
-            p.mesh.rotation.x += dt * 12; p.mesh.rotation.y += dt * 9;
+            p.mesh.rotation.x += dt * 12;
+            p.mesh.rotation.y += dt * 9;
 
-            const vx = Math.floor(p.pos.x / VOXEL), vy = Math.floor(p.pos.y / VOXEL), vz = Math.floor(p.pos.z / VOXEL);
+            const vx = Math.floor(p.pos.x / VOXEL),
+                vy = Math.floor(p.pos.y / VOXEL),
+                vz = Math.floor(p.pos.z / VOXEL);
+
             if (getV(vx, vy, vz) !== 0) {
-                explodeAt(vx, vy, vz, CHARGE_RADIUS);
-                scene.remove(p.mesh); projectiles.splice(i, 1);
+                if (!p.isRemote) explodeAt(vx, vy, vz, CHARGE_RADIUS);
+                scene.remove(p.mesh);
+                projectiles.splice(i, 1);
                 continue;
             }
-            for (const e of enemies) {
-                if (!e.alive) continue;
-                const dx = p.pos.x - e.pos.x, dy = p.pos.y - (e.pos.y + 0.85), dz = p.pos.z - e.pos.z;
-                if (dx * dx + dy * dy + dz * dz < 0.45) {
-                    explodeAt(vx, vy, vz, CHARGE_RADIUS);
-                    scene.remove(p.mesh); projectiles.splice(i, 1);
-                    break;
+
+            if (!p.isRemote) {
+                for (const e of enemies) {
+                    if (!e.alive) continue;
+                    const dx = p.pos.x - e.pos.x,
+                        dy = p.pos.y - (e.pos.y + 0.85),
+                        dz = p.pos.z - e.pos.z;
+                    if (dx * dx + dy * dy + dz * dz < 0.45) {
+                        explodeAt(vx, vy, vz, CHARGE_RADIUS);
+                        scene.remove(p.mesh);
+                        projectiles.splice(i, 1);
+                        break;
+                    }
                 }
             }
         }
@@ -4476,6 +4539,7 @@
         carveSphere: carveSphere,
         explodeAt: explodeAt,
         spawnPickup: spawnPickup,
+        spawnRemoteProjectile: spawnRemoteProjectile,
         buildRemotePlayerMesh: buildRemotePlayerMesh,
         getCurrentSeed: function () { return currentSeed; },
         getCurrentMapType: function () { return currentMapType; },

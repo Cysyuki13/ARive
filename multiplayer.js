@@ -324,6 +324,7 @@
             case 'host-left': onHostLeft(); break;
             case 'set-blocks': Hooks.applyBlockBatch(msg.blocks); break;
             case 'tool-use': onRemoteToolUse(msg, senderId); break;
+            case 'proj-spawn': Hooks.spawnRemoteProjectile(msg); break;
         }
     }
 
@@ -603,6 +604,22 @@
         if (mp.isHost) broadcastToClients(msg, null);
         else if (mp.connected) sendToHost(msg);
     };
+    mp.onLocalProjectileSpawn = function (proj) {
+        if (!proj || !proj.projId) return;
+        const msg = {
+            t: 'proj-spawn',
+            projId: proj.projId,
+            px: proj.pos.x,
+            py: proj.pos.y,
+            pz: proj.pos.z,
+            vx: proj.vel.x,
+            vy: proj.vel.y,
+            vz: proj.vel.z,
+            life: proj.life
+        };
+        if (mp.isHost) broadcastToClients(msg, null);
+        else if (mp.connected) sendToHost(msg);
+    };
 
     /* =====================================================================
        STATE BROADCAST
@@ -733,6 +750,10 @@
                 broadcastRelay(msg, senderId);
                 break;
             case 'tool-use':
+                handleMessage(msg, senderId, false);
+                broadcastToClients(msg, senderId);
+                break;
+            case 'proj-spawn':
                 handleMessage(msg, senderId, false);
                 broadcastToClients(msg, senderId);
                 break;
