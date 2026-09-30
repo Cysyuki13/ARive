@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>ARive — Voxel Survival</title>
+    <!-- ARive game favicon / tab icon -->
+    <link rel="icon" type="image/png" href="assets/icons/ARive_icon.png">
+    <link rel="shortcut icon" type="image/png" href="assets/icons/ARive_icon.png">
+    <meta name="application-name" content="ARive">
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+
+<body>
+
+    <canvas id="game"></canvas>
+
+    <div id="hud" class="hidden">
+        <div id="crosshair"><span></span><span></span></div>
+
+        <div id="vitals">
+            <div class="vital"><span class="vlabel">HP</span>
+                <div class="bar">
+                    <div class="fill hp" id="fillHealth"></div>
+                </div>
+                <span class="vnum" id="numHealth">100</span>
+            </div>
+            <div class="vital"><span class="vlabel">FOOD</span>
+                <div class="bar">
+                    <div class="fill food" id="fillHunger"></div>
+                </div>
+                <span class="vnum" id="numHunger">100</span>
+            </div>
+            <div class="vital"><span class="vlabel">H₂O</span>
+                <div class="bar">
+                    <div class="fill water" id="fillThirst"></div>
+                </div>
+                <span class="vnum" id="numThirst">100</span>
+            </div>
+        </div>
+
+        <div id="scrap"><b id="scrapCount">0</b> <span>SCRAP</span></div>
+        <div id="hotbar"></div>
+
+        <div id="mpBadge" style="display:none; position:absolute; top:14px; left:18px;
+             font-size:11px; letter-spacing:1px; color:#e8c86a;
+             text-shadow:0 1px 0 #000,0 0 8px rgba(232,200,106,.45);"></div>
+
+        <div id="info">
+            <span id="fps">FPS 0</span>
+            <span id="threats">THREATS 0</span>
+            <span id="peers">SURVIVORS 1</span>
+        </div>
+
+        <div id="hint">LMB use tool &nbsp;·&nbsp; 1-7 select &nbsp;·&nbsp; WHEEL cycle &nbsp;·&nbsp; E pick up
+            &nbsp;·&nbsp; HAND = grab &nbsp;·&nbsp; TAB bag &nbsp;·&nbsp; ESC menu</div>
+
+        <!-- NEW: dev tools panel (sandbox map only) -->
+        <div id="devMenu" class="hidden">
+            <div class="dev-title">◈ DEV TOOLS ◈</div>
+            <div class="dev-hint">Press <b>G</b> to interact</div>
+
+            <div class="dev-section">BLOCKS</div>
+            <div class="dev-grid">
+                <button data-dev="cube-wood">Wood</button>
+                <button data-dev="cube-concrete">Concrete</button>
+                <button data-dev="cube-metal">Metal</button>
+                <button data-dev="cube-glass">Glass</button>
+                <button data-dev="barrel">Barrel</button>
+                <button data-dev="rubble">Rubble</button>
+            </div>
+
+            <div class="dev-section">STRUCTURES</div>
+            <div class="dev-grid">
+                <button data-dev="wall">Wall</button>
+                <button data-dev="pillar">Pillar</button>
+                <button data-dev="house">House</button>
+                <button data-dev="stairs">Stairs</button>
+            </div>
+
+            <div class="dev-section">ENTITIES</div>
+            <div class="dev-grid">
+                <button data-dev="spawn-zombie">Zombie</button>
+                <button data-dev="spawn-alien">Alien</button>
+            </div>
+
+            <div class="dev-section">ACTIONS</div>
+            <div class="dev-grid">
+                <button data-dev="carve">Carve</button>
+                <button data-dev="boom">Boom</button>
+                <button data-dev="clear-enemies">Clear Foes</button>
+                <button data-dev="heal">Heal Self</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="loading" class="screen hidden">
+        <div class="panel">
+            <h1 class="glow">GENERATING RUINS…</h1>
+            <p class="sub">Filling 6,291,456 voxels · carving streets · raising towers</p>
+            <div id="progressWrap">
+                <div id="progressBar"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- NEW: map selection screen (shown first) -->
+    <div id="mapSelect" class="screen">
+        <div class="panel">
+            <h1 class="glow">ARive</h1>
+            <p class="sub">Choose your arena</p>
+
+
+            <div class="map-grid">
+                <button class="map-card" data-map="city">
+                    <div class="map-icon">🏙</div>
+                    <div class="map-name">ARive</div>
+                    <div class="map-desc">Procedural ruins<br>hostile creatures<br>full survival loop</div>
+                </button>
+                <button class="map-card" data-map="sandbox">
+                    <div class="map-icon">▢</div>
+                    <div class="map-name">SANDBOX</div>
+                    <div class="map-desc">flat test map<br>dev tool panel<br>no survival drain</div>
+                </button>
+            </div>
+
+            <!-- NEW: direct entry into the multiplayer menu -->
+            <button id="mapMpBtn" class="btn btn-secondary" style="margin: 4px 0 24px;">⚔ MULTIPLAYER</button>
+
+            <div class="controls">
+                <div><b>W A S D</b><span>Move</span></div>
+                <div><b>MOUSE</b><span>Look</span></div>
+                <div><b>SPACE</b><span>Jump</span></div>
+                <div><b>SHIFT</b><span>Sprint</span></div>
+                <div><b>LMB</b><span>Use tool</span></div>
+                <div><b>1 – 6</b><span>Select tool</span></div>
+                <div><b>TAB</b><span>Inventory</span></div>
+                <div><b>G</b><span>Dev tools (sandbox)</span></div>
+                <div><b>ESC</b><span>Pause</span></div>
+            </div>
+
+            <p class="note">Multiplayer: open in a second tab — voxel destruction syncs live.</p>
+        </div>
+    </div>
+
+    <div id="overlay" class="screen hidden">
+        <div class="panel">
+            <h1 class="glow" id="mapTitle">ARive</h1>
+            <p class="sub" id="mapSubtitle">The city fell. The creatures stayed.</p>
+
+            <button id="playBtn" class="btn">ENTER</button>
+            <div class="overlay-secondary">
+                <button id="resetBtn" class="btn btn-secondary">⟳ RESET MAP</button>
+                <button id="settingsBtn" class="btn btn-secondary">⚙ SETTINGS</button>
+                <button id="mpBtn" class="btn btn-secondary">⚔ MULTIPLAYER</button>
+                <button id="mpLeaveBtn" class="btn btn-secondary hidden">✕ LEAVE SESSION</button>
+                <button id="menuBtn" class="btn btn-secondary">☰ MAIN MENU</button>
+            </div>
+            <p class="note" id="mapNote">TAB bag &nbsp;·&nbsp; ESC menu &nbsp;·&nbsp; LMB use tool</p>
+        </div>
+    </div>
+
+    <div id="deathScreen" class="screen hidden">
+        <div class="panel">
+            <h1 class="red">YOU DIED</h1>
+            <p class="sub" id="deathMsg">The ruins claimed you.</p>
+            <button id="respawnBtn" class="btn">RESPAWN</button>
+        </div>
+    </div>
+
+    <div id="settingsScreen" class="screen hidden">
+        <div class="panel">
+            <h1 class="glow">SETTINGS</h1>
+            <p class="sub">Tune your experience</p>
+
+            <div class="settings-list">
+                <div class="setting-row">
+                    <label for="setSensitivity">MOUSE SENSITIVITY</label>
+                    <span class="setting-value" id="setSensitivityVal">x1.0</span>
+                    <input type="range" id="setSensitivity" min="0.2" max="3" step="0.1" value="1">
+                </div>
+            </div>
+
+            <button id="settingsBackBtn" class="btn">BACK</button>
+            <p class="note">Changes save automatically.</p>
+        </div>
+    </div>
+
+    <div id="mpScreen" class="screen hidden">
+        <div class="panel">
+            <h1 class="glow">MULTIPLAYER</h1>
+
+            <!-- ================= PICKER (not connected) ================= -->
+            <div id="mpPicker">
+                <p class="sub">Host a world or join a friend's</p>
+
+                <div class="mp-field">
+                    <label for="mpName">YOUR NAME</label>
+                    <input type="text" id="mpName" maxlength="16" placeholder="Survivor" autocomplete="off" />
+                </div>
+
+                <div id="mpActions" class="mp-actions">
+                    <button id="mpHostBtn" class="btn">HOST WORLD</button>
+                    <button id="mpJoinBtn" class="btn">JOIN WORLD</button>
+                </div>
+
+                <!-- HOST: choose which world to host -->
+                <div id="mpHostPanel" class="hidden">
+                    <p class="sub" style="margin-top:18px;">Choose a world to host:</p>
+                    <div class="map-grid" style="margin-bottom:18px;">
+                        <button class="map-card" data-host-map="city">
+                            <div class="map-icon">🏙</div>
+                            <div class="map-name">ARive</div>
+                            <div class="map-desc">Procedural ruins</div>
+                        </button>
+                        <button class="map-card" data-host-map="sandbox">
+                            <div class="map-icon">▢</div>
+                            <div class="map-name">SANDBOX</div>
+                            <div class="map-desc">Flat test map</div>
+                        </button>
+                    </div>
+                    <div class="mp-status" id="mpHostStatus"></div>
+                    <button id="mpHostBack" class="btn btn-secondary">BACK</button>
+                </div>
+
+                <!-- JOIN: enter a room code -->
+                <div id="mpJoinPanel" class="hidden">
+                    <div class="mp-field">
+                        <label for="mpCode">ROOM CODE</label>
+                        <input type="text" id="mpCode" maxlength="4" placeholder="ABCD" autocomplete="off"
+                            style="text-transform:uppercase;letter-spacing:10px;text-align:center;" />
+                    </div>
+                    <div class="mp-copy-row">
+                        <button id="mpJoinConfirm" class="btn">CONNECT</button>
+                        <button id="mpJoinBack" class="btn btn-secondary">BACK</button>
+                    </div>
+                    <div class="mp-status" id="mpJoinStatus"></div>
+                </div>
+            </div>
+
+            <button id="mpBackBtn" class="btn btn-secondary" style="margin-top:14px;">BACK TO MENU</button>
+            <p class="note">Multiplayer requires HTTPS or localhost (WebRTC).</p>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="inventory.js"></script>
+
+
+    <script src="assets/model/playerModel.js"></script>
+    <script src="assets/avatarModel.js"></script>
+    <script src="assets/model/toolModels.js"></script>
+    <script src="assets/model/itemModels.js"></script>
+
+
+    <script src="game.js"></script>
+    <script src="multiplayer.js"></script>
+</body>
+
+</html>
