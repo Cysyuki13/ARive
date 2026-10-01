@@ -132,6 +132,8 @@
             targetX: 0, targetY: -10, targetZ: 0, targetYaw: 0,
             bob: 0,
             moving: false, sprinting: false,
+            crouchT: 0,
+            targetCrouchT: 0,
             lastUpdate: performance.now(),
             heldPickupPid: null,
             currentToolId: null,
@@ -469,6 +471,9 @@
         rp.targetYaw = msg.yaw;
         rp.moving = !!msg.moving;
         rp.sprinting = !!msg.sprinting;
+        rp.targetCrouchT = (typeof msg.crouchT === 'number')
+            ? msg.crouchT
+            : (msg.crouching ? 1 : 0);   // fallback for older clients
         rp.lastUpdate = performance.now();
 
         /* Toggle the visible tool holder on the remote rig. */
@@ -639,6 +644,7 @@
             pitch: player.pitch,
             moving: moving,
             sprinting: moving && !!player._sprinting,
+            crouchT: player.crouchT || 0,
             toolId: Hooks.getCurrentToolId(),
         };
         if (mp.isHost) broadcastToClients(msg, null);
@@ -887,6 +893,20 @@
             if (rp.model.legR) rp.model.legR.rotation.x = -sw * amp;
             if (rp.model.armL) rp.model.armL.rotation.x = -sw * amp * 0.55;
             if (rp.model.armR) rp.model.armR.rotation.x = sw * amp * 0.55;
+
+            /* -------- crouch squash (mirrors the local FP rig) ------------------- */
+            const cTgt = rp.targetCrouchT || 0;
+            if (Math.abs(rp.crouchT - cTgt) > 0.001) {
+                rp.crouchT += (cTgt - rp.crouchT) * Math.min(1, dt * 12);
+            } else {
+                rp.crouchT = cTgt;
+            }
+            const crouchMul = (Hooks.CROUCH_MUL !== undefined) ? Hooks.CROUCH_MUL : 0.55;
+            const bodyScaleY = 1 - (1 - crouchMul) * rp.crouchT;
+            rp.group.scale.y = bodyScaleY;
+            /* The name tag is a child of the group, so its sprite would get squashed
+               too.  Counter-scale just the sprite so the text stays legible. */
+            if (rp.tag) rp.tag.scale.y = 0.24 / bodyScaleY;
 
             if (now - rp.lastUpdate > REMOTE_TIMEOUT) removeRemotePlayer(id);
 

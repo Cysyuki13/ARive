@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>ARive — Furniture Editor</title>
+    <style>
+        :root {
+            --bg: #05070a;
+            --panel: #0d1116;
+            --border: #2b333f;
+            --gold: #e8c86a;
+            --text: #dfe4ea;
+            --muted: #7a8794;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: var(--bg);
+            color: var(--text);
+            font-family: "Courier New", monospace;
+            font-size: 12px;
+            user-select: none
+        }
+
+        #view {
+            display: block;
+            position: absolute;
+            inset: 0;
+            cursor: crosshair
+        }
+
+        #topbar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 0 10px;
+            background: rgba(10, 13, 18, .94);
+            border-bottom: 2px solid var(--border);
+            z-index: 10
+        }
+
+        #topbar .title {
+            color: var(--gold);
+            letter-spacing: 4px;
+            font-weight: bold;
+            margin-right: 14px;
+            font-size: 13px
+        }
+
+        button {
+            font-family: inherit;
+            font-size: 11px;
+            letter-spacing: 1px;
+            padding: 6px 12px;
+            background: #1a2128;
+            color: var(--text);
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: all .1s
+        }
+
+        button:hover {
+            background: #232c38;
+            border-color: var(--gold);
+            color: var(--gold)
+        }
+
+        button.active {
+            background: #2a3a4a;
+            color: var(--gold);
+            border-color: var(--gold)
+        }
+
+        button.warn {
+            color: #e8a0a0;
+            border-color: #4a2e2e
+        }
+
+        #left {
+            position: absolute;
+            top: 54px;
+            left: 10px;
+            width: 200px;
+            background: rgba(10, 13, 18, .94);
+            border: 2px solid var(--border);
+            padding: 8px;
+            z-index: 9;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            max-height: calc(100vh - 80px)
+        }
+
+        .section {
+            color: var(--muted);
+            font-size: 10px;
+            letter-spacing: 2px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #1a2128
+        }
+
+        #partList {
+            flex: 1;
+            overflow-y: auto;
+            background: #0a0d12;
+            border: 1px solid var(--border);
+            min-height: 120px
+        }
+
+        .part-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 8px;
+            font-size: 10px;
+            border-bottom: 1px solid #1a2128;
+            cursor: pointer
+        }
+
+        .part-item:hover {
+            background: #1a2128
+        }
+
+        .part-item.active {
+            background: #1c2632;
+            color: var(--gold)
+        }
+
+        .part-swatch {
+            width: 14px;
+            height: 14px;
+            border: 1px solid #000;
+            flex-shrink: 0
+        }
+
+        #right {
+            position: absolute;
+            top: 54px;
+            right: 10px;
+            width: 250px;
+            background: rgba(10, 13, 18, .94);
+            border: 2px solid var(--border);
+            padding: 10px;
+            z-index: 9;
+            display: flex;
+            flex-direction: column;
+            gap: 8px
+        }
+
+        .row {
+            display: flex;
+            gap: 6px;
+            align-items: center
+        }
+
+        label {
+            font-size: 10px;
+            color: var(--muted);
+            letter-spacing: 1px
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="color"] {
+            font-family: inherit;
+            font-size: 11px;
+            padding: 4px 6px;
+            background: #0a0d12;
+            color: var(--text);
+            border: 1px solid var(--border);
+            width: 100%
+        }
+
+        input[type="color"] {
+            padding: 0;
+            height: 26px
+        }
+
+        input:focus {
+            border-color: var(--gold);
+            outline: none
+        }
+
+        .axis {
+            display: grid;
+            grid-template-columns: 14px 1fr;
+            gap: 4px;
+            align-items: center
+        }
+
+        .axis+.axis {
+            margin-top: 3px
+        }
+
+        #hint {
+            position: absolute;
+            bottom: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(10, 13, 18, .9);
+            border: 1px solid var(--border);
+            padding: 6px 12px;
+            font-size: 10px;
+            color: var(--muted);
+            z-index: 9;
+            letter-spacing: 1px
+        }
+
+        #hint b {
+            color: var(--gold)
+        }
+
+        #toast {
+            position: absolute;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(10, 13, 18, .96);
+            border: 2px solid var(--gold);
+            color: var(--gold);
+            padding: 8px 16px;
+            font-size: 11px;
+            letter-spacing: 2px;
+            z-index: 20;
+            opacity: 0;
+            transition: opacity .2s;
+            pointer-events: none
+        }
+
+        #toast.show {
+            opacity: 1
+        }
+    </style>
+</head>
+
+<body>
+
+    <canvas id="view"></canvas>
+
+    <div id="topbar">
+        <div class="title">◈ FURNITURE EDITOR</div>
+        <button id="btnNew">NEW</button>
+        <button id="btnSave">SAVE</button>
+        <button id="btnExport">EXPORT JSON</button>
+        <button id="btnImport">IMPORT</button>
+        <button id="btnCopyGame">COPY GAME SNIPPET</button>
+    </div>
+
+    <div id="left">
+        <div class="section">ITEM</div>
+        <div class="row"><input type="text" id="itemKey" placeholder="key (e.g. chair)" value="chair" /></div>
+        <div class="row"><input type="text" id="itemName" placeholder="display name" value="CHAIR" /></div>
+        <div class="row">
+            <label style="flex:0 0 22px">W×H</label>
+            <input type="number" id="itemW" value="2" min="1" max="6" style="width:50px" />
+            <input type="number" id="itemH" value="2" min="1" max="6" style="width:50px" />
+        </div>
+        <div class="row">
+            <label style="flex:0 0 42px">COLOR</label>
+            <input type="color" id="itemColor" value="#7a5a2a" style="flex:1" />
+        </div>
+        <div class="section" style="margin-top:6px;">PARTS</div>
+        <div id="partList"></div>
+        <div class="row">
+            <button id="btnAddPart" style="flex:1">+ ADD PART</button>
+            <button id="btnDelPart" class="warn" style="flex:1">DELETE</button>
+        </div>
+        <div class="row"><button id="btnLoad" style="flex:1">LOAD SAVED…</button></div>
+    </div>
+
+    <div id="right">
+        <div class="section">SELECTED PART</div>
+        <div style="font-size:10px;color:var(--muted);">POSITION (m)</div>
+        <div class="axis"><span style="color:#e08a8a">X</span><input type="number" id="posX" step="0.01" value="0" />
+        </div>
+        <div class="axis"><span style="color:#8ae08a">Y</span><input type="number" id="posY" step="0.01" value="0" />
+        </div>
+        <div class="axis"><span style="color:#8aa8e0">Z</span><input type="number" id="posZ" step="0.01" value="0" />
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:6px;">SIZE (m)</div>
+        <div class="axis"><span style="color:#e08a8a">X</span><input type="number" id="sizeX" step="0.01" min="0.01"
+                value="0.4" /></div>
+        <div class="axis"><span style="color:#8ae08a">Y</span><input type="number" id="sizeY" step="0.01" min="0.01"
+                value="0.1" /></div>
+        <div class="axis"><span style="color:#8aa8e0">Z</span><input type="number" id="sizeZ" step="0.01" min="0.01"
+                value="0.4" /></div>
+        <div style="font-size:10px;color:var(--muted);margin-top:6px;">ROTATION (rad)</div>
+        <div class="axis"><span style="color:#e08a8a">X</span><input type="number" id="rotX" step="0.01" value="0" />
+        </div>
+        <div class="axis"><span style="color:#8ae08a">Y</span><input type="number" id="rotY" step="0.01" value="0" />
+        </div>
+        <div class="axis"><span style="color:#8aa8e0">Z</span><input type="number" id="rotZ" step="0.01" value="0" />
+        </div>
+        <div class="row" style="margin-top:8px;">
+            <label style="flex:1">COLOR</label>
+            <input type="color" id="partColor" value="#6a4824" style="flex:2" />
+        </div>
+        <div class="row" style="margin-top:6px;">
+            <label style="flex:1">EMISSIVE</label>
+            <input type="color" id="partEmissive" value="#000000" style="flex:2" />
+        </div>
+    </div>
+
+    <div id="hint"><b>RMB drag</b> orbit · <b>MMB drag</b> pan · <b>Wheel</b> zoom · click a part to select</div>
+    <div id="toast"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        /* ============================================================
+           ARive — Furniture Editor
+           ------------------------------------------------------------
+           Composes a box-part model.  Output format matches the items
+           in game.js so furniture slots straight into buildItemMesh():
+        
+             { p:[x,y,z], s:[w,h,d], c:0xRRGGBB, e:0xRRGGBB (optional) }
+        
+           Saved entries can be pushed onto window.ARIVE_FURNITURE and
+           the game will treat them exactly like an ITEM_DEF.
+           ============================================================ */
+        (function () {
+            'use strict';
+
+            const STORAGE_KEY = 'arive-furniture-v1';
+
+            /* ---------- STATE ---------- */
+            let model = [];        // [{p:[x,y,z], s:[w,h,d], c:0x.., e:0x..?}, ...]
+            let selected = -1;
+            let meta = { key: 'chair', name: 'CHAIR', w: 2, h: 2, color: '#7a5a2a' };
+
+            /* ---------- THREE ---------- */
+            const canvas = document.getElementById('view');
+            const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+            renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+            renderer.setClearColor(0x0a0d12, 1);
+
+            const scene = new THREE.Scene();
+            scene.fog = new THREE.Fog(0x0a0d12, 5, 18);
+            const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
+
+            const sun = new THREE.DirectionalLight(0xffffff, 0.9); sun.position.set(2, 3, 2); scene.add(sun);
+            const fil = new THREE.DirectionalLight(0x88a0c0, 0.4); fil.position.set(-2, 1, -1); scene.add(fil);
+            scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+
+            /* ground grid — 1 m × 1 m cells, 10 × 10 area */
+            const grid = new THREE.GridHelper(4, 8, 0x3a4a5a, 0x1a2128);
+            scene.add(grid);
+
+            /* axes */
+            (function axes() {
+                const ax = new THREE.AxesHelper(0.6); ax.position.y = 0.001; scene.add(ax);
+            })();
+
+            /* ---------- ORBIT ---------- */
+            const orbit = { target: new THREE.Vector3(0, 0.25, 0), distance: 1.6, theta: Math.PI * 0.3, phi: Math.PI * 0.35 };
+            function updateCamera() {
+                const sp = Math.sin(orbit.phi), cp = Math.cos(orbit.phi);
+                const st = Math.sin(orbit.theta), ct = Math.cos(orbit.theta);
+                camera.position.set(
+                    orbit.target.x + orbit.distance * sp * st,
+                    orbit.target.y + orbit.distance * cp,
+                    orbit.target.z + orbit.distance * sp * ct);
+                camera.lookAt(orbit.target);
+            }
+            let drag = null, last = { x: 0, y: 0 };
+            canvas.addEventListener('contextmenu', e => e.preventDefault());
+            canvas.addEventListener('pointerdown', e => {
+                if (e.button === 2) { drag = 'orbit'; last = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); e.preventDefault(); }
+                else if (e.button === 1) { drag = 'pan'; last = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); e.preventDefault(); }
+                else if (e.button === 0) { pickPart(e); }
+            });
+            canvas.addEventListener('pointermove', e => {
+                if (!drag) return;
+                const dx = e.clientX - last.x, dy = e.clientY - last.y;
+                last = { x: e.clientX, y: e.clientY };
+                if (drag === 'orbit') {
+                    orbit.theta -= dx * 0.008;
+                    orbit.phi = Math.max(0.15, Math.min(Math.PI - 0.15, orbit.phi - dy * 0.008));
+                } else {
+                    const r = new THREE.Vector3(), u = new THREE.Vector3();
+                    camera.matrixWorld.extractBasis(r, u, new THREE.Vector3());
+                    const k = orbit.distance * 0.0016;
+                    orbit.target.addScaledVector(r, -dx * k);
+                    orbit.target.addScaledVector(u, dy * k);
+                }
+                updateCamera();
+            });
+            canvas.addEventListener('pointerup', e => { drag = null; try { canvas.releasePointerCapture(e.pointerId); } catch (_) { } });
+            canvas.addEventListener('wheel', e => {
+                e.preventDefault();
+                orbit.distance = Math.max(0.4, Math.min(12, orbit.distance * Math.exp(e.deltaY * 0.001)));
+                updateCamera();
+            }, { passive: false });
+
+            /* ---------- BUILD PREVIEW ---------- */
+            const previewGroup = new THREE.Group(); scene.add(previewGroup);
+            const selOutline = new THREE.LineSegments(
+                new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
+                new THREE.LineBasicMaterial({ color: 0xe8c86a }));
+            selOutline.visible = false; scene.add(selOutline);
+
+            function rebuildPreview() {
+                while (previewGroup.children.length) previewGroup.remove(previewGroup.children[0]);
+                for (let i = 0; i < model.length; i++) {
+                    const b = model[i];
+                    const mat = new THREE.MeshLambertMaterial({ color: b.c, fog: true });
+                    if (b.e) {
+                        mat.emissive = new THREE.Color(b.e);
+                        mat.emissiveIntensity = 1.0;
+                    }
+                    const mesh = new THREE.Mesh(new THREE.BoxGeometry(b.s[0], b.s[1], b.s[2]), mat);
+                    mesh.position.set(b.p[0], b.p[1], b.p[2]);
+                    if (b.r) mesh.rotation.set(b.r[0], b.r[1], b.r[2]);
+                    mesh.userData.partIndex = i;
+                    previewGroup.add(mesh);
+                }
+                updateOutline();
+            }
+            function updateOutline() {
+                if (selected < 0 || selected >= model.length) { selOutline.visible = false; return; }
+                const b = model[selected];
+                selOutline.scale.set(b.s[0] * 1.02, b.s[1] * 1.02, b.s[2] * 1.02);
+                selOutline.position.set(b.p[0], b.p[1], b.p[2]);
+                selOutline.rotation.set(b.r ? b.r[0] : 0, b.r ? b.r[1] : 0, b.r ? b.r[2] : 0);
+                selOutline.visible = true;
+            }
+
+            /* ---------- PART PICKING ---------- */
+            const raycaster = new THREE.Raycaster();
+            const ndc = new THREE.Vector2();
+            function pickPart(e) {
+                const r = canvas.getBoundingClientRect();
+                ndc.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+                ndc.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+                raycaster.setFromCamera(ndc, camera);
+                const hits = raycaster.intersectObjects(previewGroup.children, false);
+                if (hits.length) {
+                    selected = hits[0].object.userData.partIndex;
+                } else {
+                    selected = -1;
+                }
+                syncInspector(); refreshPartList(); updateOutline();
+            }
+
+            /* ---------- UI ---------- */
+            function hexColor(c) {
+                return '#' + (c >>> 0 & 0xffffff).toString(16).padStart(6, '0');
+            }
+            function parseHex(str) {
+                return parseInt(str.replace('#', ''), 16) >>> 0;
+            }
+
+            const $ = id => document.getElementById(id);
+
+            function syncInspector() {
+                const dis = selected < 0;
+                ['posX', 'posY', 'posZ', 'sizeX', 'sizeY', 'sizeZ', 'rotX', 'rotY', 'rotZ', 'partColor', 'partEmissive']
+                    .forEach(id => $(id).disabled = dis);
+                if (dis) {
+                    $('posX').value = $('posY').value = $('posZ').value = 0;
+                    $('sizeX').value = $('sizeY').value = $('sizeZ').value = 0;
+                    $('rotX').value = $('rotY').value = $('rotZ').value = 0;
+                    return;
+                }
+                const b = model[selected];
+                $('posX').value = b.p[0].toFixed(3);
+                $('posY').value = b.p[1].toFixed(3);
+                $('posZ').value = b.p[2].toFixed(3);
+                $('sizeX').value = b.s[0].toFixed(3);
+                $('sizeY').value = b.s[1].toFixed(3);
+                $('sizeZ').value = b.s[2].toFixed(3);
+                const r = b.r || [0, 0, 0];
+                $('rotX').value = r[0];
+                $('rotY').value = r[1];
+                $('rotZ').value = r[2];
+                $('partColor').value = hexColor(b.c);
+                $('partEmissive').value = b.e ? hexColor(b.e) : '#000000';
+            }
+            function applyInspector() {
+                if (selected < 0) return;
+                const b = model[selected];
+                b.p = [parseFloat($('posX').value) || 0, parseFloat($('posY').value) || 0, parseFloat($('posZ').value) || 0];
+                b.s = [
+                    Math.max(0.01, parseFloat($('sizeX').value) || 0.01),
+                    Math.max(0.01, parseFloat($('sizeY').value) || 0.01),
+                    Math.max(0.01, parseFloat($('sizeZ').value) || 0.01)
+                ];
+                const rx = parseFloat($('rotX').value) || 0;
+                const ry = parseFloat($('rotY').value) || 0;
+                const rz = parseFloat($('rotZ').value) || 0;
+                if (rx || ry || rz) b.r = [rx, ry, rz]; else delete b.r;
+                b.c = parseHex($('partColor').value);
+                const em = parseHex($('partEmissive').value);
+                if (em) b.e = em; else delete b.e;
+                rebuildPreview(); refreshPartList();
+            }
+            ['posX', 'posY', 'posZ', 'sizeX', 'sizeY', 'sizeZ', 'rotX', 'rotY', 'rotZ', 'partColor', 'partEmissive']
+                .forEach(id => $(id).addEventListener('input', applyInspector));
+
+            function refreshPartList() {
+                const list = $('partList'); list.innerHTML = '';
+                if (!model.length) {
+                    const e = document.createElement('div');
+                    e.style.cssText = 'padding:8px;font-size:10px;color:#7a8794;text-align:center;';
+                    e.textContent = '(no parts — click + ADD PART)';
+                    list.appendChild(e); return;
+                }
+                model.forEach((b, i) => {
+                    const row = document.createElement('div');
+                    row.className = 'part-item' + (i === selected ? ' active' : '');
+                    const sw = document.createElement('div'); sw.className = 'part-swatch';
+                    sw.style.background = hexColor(b.c);
+                    const lbl = document.createElement('span');
+                    lbl.textContent = `${i}  ${b.s[0].toFixed(2)}×${b.s[1].toFixed(2)}×${b.s[2].toFixed(2)}`;
+                    row.appendChild(sw); row.appendChild(lbl);
+                    row.onclick = () => { selected = i; refreshPartList(); syncInspector(); updateOutline(); };
+                    list.appendChild(row);
+                });
+            }
+
+            /* ---------- ACTIONS ---------- */
+            $('btnAddPart').onclick = () => {
+                model.push({ p: [0, 0.05, 0], s: [0.4, 0.1, 0.4], c: parseHex($('itemColor').value) });
+                selected = model.length - 1;
+                rebuildPreview(); refreshPartList(); syncInspector();
+            };
+            $('btnDelPart').onclick = () => {
+                if (selected < 0) return;
+                model.splice(selected, 1);
+                selected = Math.min(selected, model.length - 1);
+                rebuildPreview(); refreshPartList(); syncInspector();
+            };
+
+            $('itemKey').oninput = e => meta.key = e.target.value.trim() || 'item';
+            $('itemName').oninput = e => meta.name = e.target.value.trim() || 'ITEM';
+            $('itemW').oninput = e => meta.w = Math.max(1, Math.min(6, parseInt(e.target.value, 10) || 1));
+            $('itemH').oninput = e => meta.h = Math.max(1, Math.min(6, parseInt(e.target.value, 10) || 1));
+            $('itemColor').oninput = e => meta.color = e.target.value;
+
+            /* ---------- STORAGE ---------- */
+            function getSaved() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch (e) { return []; } }
+            function setSaved(a) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(a)); } catch (e) { } }
+
+            function exportObj() {
+                return {
+                    key: meta.key,
+                    name: meta.name,
+                    w: meta.w,
+                    h: meta.h,
+                    color: meta.color,
+                    meta: {
+                        model: model.map(b => {
+                            const o = { p: b.p.slice(), s: b.s.slice(), c: b.c };
+                            if (b.r) o.r = b.r.slice();
+                            if (b.e) o.e = b.e;
+                            return o;
+                        })
+                    }
+                };
+            }
+            function importObj(obj) {
+                meta.key = obj.key || 'item';
+                meta.name = obj.name || 'ITEM';
+                meta.w = obj.w || 1;
+                meta.h = obj.h || 1;
+                meta.color = obj.color || '#888888';
+                $('itemKey').value = meta.key;
+                $('itemName').value = meta.name;
+                $('itemW').value = meta.w;
+                $('itemH').value = meta.h;
+                $('itemColor').value = meta.color;
+                model = ((obj.meta && obj.meta.model) || []).map(b => {
+                    const o = { p: b.p.slice(), s: b.s.slice(), c: b.c };
+                    if (b.r) o.r = b.r.slice();
+                    if (b.e) o.e = b.e;
+                    return o;
+                });
+                selected = model.length ? 0 : -1;
+                rebuildPreview(); refreshPartList(); syncInspector();
+            }
+
+            $('btnNew').onclick = () => {
+                if (model.length && !confirm('Discard current model?')) return;
+                model = []; selected = -1;
+                rebuildPreview(); refreshPartList(); syncInspector();
+            };
+
+            $('btnSave').onclick = () => {
+                const obj = exportObj();
+                const list = getSaved();
+                const i = list.findIndex(o => o.key === obj.key);
+                if (i >= 0) list[i] = obj; else list.push(obj);
+                setSaved(list);
+                toast('SAVED: ' + obj.key);
+            };
+
+            $('btnLoad').onclick = () => {
+                const list = getSaved();
+                if (!list.length) { toast('NO SAVED FURNITURE'); return; }
+                const keys = list.map(o => o.key);
+                const pick = prompt('Load which?\n' + keys.join('\n'), keys[0]);
+                if (!pick) return;
+                const found = list.find(o => o.key === pick);
+                if (found) { importObj(found); toast('LOADED: ' + pick); }
+            };
+
+            $('btnExport').onclick = () => {
+                const obj = exportObj();
+                const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = obj.key + '.json';
+                a.click(); URL.revokeObjectURL(a.href);
+                toast('EXPORTED JSON');
+            };
+
+            $('btnImport').onclick = () => {
+                const inp = document.createElement('input');
+                inp.type = 'file'; inp.accept = '.json,application/json';
+                inp.onchange = () => {
+                    const f = inp.files[0]; if (!f) return;
+                    const r = new FileReader();
+                    r.onload = () => { try { importObj(JSON.parse(r.result)); toast('IMPORTED'); } catch (e) { toast('IMPORT FAILED'); } };
+                    r.readAsText(f);
+                };
+                inp.click();
+            };
+
+            $('btnCopyGame').onclick = () => {
+                const obj = exportObj();
+                const parts = obj.meta.model.map(b => {
+                    const bits = [`p:[${b.p.join(', ')}]`, `s:[${b.s.join(', ')}]`, `c:0x${b.c.toString(16).padStart(6, '0')}`];
+                    if (b.r) bits.push(`r:[${b.r.join(', ')}]`);
+                    if (b.e) bits.push(`e:0x${b.e.toString(16).padStart(6, '0')}`);
+                    return `      { ${bits.join(', ')} }`;
+                }).join(',\n');
+                const snippet =
+                    `ARIVE_FURNITURE.push({
+  key: ${JSON.stringify(obj.key)},
+  name: ${JSON.stringify(obj.name)},
+  w: ${obj.w}, h: ${obj.h},
+  color: ${JSON.stringify(obj.color)},
+  meta: {
+    model: [
+${parts}
+    ]
+  }
+});`;
+                navigator.clipboard.writeText(snippet).then(
+                    () => toast('GAME SNIPPET COPIED'),
+                    () => prompt('Copy:', snippet)
+                );
+            };
+
+            /* ---------- MISC ---------- */
+            let tT = null;
+            function toast(t) {
+                const el = $('toast');
+                el.textContent = t; el.classList.add('show');
+                clearTimeout(tT); tT = setTimeout(() => el.classList.remove('show'), 1400);
+            }
+
+            function resize() {
+                const w = innerWidth, h = innerHeight;
+                renderer.setSize(w, h, false);
+                camera.aspect = w / h; camera.updateProjectionMatrix();
+            }
+            window.addEventListener('resize', resize);
+            resize(); updateCamera();
+
+            /* ---------- SEED WITH A CHAIR SO IT'S NOT EMPTY ---------- */
+            if (model.length === 0) {
+                model = [
+                    { p: [0, 0.45, 0.0], s: [0.44, 0.06, 0.44], c: 0x6a4824 },   // seat
+                    { p: [0, 0.7, -0.20], s: [0.44, 0.5, 0.05], c: 0x6a4824 },  // back
+                    { p: [-0.18, 0.2, 0.18], s: [0.05, 0.4, 0.05], c: 0x5a3a18 },
+                    { p: [0.18, 0.2, 0.18], s: [0.05, 0.4, 0.05], c: 0x5a3a18 },
+                    { p: [-0.18, 0.2, -0.18], s: [0.05, 0.4, 0.05], c: 0x5a3a18 },
+                    { p: [0.18, 0.2, -0.18], s: [0.05, 0.4, 0.05], c: 0x5a3a18 }
+                ];
+                selected = 0;
+            }
+            rebuildPreview(); refreshPartList(); syncInspector();
+
+            (function animate() { requestAnimationFrame(animate); renderer.render(scene, camera); })();
+            console.log('[ARive] furniture editor ready');
+        })();
+    </script>
+</body>
+
+</html>

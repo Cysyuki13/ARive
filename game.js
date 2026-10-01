@@ -33,7 +33,8 @@
        2. WORLD CONSTANTS  — 0.10 m voxels
        ========================================================================= */
     const VOXEL = 0.10;
-    const SX = 256, SY = 96, SZ = 256;
+    const SX = 768, SY = 96, SZ = 768;   // ← 3× bigger in X and Z (9× area)
+
     const CHUNK = 32;
     const CHUNKS_X = SX / CHUNK;              // 8
     const CHUNKS_Y = Math.ceil(SY / CHUNK);   // 3
@@ -47,6 +48,30 @@
 
     const UV_SCALE = 0.4;   // texture tile = 2.5 m → at 0.1 m voxel, ~4 texels/voxel
     const CHARGE_RADIUS = 1.5;   // metres — change this one number
+
+
+    /* ============================================================
+   PLAYER SIZE
+   ------------------------------------------------------------
+   1.00 = default (1.62 m tall, 0.40 m wide)
+   0.85 = 15% smaller — matches a low doorframe build
+   0.70 = noticeably smaller — good for tight voxel corridors
+   Applies to:
+     · your first-person body + hands
+     · every remote player's body
+     · collision cylinder (height + footprint)
+   ============================================================ */
+    const PLAYER_SCALE = 0.85;
+
+    /* ============================================================
+   CROUCH (C)
+   ------------------------------------------------------------
+   CROUCH_MUL       = fraction of standing height/eye when
+                      fully crouched (0.55 = just over half).
+   CROUCH_SPEED_MUL = walk-speed multiplier when fully crouched.
+   ============================================================ */
+    const CROUCH_MUL = 0.55;
+    const CROUCH_SPEED_MUL = 0.45;
 
     /* =========================================================================
    SETTINGS  (persisted to localStorage)
@@ -107,7 +132,40 @@
         12: { name: 'Sand', color: 0xa89468, strength: 1 },
         13: { name: 'Barrel', color: 0xb03024, strength: 2, explosive: 1 },
         14: { name: 'Plank', color: 0x5a3e20, strength: 1, flammable: 1 },
-        15: { name: 'Tar', color: 0x202024, strength: 2 }
+        15: { name: 'Tar', color: 0x202024, strength: 2 },
+
+        /* ---- 16–21 : Paints ---- */
+        16: { name: 'Paint Red', color: 0xa83030, strength: 1 },
+        17: { name: 'Paint Blue', color: 0x2a4a9a, strength: 1 },
+        18: { name: 'Paint Yellow', color: 0xd0a030, strength: 1 },
+        19: { name: 'Paint Green', color: 0x3a7a3a, strength: 1 },
+        20: { name: 'Paint White', color: 0xe8e8e0, strength: 1 },
+        21: { name: 'Paint Black', color: 0x1a1a1c, strength: 1 },
+
+        /* ---- 22–24 : Stone family ---- */
+        22: { name: 'Cobblestone', color: 0x6a6a66, strength: 3 },
+        23: { name: 'Stone Brick', color: 0x8a8a80, strength: 3 },
+        24: { name: 'Marble', color: 0xd8d4c8, strength: 3 },
+
+        /* ---- 25–28 : Wood + metals ---- */
+        25: { name: 'Dark Wood', color: 0x3a2418, strength: 1, flammable: 1 },
+        26: { name: 'Steel', color: 0xa0a8b0, strength: 4 },
+        27: { name: 'Copper', color: 0x6a8a70, strength: 2 },
+        28: { name: 'Terracotta', color: 0xb06040, strength: 2 },
+
+        /* ---- 29–32 : Roof + floor ---- */
+        29: { name: 'Roof Shingle', color: 0x4a3a2a, strength: 1, flammable: 1 },
+        30: { name: 'Tile Floor', color: 0xb8b8b0, strength: 2 },
+        31: { name: 'Carpet Red', color: 0x8a2a2a, strength: 1, flammable: 1 },
+        32: { name: 'Carpet Blue', color: 0x2a3a7a, strength: 1, flammable: 1 },
+
+        /* ---- 33–34 : Vegetation ---- */
+        33: { name: 'Hedge', color: 0x2a5a2a, strength: 1, flammable: 1 },
+        34: { name: 'Sandstone', color: 0xc8b488, strength: 2 },
+
+        /* ---- 35–36 : Neon accents ---- */
+        35: { name: 'Neon Cyan', color: 0x40e0e0, strength: 1 },
+        36: { name: 'Neon Magenta', color: 0xe040a0, strength: 1 }
     };
 
     /* =========================================================================
@@ -327,17 +385,22 @@
 
     function buildLeg(side) {
         const pivot = new THREE.Group();
-        pivot.position.set(FP_MODEL.body.legSpread * side, FP_MODEL.body.hipY, 0);
+        pivot.position.set(FP_MODEL.body.legSpread * side,
+            FP_MODEL.body.hipY, 0);
 
         const leg = new THREE.Mesh(
-            new THREE.BoxGeometry(FP_MODEL.body.legW, FP_MODEL.body.legLen, FP_MODEL.body.legD),
+            new THREE.BoxGeometry(FP_MODEL.body.legW,
+                FP_MODEL.body.legLen,
+                FP_MODEL.body.legD),
             PANTS_MAT
         );
         leg.position.set(0, -FP_MODEL.body.legLen * 0.5, 0);
         pivot.add(leg);
 
         const boot = new THREE.Mesh(
-            new THREE.BoxGeometry(FP_MODEL.body.bootW, FP_MODEL.body.bootH, FP_MODEL.body.bootD),
+            new THREE.BoxGeometry(FP_MODEL.body.bootW,
+                FP_MODEL.body.bootH,
+                FP_MODEL.body.bootD),
             BOOT_MAT
         );
         boot.position.set(
@@ -355,12 +418,14 @@
     playerBody.add(legLPivot);
     playerBody.add(legRPivot);
 
-    // Upper body — just enough to see when looking straight down
     const torso = new THREE.Mesh(
-        new THREE.BoxGeometry(FP_MODEL.body.torsoW, FP_MODEL.body.torsoH, FP_MODEL.body.torsoD),
+        new THREE.BoxGeometry(FP_MODEL.body.torsoW,
+            FP_MODEL.body.torsoH,
+            FP_MODEL.body.torsoD),
         PANTS_MAT
     );
     torso.position.set(0, FP_MODEL.body.torsoY, 0);
+
     playerBody.add(torso);
 
     /* ---------- Body-attached hands ----------
@@ -374,38 +439,41 @@
        hand rest positions (authored relative to the eye) still line up
        with where the camera used to be. */
     const fpRoot = new THREE.Group();
-    fpRoot.position.set(FP_MODEL.body.eyeX, FP_MODEL.body.eyeY, FP_MODEL.body.eyeZ);
+    fpRoot.position.set(FP_MODEL.body.eyeX,
+        FP_MODEL.body.eyeY,
+        FP_MODEL.body.eyeZ);
     playerBody.add(fpRoot);
 
     function buildHand(side) {
         const group = new THREE.Group();
 
-        // Sleeve extends "back toward" the camera
         const sleeve = new THREE.Mesh(
-            new THREE.BoxGeometry(FP_MODEL.hands.sleeveW, FP_MODEL.hands.sleeveH, FP_MODEL.hands.sleeveL),
+            new THREE.BoxGeometry(FP_MODEL.hands.sleeveW,
+                FP_MODEL.hands.sleeveH,
+                FP_MODEL.hands.sleeveL),
             SLEEVE_MAT
         );
         sleeve.position.set(0, 0, FP_MODEL.hands.sleeveL * 0.5);
         group.add(sleeve);
 
-        // Palm
         const palm = new THREE.Mesh(
-            new THREE.BoxGeometry(FP_MODEL.hands.palmW, FP_MODEL.hands.palmH, FP_MODEL.hands.palmD),
+            new THREE.BoxGeometry(FP_MODEL.hands.palmW,
+                FP_MODEL.hands.palmH,
+                FP_MODEL.hands.palmD),
             SKIN_MAT
         );
         palm.position.set(0, 0, -FP_MODEL.hands.palmD * 0.5);
         group.add(palm);
 
-        // Thumb nub — breaks up the box silhouette
         const thumb = new THREE.Mesh(
-            new THREE.BoxGeometry(FP_MODEL.hands.thumbW, FP_MODEL.hands.thumbH, FP_MODEL.hands.thumbD),
+            new THREE.BoxGeometry(FP_MODEL.hands.thumbW,
+                FP_MODEL.hands.thumbH,
+                FP_MODEL.hands.thumbD),
             SKIN_MAT
         );
-        const thumbOffX = FP_MODEL.hands.thumbX * side;
-        const thumbOffY = FP_MODEL.hands.thumbY;
-        const thumbOffZ = FP_MODEL.hands.thumbZ - FP_MODEL.hands.palmD * 0.5;
-        thumb.position.set(thumbOffX, thumbOffY, thumbOffZ);
-
+        thumb.position.set(FP_MODEL.hands.thumbX * side,
+            FP_MODEL.hands.thumbY,
+            FP_MODEL.hands.thumbZ - FP_MODEL.hands.palmD * 0.5);
         group.add(thumb);
 
         return group;
@@ -423,6 +491,7 @@
     };
     handL.position.set(HAND_REST.L.x, HAND_REST.L.y, HAND_REST.L.z);
     handL.rotation.set(HAND_REST.L.rx, HAND_REST.L.ry, HAND_REST.L.rz);
+
     handR.position.set(HAND_REST.R.x, HAND_REST.R.y, HAND_REST.R.z);
     handR.rotation.set(HAND_REST.R.rx, HAND_REST.R.ry, HAND_REST.R.rz);
 
@@ -479,6 +548,7 @@
     const chunkMeshes = new Map();
     const rebuildQueue = [];
     const dirtyChunks = new Set();
+    let quietGeneration = false;
 
     function buildChunkGeometry(cx, cy, cz) {
         const ci = cIdx(cx, cy, cz);
@@ -971,12 +1041,183 @@
     }
 
     /* =========================================================================
-       11. CITY GENERATION
-       ========================================================================= */
-    const CELL = 80;         // 8 m city block
-    const ROAD = 24;         // 2.4 m road
-    const GROUND_Y = 8;      // 0.8 m of ground
+   11. CITY GENERATION  —  irregular road grid + block-based plot layout
+   -------------------------------------------------------------------------
+   Rather than a fixed CELL/ROAD grid (which can only ever fit one
+   plot per cell), we generate a small number of irregularly-spaced
+   roads, carve them, and treat each rectangle between roads as a
+   "block".  Structures are then placed inside blocks; they can never
+   cover a road because roads sit outside every block by construction.
 
+   Every block is bounded by roads, so every structure is linked into
+   the road network automatically — no MST / A* needed.
+   ========================================================================= */
+
+    /* ---- Tunable city constants ---- */
+    const GROUND_Y = 8;     // 0.8 m of ground under the surface
+    const ROAD_WIDTH = 22;    // 2.2 m road band
+    const ROAD_HALF = ROAD_WIDTH >> 1;
+    const ROAD_MIN_GAP = 90;    // voxels between parallel roads
+    const ROAD_MARGIN = 30;    // keep roads at least this far from the map edge
+
+    const PLOT_EDGE_PAD = 3;     // gap between a structure and its block's wall
+    const PLOT_PLOT_PAD = 4;     // gap between two structures in the same block
+
+    /* ---- Ground fill ---- */
+    function fillGroundVoxels() {
+        for (let x = 0; x < SX; x++) {
+            for (let z = 0; z < SZ; z++) {
+                for (let y = 0; y < GROUND_Y - 1; y++) setVRaw(x, y, z, 8);  // dirt
+                setVRaw(x, GROUND_Y - 1, z, 9);                              // grass cap
+            }
+        }
+    }
+
+    /* ---- Pick N irregular road positions along one axis ---- */
+    function generateRoadAxis(rnd, minCount, maxCount, size) {
+        const positions = [];
+        const wanted = minCount + ((rnd() * (maxCount - minCount + 1)) | 0);
+        let attempts = 0;
+        while (positions.length < wanted && attempts++ < 2000) {
+            const p = ROAD_MARGIN + ((rnd() * (size - ROAD_MARGIN * 2)) | 0);
+            let ok = true;
+            for (const q of positions) {
+                if (Math.abs(p - q) < ROAD_MIN_GAP) { ok = false; break; }
+            }
+            if (ok) positions.push(p);
+        }
+        positions.sort((a, b) => a - b);
+        return positions;
+    }
+
+    /* ---- Carve one horizontal / vertical road band ---- */
+    function carveRoadH(z) {
+        const zLo = Math.max(0, z - ROAD_HALF);
+        const zHi = Math.min(SZ - 1, z + ROAD_HALF);
+        const y = GROUND_Y - 1;
+        for (let px = 0; px < SX; px++)
+            for (let pz = zLo; pz <= zHi; pz++) setVRaw(px, y, pz, 1);   // asphalt
+    }
+    function carveRoadV(x) {
+        const xLo = Math.max(0, x - ROAD_HALF);
+        const xHi = Math.min(SX - 1, x + ROAD_HALF);
+        const y = GROUND_Y - 1;
+        for (let pz = 0; pz < SZ; pz++)
+            for (let px = xLo; px <= xHi; px++) setVRaw(px, y, pz, 1);
+    }
+
+    /* ---- Turn the road axes into a list of empty rectangular blocks ---- */
+    function enumerateBlocks(roadXs, roadZs) {
+        const xSegs = [];
+        let prev = 0;
+        for (const rx of roadXs) {
+            const left = rx - ROAD_HALF;
+            if (left > prev) xSegs.push([prev, left]);
+            prev = rx + ROAD_HALF;
+        }
+        if (prev < SX) xSegs.push([prev, SX]);
+
+        const zSegs = [];
+        prev = 0;
+        for (const rz of roadZs) {
+            const left = rz - ROAD_HALF;
+            if (left > prev) zSegs.push([prev, left]);
+            prev = rz + ROAD_HALF;
+        }
+        if (prev < SZ) zSegs.push([prev, SZ]);
+
+        const blocks = [];
+        for (const [x0, x1] of xSegs)
+            for (const [z0, z1] of zSegs)
+                blocks.push({ x: x0, z: z0, w: x1 - x0, d: z1 - z0 });
+        return blocks;
+    }
+
+    /* ---- Rect overlap with padding ---- */
+    function rectOverlaps(ax, az, aw, ad, bx, bz, bw, bd, pad) {
+        return !(ax + aw + pad <= bx || bx + bw + pad <= ax ||
+            az + ad + pad <= bz || bz + bd + pad <= az);
+    }
+
+    /* ---- Pick a structure from the pool that actually fits the block ---- */
+    function chooseStructure(rnd, pool, blockW, blockD) {
+        if (!pool.length) return null;
+        const fits = [];
+        for (const s of pool) {
+            const [W, , D] = s.size;
+            if (W + PLOT_EDGE_PAD * 2 <= blockW &&
+                D + PLOT_EDGE_PAD * 2 <= blockD) fits.push(s);
+        }
+        if (!fits.length) return null;
+
+        /* Take a small random sample and prefer the biggest that fits, so
+           large structures actually get placed instead of being drowned
+           out by small ones. */
+        let best = fits[(rnd() * fits.length) | 0];
+        const tries = Math.min(6, fits.length);
+        for (let i = 1; i < tries; i++) {
+            const cand = fits[(rnd() * fits.length) | 0];
+            if (cand.size[0] * cand.size[2] > best.size[0] * best.size[2]) best = cand;
+        }
+        return best;
+    }
+
+    /* ---- Place one or more structures inside a single block ---- */
+    function placeStructuresInBlock(rnd, block, pool) {
+        const plots = [];
+        if (block.w < 12 || block.d < 12) return plots;
+
+        /* Rough capacity: one structure per ~30×30 voxel area, capped at 3. */
+        const capW = Math.max(1, Math.floor((block.w - PLOT_EDGE_PAD * 2) / 30));
+        const capD = Math.max(1, Math.floor((block.d - PLOT_EDGE_PAD * 2) / 30));
+        const maxN = Math.min(3, capW * capD);
+        const wantN = 1 + ((rnd() * maxN) | 0);
+
+        let attempts = 0;
+        while (plots.length < wantN && attempts++ < wantN * 40) {
+            const s = chooseStructure(rnd, pool, block.w, block.d);
+            if (!s) break;
+            const [W, , D] = s.size;
+
+            const pad = PLOT_EDGE_PAD;
+            const availW = block.w - W - pad * 2;
+            const availD = block.d - D - pad * 2;
+            if (availW < 0 || availD < 0) continue;
+
+            const px = block.x + pad + ((rnd() * (availW + 1)) | 0);
+            const pz = block.z + pad + ((rnd() * (availD + 1)) | 0);
+
+            let ok = true;
+            for (const o of plots) {
+                if (rectOverlaps(px, pz, W, D, o.x, o.z, o.w, o.d, PLOT_PLOT_PAD)) {
+                    ok = false; break;
+                }
+            }
+            if (!ok) continue;
+
+            plots.push({ x: px, z: pz, w: W, d: D, struct: s });
+        }
+        return plots;
+    }
+
+    /* ---- Scatter rubble / barrels on the roads ---- */
+    function scatterRoadProps(rnd) {
+        for (let i = 0; i < 3000; i++) {
+            const x = (rnd() * SX) | 0;
+            const z = (rnd() * SZ) | 0;
+            if (getV(x, GROUND_Y - 1, z) !== 1) continue;    // only on asphalt
+            if (rnd() < 0.55) setVRaw(x, GROUND_Y, z, 10);   // rubble
+        }
+        for (let i = 0; i < 220; i++) {
+            const x = 3 + ((rnd() * (SX - 6)) | 0);
+            const z = 3 + ((rnd() * (SZ - 6)) | 0);
+            if (getV(x, GROUND_Y - 1, z) !== 1) continue;
+            if (getV(x, GROUND_Y, z) !== 0) continue;
+            for (let k = 0; k < 5; k++) setVRaw(x, GROUND_Y + k, z, 13);   // barrel stack
+        }
+    }
+
+    /* ---- Sphere carve (raw, no AO/debris — used by building gen) ---- */
     function carveSphereRaw(cx, cy, cz, r) {
         const R = Math.ceil(r);
         const r2 = r * r;
@@ -988,6 +1229,7 @@
                 }
     }
 
+    /* ---- Procedural building (used when no structures are loaded) ---- */
     function buildBuilding(x0, z0, w, d, y0, height, rnd) {
         const walls = [2, 3, 5, 11];
         const wallMat = walls[(rnd() * walls.length) | 0];
@@ -1029,78 +1271,102 @@
         }
     }
 
+    /* ---- Stamp one editor-authored structure into the voxel grid ----
+       struct = { name, size:[W,H,D], blocks:[[x,y,z,id], ...] }
+       id === 0 entries erase a voxel (matches the editor's output). */
+    function stampStructure(struct, ox, oy, oz, rotY) {
+        const [W, H, D] = struct.size || [1, 1, 1];
+        const cos = Math.cos(rotY || 0), sin = Math.sin(rotY || 0);
+
+        for (const [x, y, z, id] of struct.blocks) {
+            let tx = x, tz = z;
+            if (rotY) {
+                /* rotate around the structure's centre */
+                const cx = (W - 1) * 0.5, cz = (D - 1) * 0.5;
+                const dx = x - cx, dz = z - cz;
+                tx = Math.round(cx + dx * cos - dz * sin);
+                tz = Math.round(cz + dx * sin + dz * cos);
+            }
+            const wx = ox + tx, wy = oy + y, wz = oz + tz;
+            if (wx < 0 || wy < 0 || wz < 0 || wx >= SX || wy >= SY || wz >= SZ) continue;
+            setVRaw(wx, wy, wz, id);
+            markDirty(wx, wy, wz);
+        }
+    }
+
+    /* ---- The main city generator ---- */
     function generateCity(seed) {
         const rnd = mulberry32(seed);
 
-        for (let x = 0; x < SX; x++) {
-            for (let z = 0; z < SZ; z++) {
-                const onRoad = (x % CELL) < ROAD || (z % CELL) < ROAD;
-                for (let y = 0; y < GROUND_Y; y++) {
-                    let m;
-                    if (y === GROUND_Y - 1) m = onRoad ? 1 : 9;
-                    else m = 8;
-                    setVRaw(x, y, z, m);
-                }
-                if (onRoad && (x % CELL) >= 9 && (x % CELL) <= 10 && (z % 10) < 5) setVRaw(x, GROUND_Y - 1, z, 12);
-                if (onRoad && (z % CELL) >= 9 && (z % CELL) <= 10 && (x % 10) < 5) setVRaw(x, GROUND_Y - 1, z, 12);
+        quietGeneration = true;   // suppress markDirty spam — boot() rebuilds all chunks anyway
+
+        // 1. Ground.
+        fillGroundVoxels();
+
+        // 2. Irregular road positions.
+        const roadXs = generateRoadAxis(rnd, 4, 6, SX);
+        const roadZs = generateRoadAxis(rnd, 4, 6, SZ);
+
+        // 3. Carve full-length road bands.
+        for (const rx of roadXs) carveRoadV(rx);
+        for (const rz of roadZs) carveRoadH(rz);
+
+        // 4. Extract the empty blocks between roads.
+        const blocks = enumerateBlocks(roadXs, roadZs);
+
+        // 5. Structure pool from the editor (or procedural fallback).
+        const pool = (window.ARIVE_STRUCTURES || []).filter(s =>
+            s && Array.isArray(s.blocks) && Array.isArray(s.size) &&
+            s.size[0] >= 4 && s.size[2] >= 4
+        );
+
+        console.log('[ARive] generateCity  map ' + SX + '×' + SZ +
+            '  ·  ' + roadXs.length + '×' + roadZs.length + ' roads  ·  ' +
+            blocks.length + ' blocks  ·  ' + pool.length + ' structure types');
+
+        // 6. Place structures.
+        const plots = [];
+        if (pool.length > 0) {
+            for (const block of blocks) {
+                const bp = placeStructuresInBlock(rnd, block, pool);
+                for (const p of bp) plots.push(p);
+            }
+        } else {
+            // No structures loaded — use the old procedural building generator.
+            for (const block of blocks) {
+                if (block.w < 24 || block.d < 24) continue;
+                if (rnd() > 0.75) continue;
+                const W = 12 + ((rnd() * Math.min(24, block.w - 8)) | 0);
+                const D = 12 + ((rnd() * Math.min(24, block.d - 8)) | 0);
+                const H = 20 + ((rnd() * 60) | 0);
+                const pad = PLOT_EDGE_PAD;
+                const px = block.x + pad +
+                    ((rnd() * Math.max(1, block.w - W - pad * 2)) | 0);
+                const pz = block.z + pad +
+                    ((rnd() * Math.max(1, block.d - D - pad * 2)) | 0);
+                plots.push({ x: px, z: pz, w: W, d: D, procedural: { h: H } });
             }
         }
 
-        for (let gx = 0; gx + CELL <= SX; gx += CELL) {
-            for (let gz = 0; gz + CELL <= SZ; gz += CELL) {
-                const px = gx + ROAD, pz = gz + ROAD;
-                const pw = CELL - ROAD, pd = CELL - ROAD;
-
-                for (let x = px; x < px + pw; x++)
-                    for (let z = pz; z < pz + pd; z++)
-                        setVRaw(x, GROUND_Y - 1, z, 2);
-
-                if (rnd() < 0.20) {
-                    const count = Math.floor(pw * pd * 0.08);
-                    for (let i = 0; i < count; i++) {
-                        const x = px + ((rnd() * pw) | 0);
-                        const z = pz + ((rnd() * pd) | 0);
-                        const hh = 2 + ((rnd() * 8) | 0);
-                        for (let y = GROUND_Y; y < GROUND_Y + hh; y++)
-                            setVRaw(x, y, z, rnd() < 0.7 ? 10 : 6);
-                    }
-                    if (rnd() < 0.6) {
-                        const wx = px + ((rnd() * Math.max(1, pw - 20)) | 0);
-                        const wz = pz + ((rnd() * Math.max(1, pd - 4)) | 0);
-                        const wl = 8 + ((rnd() * 16) | 0);
-                        const wh = 6 + ((rnd() * 14) | 0);
-                        for (let x = wx; x < wx + wl && x < px + pw; x++)
-                            for (let y = GROUND_Y; y < GROUND_Y + wh; y++)
-                                setVRaw(x, y, wz, 3);
-                    }
-                } else {
-                    const mx = 4 + ((rnd() * 5) | 0);
-                    const mz = 4 + ((rnd() * 5) | 0);
-                    const w = pw - mx * 2;
-                    const d = pd - mz * 2;
-                    if (w < 12 || d < 12) continue;
-                    const height = 24 + ((rnd() * 60) | 0);
-                    buildBuilding(px + mx, pz + mz, w, d, GROUND_Y, height, rnd);
-                }
+        // 7. Stamp everything into the voxel grid.
+        for (const p of plots) {
+            if (p.procedural) {
+                buildBuilding(p.x, p.z, p.w, p.d, GROUND_Y, p.procedural.h, rnd);
+            } else {
+                stampStructure(p.struct, p.x, GROUND_Y, p.z, 0);
             }
         }
 
-        for (let i = 0; i < 2400; i++) {
-            const x = (rnd() * SX) | 0;
-            const z = (rnd() * SZ) | 0;
-            const onRoad = (x % CELL) < ROAD || (z % CELL) < ROAD;
-            if (!onRoad) continue;
-            if (rnd() < 0.55) setVRaw(x, GROUND_Y, z, 10);
-        }
+        // 8. Road clutter.
+        scatterRoadProps(rnd);
 
-        for (let i = 0; i < 80; i++) {
-            const x = 3 + ((rnd() * (SX - 6)) | 0);
-            const z = 3 + ((rnd() * (SZ - 6)) | 0);
-            const onRoad = (x % CELL) < ROAD || (z % CELL) < ROAD;
-            if (!onRoad) continue;
-            if (getV(x, GROUND_Y, z) !== 0) continue;
-            for (let k = 0; k < 5; k++) setVRaw(x, GROUND_Y + k, z, 13);
-        }
+        // 9. Record a spawn hint — first road intersection so the player
+        //    never spawns inside a structure.
+        const sx = roadXs[0] ?? (SX >> 1);
+        const sz = roadZs[0] ?? (SZ >> 1);
+        window.__ariveBigStructureSpot = { x: sx, z: sz };
+
+        quietGeneration = false;
     }
 
     /* =========================================================================
@@ -1110,24 +1376,30 @@
         pos: new THREE.Vector3(WORLD_W * 0.5, 4, WORLD_D * 0.5),
         vel: new THREE.Vector3(),
 
-        /* ----- view-cone yaws -----
-           targetYaw : raw mouse intent (never clamped)
-           yaw       : camera direction (clamped to ±60° of baseYaw)
-           baseYaw   : body facing (follows targetYaw slowly) */
         targetYaw: 0,
         yaw: 0,
         baseYaw: 0,
         pitch: 0,
 
         onGround: false,
-        halfW: 0.20, height: 1.62, eye: 1.54,
+        halfW: 0.20 * PLAYER_SCALE,
+        height: 1.62 * PLAYER_SCALE,
+        eye: 1.54 * PLAYER_SCALE,
         walk: 4.5, sprint: 7.4, jump: 8.2,
         health: 100, hunger: 100, thirst: 100,
         alive: true, bob: 0, invuln: 0,
+
+        /* --- crouch --- */
+        crouching: false,   // true when crouchT > 0.5 (read by other systems)
+        crouchT: 0,         // 0 = standing, 1 = fully crouched
+
         smoothY: 0
     };
 
-    const STEP_HEIGHT = 0.55;
+    /* Max height (in metres) the player can auto-step over.
+       0.10 m = 1 voxel, so 0.30 m = 3 voxels.  Anything taller
+       forces a jump. */
+    const STEP_HEIGHT = 0.5;
 
     function tryStepUp(pos, hw, h, maxStep) {
         const y0 = pos.y;
@@ -3293,16 +3565,20 @@
             if (ddx !== 0) {
                 e.pos.x += ddx;
                 if (collidesAABB(e.pos, 0.28, 1.6)) {
-                    e.pos.x -= ddx;
-                    if (!(e.onGround && tryStepUp(e.pos, 0.28, 1.6, STEP_HEIGHT)) && e.onGround) e.vel.y = 6.2;
+                    if (!(e.onGround && tryStepUp(e.pos, 0.28, 1.6, STEP_HEIGHT))) {
+                        e.pos.x -= ddx;
+                        if (e.onGround) e.vel.y = 6.2;
+                    }
                 }
             }
             const ddz = e.vel.z * dt;
             if (ddz !== 0) {
                 e.pos.z += ddz;
                 if (collidesAABB(e.pos, 0.28, 1.6)) {
-                    e.pos.z -= ddz;
-                    if (!(e.onGround && tryStepUp(e.pos, 0.28, 1.6, STEP_HEIGHT)) && e.onGround) e.vel.y = 6.2;
+                    if (!(e.onGround && tryStepUp(e.pos, 0.28, 1.6, STEP_HEIGHT))) {
+                        e.pos.z -= ddz;
+                        if (e.onGround) e.vel.y = 6.2;
+                    }
                 }
             }
 
@@ -3346,9 +3622,44 @@
        ========================================================================= */
     function updatePlayer(dt) {
         if (!player.alive) return;
-        player.eye = FP_MODEL.body.eyeY;
         player.invuln = Math.max(0, player.invuln - dt);
 
+        /* ============================================================
+           CROUCH BLEND (Ctrl)
+           ------------------------------------------------------------
+           · crouchT slides 0 → 1 while Ctrl is held, 1 → 0 on release
+           · height + eye interpolate between their standing values
+           · standing up is blocked if a full-height box won't fit
+           ============================================================ */
+        const STAND_HEIGHT = 1.62 * PLAYER_SCALE;
+        const STAND_EYE = FP_MODEL.body.eyeY;
+        const CROUCH_HEIGHT = STAND_HEIGHT * CROUCH_MUL;
+        const CROUCH_EYE = STAND_EYE * CROUCH_MUL;
+
+        const wantCrouch = !!keys['KeyC'];
+        let targetCrouchT = wantCrouch ? 1 : 0;
+
+        /* Refuse to stand up if the standing AABB wouldn't fit — this is
+           what stops you popping through a low ceiling. */
+        if (targetCrouchT < player.crouchT &&
+            collidesAABB(player.pos, player.halfW, STAND_HEIGHT)) {
+            targetCrouchT = player.crouchT;
+        }
+
+        /* Duck slightly faster than we stand. */
+        const cRate = wantCrouch ? 12 : 8;
+        if (player.crouchT < targetCrouchT)
+            player.crouchT = Math.min(targetCrouchT, player.crouchT + dt * cRate);
+        else if (player.crouchT > targetCrouchT)
+            player.crouchT = Math.max(targetCrouchT, player.crouchT - dt * cRate);
+
+        player.crouching = player.crouchT > 0.5;
+
+        /* Feet stay put — only the top of the AABB and the camera move. */
+        player.height = STAND_HEIGHT + (CROUCH_HEIGHT - STAND_HEIGHT) * player.crouchT;
+        player.eye = STAND_EYE + (CROUCH_EYE - STAND_EYE) * player.crouchT;
+
+        /* ---------- movement input ---------- */
         let mf = 0, mr = 0;
         if (keys['KeyW'] || keys['ArrowUp']) mf += 1;
         if (keys['KeyS'] || keys['ArrowDown']) mf -= 1;
@@ -3356,14 +3667,23 @@
         if (keys['KeyA'] || keys['ArrowLeft']) mr -= 1;
         if (mf || mr) { const l = Math.hypot(mf, mr); mf /= l; mr /= l; }
 
-        const sprinting = (keys['ShiftLeft'] || keys['ShiftRight']) && (mf || mr) && player.onGround && player.hunger > 3;
-        const speed = sprinting ? player.sprint : player.walk;
+        /* Sprint is disabled while crouched (crouchT < 0.1 means "basically up"). */
+        const sprinting = (keys['ShiftLeft'] || keys['ShiftRight']) &&
+            (mf || mr) && player.onGround && player.hunger > 3 &&
+            player.crouchT < 0.1;
+
+        const crouchMul = 1 - (1 - CROUCH_SPEED_MUL) * player.crouchT;
+        const speed = (sprinting ? player.sprint : player.walk) * crouchMul;
 
         const sin = Math.sin(player.yaw), cos = Math.cos(player.yaw);
         player.vel.x = (-sin * mf + cos * mr) * speed;
         player.vel.z = (-cos * mf - sin * mr) * speed;
 
-        if (keys['Space'] && player.onGround) { player.vel.y = player.jump; player.onGround = false; }
+        /* Can't jump while crouched. */
+        if (keys['Space'] && player.onGround && player.crouchT < 0.1) {
+            player.vel.y = player.jump;
+            player.onGround = false;
+        }
         player.vel.y -= GRAVITY * dt;
         if (player.vel.y < -55) player.vel.y = -55;
 
@@ -3381,18 +3701,20 @@
         if (dx !== 0) {
             player.pos.x += dx;
             if (collidesAABB(player.pos, hw, hh)) {
-                player.pos.x -= dx;
-                if (!(player.onGround && tryStepUp(player.pos, hw, hh, STEP_HEIGHT)))
+                if (!(player.onGround && tryStepUp(player.pos, hw, hh, STEP_HEIGHT))) {
+                    player.pos.x -= dx;      // only roll back on failure
                     player.vel.x = 0;
+                }
             }
         }
         const dz = player.vel.z * dt;
         if (dz !== 0) {
             player.pos.z += dz;
             if (collidesAABB(player.pos, hw, hh)) {
-                player.pos.z -= dz;
-                if (!(player.onGround && tryStepUp(player.pos, hw, hh, STEP_HEIGHT)))
+                if (!(player.onGround && tryStepUp(player.pos, hw, hh, STEP_HEIGHT))) {
+                    player.pos.z -= dz;
                     player.vel.z = 0;
+                }
             }
         }
 
@@ -3413,8 +3735,11 @@
         else player.bob += dt * 1.4;
 
         /* Camera bob amplitude is still gated on ground contact: bobbing the
-           camera up/down on top of the jump arc would read as a stutter. */
-        const bobA = ((mf || mr) && player.onGround) ? (sprinting ? 0.055 : 0.032) : 0.006;
+           camera up/down on top of the jump arc would read as a stutter.
+           Crouch damps it a little so a duck-walk doesn't rattle the view. */
+        const bobA = ((mf || mr) && player.onGround)
+            ? (sprinting ? 0.055 : 0.032) * (1 - 0.4 * player.crouchT)
+            : 0.006;
 
         if (shakeTime > 0) { shakeTime -= dt; if (shakeTime <= 0) shakeAmt = 0; }
         const sx = shakeTime > 0 ? (Math.random() - 0.5) * shakeAmt : 0;
@@ -3430,12 +3755,7 @@
             const coneMaxStep = VIEW_CONE_BODY_TURN_RATE * dt;
 
             if (moving) {
-                /* ---------- Walking: body faces the camera's forward ----------
-                   Uses player.yaw (post-clamp camera direction) as the
-                   target, so wherever the player is walking is where the
-                   legs point.  Runs every frame any movement key is held,
-                   so pressing W with the head turned will pivot the body
-                   into the walk direction within a fraction of a second. */
+                /* ---------- Walking: body faces the camera's forward ---------- */
                 let dev = player.yaw - player.baseYaw;
                 while (dev > Math.PI) dev -= Math.PI * 2;
                 while (dev < -Math.PI) dev += Math.PI * 2;
@@ -3445,11 +3765,7 @@
                 else if (dev < -alignStep) player.baseYaw -= alignStep;
                 else player.baseYaw = player.yaw;
             } else {
-                /* ---------- Standing: cone behaviour only ----------
-                   The body holds its heading unless the camera is pushed
-                   past the cone edge.  When it is, the body advances to
-                   keep the camera pinned at the edge — no overshoot, so
-                   the view stops the instant the mouse stops. */
+                /* ---------- Standing: cone behaviour only ---------- */
                 let dev = player.targetYaw - player.baseYaw;
                 while (dev > Math.PI) dev -= Math.PI * 2;
                 while (dev < -Math.PI) dev += Math.PI * 2;
@@ -3465,11 +3781,8 @@
                     if (delta < -coneMaxStep) player.baseYaw -= coneMaxStep;
                     else player.baseYaw = targetBase;
                 }
-                // else: camera is inside the cone → body stays put.
             }
 
-            // Camera is always the mouse intent, clamped to the cone around
-            // whatever direction the body is currently facing.
             player.yaw = clamp(
                 player.targetYaw,
                 player.baseYaw - HALF,
@@ -3477,13 +3790,7 @@
             );
         }
 
-        /* ---------- Camera: apply FP_MODEL eye offsets ----------
-           eyeX / eyeY / eyeZ are the offsets in CAMERA-LOCAL space
-           (matches how the editor previews them).  We rotate the
-           horizontal offsets by the player's yaw so a positive eyeX
-           always stays "to the player's right" and a negative eyeZ
-           always stays "in front of the player", regardless of which
-           way they're facing. */
+        /* ---------- Camera: apply FP_MODEL eye offsets ---------- */
         const cosY = Math.cos(player.yaw);
         const sinY = Math.sin(player.yaw);
 
@@ -3519,6 +3826,14 @@
            body facing the player's travel direction. */
         playerBody.position.set(player.pos.x, player.smoothY, player.pos.z);
         playerBody.rotation.y = player.baseYaw;
+
+        /* ----- crouch squash -----
+   Compress the world body vertically from the feet.  fpRoot is
+   counter-scaled so the hands keep their physical size, while
+   their local anchor point rides down with the lowered body. */
+        const bodyScaleY = 1 - (1 - CROUCH_MUL) * player.crouchT;
+        playerBody.scale.y = bodyScaleY;
+        fpRoot.scale.y = 1 / bodyScaleY;
 
         /* Leg cycle runs whenever the player is moving — including mid-jump.
            Only a truly idle player (no movement input) freezes the legs. */
@@ -3697,6 +4012,8 @@
         player.baseYaw = 0;
         player.pitch = 0;
         player.invuln = 2;
+        player.crouchT = 0;
+        player.crouching = false;
         enemies.forEach(e => scene.remove(e.mesh));
         enemies.length = 0;
         document.getElementById('deathScreen').classList.add('hidden');
@@ -3900,6 +4217,170 @@
     // Apply saved values on boot.
     refreshSettingsUI();
 
+    /* ============================================================
+   LOCAL STRUCTURE BRIDGE
+   ------------------------------------------------------------
+   Merges every structure the user marked "SPAWN IN WORLD" in
+   structureEditor.html into window.ARIVE_STRUCTURES.
+
+   The editor writes to localStorage under 'arive-structures-v1'
+   (same origin as the game).  Any entry with `spawn === true`
+   is treated as a live structure and will be stamped during
+   world generation — no file edits needed.
+
+   Entries already loaded from assets/structures.js are kept;
+   this only *adds* to the list, and matches by name so saving
+   the same structure twice overwrites rather than duplicates.
+   ============================================================ */
+    const LOCAL_STRUCTURES_KEY = 'arive-structures-v1';
+
+    function mergeLocalStructures() {
+        let saved = [];
+        try {
+            saved = JSON.parse(localStorage.getItem(LOCAL_STRUCTURES_KEY) || '[]');
+        } catch (e) {
+            console.warn('[ARive] could not parse local structures:', e);
+            return;
+        }
+
+        const spawning = saved.filter(s => s && s.spawn && s.blocks && s.size);
+        if (!spawning.length) return;
+
+        window.ARIVE_STRUCTURES = window.ARIVE_STRUCTURES || [];
+
+        for (const s of spawning) {
+            const idx = window.ARIVE_STRUCTURES.findIndex(x => x.name === s.name);
+            if (idx >= 0) window.ARIVE_STRUCTURES[idx] = s;   // overwrite by name
+            else window.ARIVE_STRUCTURES.push(s);
+        }
+
+        console.log('[ARive] Loaded ' + spawning.length +
+            ' spawnable structure(s) from editor:', spawning.map(s => s.name).join(', '));
+    }
+
+    /* ============================================================
+      FOLDER STRUCTURE LOADER — no manifest required
+      ------------------------------------------------------------
+      Fetches the directory listing for assets/model/structureModel/
+      and pulls every *.json file it contains.
+   
+      Works with any server that returns an HTML or JSON directory
+      listing:
+        ✓ python -m http.server
+        ✓ VS Code Live Server
+        ✓ nginx  (autoindex on)
+        ✓ Apache (Options +Indexes)
+        ✓ npx serve      (JSON listing)
+        ✓ Caddy          (JSON listing)
+   
+      Fails silently on servers that return 403 for directory
+      listings (most production nginx configs) — in that case use
+      the numbered-probe fallback below.
+      ============================================================ */
+    const STRUCTURES_BASE = 'assets/model/structureModel/';
+
+    async function fetchDirectoryListing(url) {
+        try {
+            const r = await fetch(url, { cache: 'no-cache' });
+            if (!r.ok) return null;
+            const ct = (r.headers.get('content-type') || '').toLowerCase();
+            if (ct.includes('application/json')) return await r.json();
+            return await r.text();
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function extractJsonNames(listing) {
+        const names = new Set();
+
+        // --- HTML directory listing: <a href="BoxHouse1.json"> ... ---
+        if (typeof listing === 'string') {
+            const linkRe = /href\s*=\s*["']([^"']+\.json)(?:\?[^"']*)?["']/gi;
+            let m;
+            while ((m = linkRe.exec(listing)) !== null) {
+                const base = m[1].split('/').pop();
+                if (base) names.add(base);
+            }
+        }
+
+        // --- JSON directory listing: ["BoxHouse1.json", ...] or [{name:"..."}] ---
+        if (names.size === 0 && Array.isArray(listing)) {
+            for (const item of listing) {
+                const s = (typeof item === 'string') ? item : (item && item.name) || '';
+                const base = s.split('/').pop();
+                if (base.toLowerCase().endsWith('.json')) names.add(base);
+            }
+        }
+
+        // Never load a manifest if one happens to be sitting there
+        names.delete('manifest.json');
+        names.delete('index.json');
+
+        return [...names];
+    }
+
+    /* ============================================================
+   STRUCTURE LOADER — Live Server friendly
+   ------------------------------------------------------------
+   Reads filenames from assets/model/structureModel/index.js
+   (loaded via a <script> tag in index.html) and fetches each
+   JSON file individually.
+
+   Falls back to a real directory-listing scan if index.js is
+   missing or empty — useful if you later switch to a server
+   that does list folders.
+   ============================================================ */
+    async function loadStructuresFromFolder() {
+        window.ARIVE_STRUCTURES = window.ARIVE_STRUCTURES || [];
+
+        /* --- Primary: the script-tag index --- */
+        let names = window.ARIVE_STRUCTURE_FILES || null;
+
+        /* --- Fallback: real directory listing (Python / nginx / etc.) --- */
+        if (!names || !names.length) {
+            const listing = await fetchDirectoryListing(STRUCTURES_BASE);
+            if (listing !== null) {
+                names = extractJsonNames(listing);
+                if (names.length) {
+                    console.warn(
+                        '[ARive] index.js is empty or missing — fell back to ' +
+                        'directory scan.  Add filenames to ' +
+                        'assets/model/structureModel/index.js for Live Server.');
+                }
+            }
+        }
+
+        if (!names || !names.length) {
+            console.warn('[ARive] No structures to load.  Add filenames to ' +
+                'assets/model/structureModel/index.js');
+            return;
+        }
+
+        console.log('[ARive] Loading ' + names.length + ' structure file(s):',
+            names.join(', '));
+
+        const loaded = await Promise.all(names.map(async (name) => {
+            try {
+                const r = await fetch(STRUCTURES_BASE + name, { cache: 'no-cache' });
+                if (!r.ok) { console.warn('[ARive] ✗', name, r.status); return null; }
+                return await r.json();
+            } catch (e) {
+                console.warn('[ARive] ✗', name, e.message);
+                return null;
+            }
+        }));
+
+        for (const s of loaded) {
+            if (!s || !Array.isArray(s.blocks) || !Array.isArray(s.size)) continue;
+            const idx = window.ARIVE_STRUCTURES.findIndex(x => x.name === s.name);
+            if (idx >= 0) window.ARIVE_STRUCTURES[idx] = s;
+            else window.ARIVE_STRUCTURES.push(s);
+            console.log('[ARive] ✓', s.name,
+                '(' + s.size.join('×') + ', ' + s.blocks.length + ' blocks)');
+        }
+    }
+
     /* ---- ESC-menu buttons ---- */
 
     // Regenerate the current map with a brand-new seed, straight back into play.
@@ -3956,7 +4437,13 @@
         if (currentMapType === 'sandbox') {
             return { x: WORLD_W * 0.5, z: WORLD_D * 0.5 };
         }
-        return { x: 9.0, z: 9.0 };
+        // generateCity() records a road intersection here so the player
+        // never spawns inside a structure.
+        if (window.__ariveBigStructureSpot) {
+            const s = window.__ariveBigStructureSpot;
+            return { x: s.x * VOXEL, z: s.z * VOXEL };
+        }
+        return { x: WORLD_W * 0.5, z: WORLD_D * 0.5 };
     }
 
     function clearWorld() {
@@ -4266,17 +4753,24 @@
        ========================================================================= */
     let currentSeed = 0;
 
-    function boot(mapType, forceSeed) {
+    async function boot(mapType, forceSeed) {
         currentMapType = mapType || 'city';
         resizeRenderer();
         clearWorld();
+
+        mergeLocalStructures();                  // localStorage → ARIVE_STRUCTURES
+        await loadStructuresFromFolder();        // ← NEW: fetch every .json in index.js
 
         const seed = (forceSeed !== undefined && forceSeed !== null)
             ? forceSeed
             : ((Math.random() * 1e9) | 0);
         currentSeed = seed;
-        if (currentMapType === 'sandbox') generateSandbox(seed);
-        else generateCity(seed);
+
+        if (currentMapType === 'sandbox') {
+            generateSandbox(seed);
+        } else {
+            generateCity(seed);   // structure placement is handled inside
+        }
 
         if (hotbarSlots.length === 0) {
             buildHotbarDom();
@@ -4300,10 +4794,11 @@
 
         let i = 0;
         function step() {
-            const batchSize = 1;
+            const batchSize = 6;   // ← was 1; scaled up for the 3× map
             for (let k = 0; k < batchSize && i < allChunks.length; k++, i++) {
                 rebuildChunk(allChunks[i][0], allChunks[i][1], allChunks[i][2]);
             }
+
             progressEl.style.width = Math.round((i / allChunks.length) * 100) + '%';
 
             if (i < allChunks.length) {
@@ -4312,6 +4807,12 @@
                 const sp = getSpawnPoint();
                 placePlayerOnGround(sp.x, sp.z);
                 camera.position.set(player.pos.x, player.pos.y + player.eye, player.pos.z);
+
+                // Generation queued a pile of markDirty() calls that boot() already
+                // satisfied by rebuilding every chunk.  Drop them so the first frame
+                // doesn't redundantly re-mesh them.
+                rebuildQueue.length = 0;
+                dirtyChunks.clear();
 
                 loadingEl.classList.add('hidden');
                 if (window.__ariveAutoStart) {
@@ -4379,7 +4880,13 @@
        In multiplayer, multiplayer.js passes each peer's own data. */
     function buildRemotePlayerMesh(avatarData) {
         const A = avatarData || window.AVATAR_MODEL_DATA || DEFAULT_AVATAR;
-        const B = A.body;
+        const S = PLAYER_SCALE;                 // ← add this
+
+        // Shadow every body dimension with its scaled twin, so the rest
+        // of the function doesn't need to change.
+        const B = Object.fromEntries(
+            Object.entries(A.body).map(([k, v]) => [k, v * S])
+        );
         const C = A.colors;
 
         const lam = (hex) => new THREE.MeshLambertMaterial({ color: hex, fog: true });
@@ -4529,6 +5036,7 @@
         pickups: pickups,
         enemies: enemies,
         voxels: voxels,
+        CROUCH_MUL: CROUCH_MUL,
         BLOCKS: BLOCKS,
         VOXEL: VOXEL,
         SX: SX, SY: SY, SZ: SZ,
@@ -4549,8 +5057,14 @@
             currentSeed = seed;
             resizeRenderer();
             clearWorld();
+
+            quietGeneration = true;
             if (currentMapType === 'sandbox') generateSandbox(seed);
             else generateCity(seed);
+            quietGeneration = false;
+            rebuildQueue.length = 0;
+            dirtyChunks.clear();
+
             for (let cx = 0; cx < CHUNKS_X; cx++)
                 for (let cy = 0; cy < CHUNKS_Y; cy++)
                     for (let cz = 0; cz < CHUNKS_Z; cz++)

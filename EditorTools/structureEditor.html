@@ -1,0 +1,2607 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>ARive — Structure Editor</title>
+    <style>
+        :root {
+            --bg: #05070a;
+            --panel: #0d1116;
+            --border: #2b333f;
+            --gold: #e8c86a;
+            --text: #dfe4ea;
+            --muted: #7a8794;
+            --accent: #6ac8e8;
+            --ok: #6ac87a;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: var(--bg);
+            color: var(--text);
+            font-family: "Courier New", monospace;
+            font-size: 12px;
+            user-select: none;
+        }
+
+        #view {
+            display: block;
+            position: absolute;
+            inset: 0;
+            cursor: crosshair;
+        }
+
+        #topbar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 0 10px;
+            background: rgba(10, 13, 18, .94);
+            border-bottom: 2px solid var(--border);
+            z-index: 10;
+        }
+
+        #topbar .title {
+            color: var(--gold);
+            letter-spacing: 4px;
+            font-weight: bold;
+            margin-right: 10px;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+
+        button {
+            font-family: inherit;
+            font-size: 11px;
+            letter-spacing: 1px;
+            padding: 6px 11px;
+            background: #1a2128;
+            color: var(--text);
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: all .1s;
+            white-space: nowrap;
+        }
+
+        button:hover {
+            background: #232c38;
+            border-color: var(--gold);
+            color: var(--gold);
+        }
+
+        button.active {
+            background: #2a3a4a;
+            color: var(--gold);
+            border-color: var(--gold);
+        }
+
+        button:disabled {
+            opacity: .35;
+            cursor: not-allowed;
+        }
+
+        button:disabled:hover {
+            background: #1a2128;
+            border-color: var(--border);
+            color: var(--text);
+        }
+
+        .badge {
+            font-size: 9px;
+            letter-spacing: 1.5px;
+            padding: 4px 8px;
+            color: var(--ok);
+            border: 1px solid var(--ok);
+            border-radius: 3px;
+            margin-left: auto;
+            text-shadow: 0 0 8px rgba(106, 200, 122, .4);
+            white-space: nowrap;
+        }
+
+        #palette {
+            position: absolute;
+            top: 54px;
+            left: 10px;
+            width: 168px;
+            background: rgba(10, 13, 18, .94);
+            border: 2px solid var(--border);
+            padding: 8px;
+            z-index: 9;
+            max-height: calc(100vh - 80px);
+            overflow-y: auto;
+        }
+
+        #palette select {
+            width: 100%;
+            font-family: inherit;
+            font-size: 10px;
+            letter-spacing: 1px;
+            padding: 5px 6px;
+            background: #0a0d12;
+            color: var(--text);
+            border: 1px solid var(--border);
+            cursor: pointer;
+            margin-bottom: 8px;
+        }
+
+        #palette select:hover {
+            border-color: var(--gold);
+        }
+
+        #palette select:focus {
+            border-color: var(--gold);
+            outline: none;
+        }
+
+        .section {
+            color: var(--muted);
+            font-size: 10px;
+            letter-spacing: 2px;
+            margin-bottom: 6px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #1a2128;
+        }
+
+        .block-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            margin-bottom: 3px;
+            padding: 4px 6px;
+            font-size: 10px;
+            background: #141a20;
+            border: 1px solid #232a33;
+            color: var(--text);
+            cursor: pointer;
+            text-align: left;
+            font-family: inherit;
+        }
+
+        .block-btn:hover {
+            border-color: var(--gold);
+        }
+
+        .block-btn.active {
+            border-color: var(--gold);
+            background: #1c2632;
+            color: var(--gold);
+        }
+
+        .block-swatch {
+            width: 16px;
+            height: 16px;
+            border: 1px solid #000;
+            flex-shrink: 0;
+        }
+
+        #rightpanel {
+            position: absolute;
+            top: 54px;
+            right: 10px;
+            width: 252px;
+            background: rgba(10, 13, 18, .94);
+            border: 2px solid var(--border);
+            padding: 10px;
+            z-index: 9;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: calc(100vh - 80px);
+            overflow-y: auto;
+        }
+
+        .row {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        input[type="text"],
+        input[type="number"] {
+            font-family: inherit;
+            font-size: 11px;
+            padding: 5px 7px;
+            background: #0a0d12;
+            color: var(--text);
+            border: 1px solid var(--border);
+            width: 100%;
+        }
+
+        input:focus {
+            border-color: var(--gold);
+            outline: none;
+        }
+
+        input.dim-input {
+            transition: border-color .15s, box-shadow .15s;
+        }
+
+        input.dim-input.flash {
+            border-color: var(--ok);
+            box-shadow: 0 0 0 1px var(--ok), 0 0 8px rgba(106, 200, 122, .35);
+        }
+
+        select {
+            font-family: inherit;
+            font-size: 11px;
+            padding: 4px 6px;
+            background: #0a0d12;
+            color: var(--text);
+            border: 1px solid var(--border);
+            cursor: pointer;
+        }
+        
+        select:hover {
+            border-color: var(--gold);
+        }
+
+        select:focus {
+            border-color: var(--gold);
+            outline: none;
+        }
+
+        .tool-group {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+
+        .tool-group button {
+            flex: 1;
+            min-width: 46px;
+            padding: 5px 4px;
+            font-size: 10px;
+        }
+
+        /* BOX MODE block — only shown while the box tool is active */
+        #boxModeBlock {
+            display: none;
+        }
+
+        #boxModeBlock.visible {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        /* REPLACE MODE block — only shown while the replace tool is active */
+        #replaceModeBlock {
+            display: none;
+        }
+
+        #replaceModeBlock.visible {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        #thicknessRow {
+            display: none;
+        }
+
+        #thicknessRow.visible {
+            display: flex;
+        }
+
+        .bag-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 4px;
+            padding: 5px;
+            background: #0a0d12;
+            border: 1px solid #2a3a4a;
+            margin-top: 2px;
+        }
+
+        .block-chip {
+            width: 100%;
+            aspect-ratio: 1;
+            border: 1px solid #232a33;
+            cursor: pointer;
+            transition: all .1s;
+            position: relative;
+        }
+
+        .block-chip:hover {
+            border-color: var(--gold);
+        }
+
+        .block-chip.active {
+            border-color: var(--ok);
+            box-shadow: 0 0 0 1px var(--ok), inset 0 0 8px rgba(106, 200, 122, .35);
+        }
+
+        .block-chip.active::after {
+            content: '✓';
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-weight: bold;
+            font-size: 11px;
+            text-shadow: 1px 1px 0 #000, -1px -1px 0 #000;
+        }
+
+        #bagGrid.disabled {
+            opacity: .35;
+            pointer-events: none;
+        }
+
+        /* AFTER */
+        #structureList {
+            background: #0a0d12;
+            border: 1px solid var(--border);
+        }
+
+        .str-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 8px;
+            font-size: 10px;
+            border-bottom: 1px solid #1a2128;
+            cursor: pointer;
+        }
+
+        .str-item:hover {
+            background: #1a2128;
+        }
+
+        .str-item .del {
+            color: #c06060;
+            padding: 0 4px;
+        }
+
+        #status {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 26px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 0 14px;
+            background: rgba(10, 13, 18, .94);
+            border-top: 2px solid var(--border);
+            font-size: 10px;
+            letter-spacing: 1px;
+            color: var(--muted);
+            z-index: 10;
+        }
+
+        #status b {
+            color: var(--gold);
+        }
+
+        #layerIndicator {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(10, 13, 18, .92);
+            border: 2px solid var(--border);
+            padding: 6px 14px;
+            font-size: 11px;
+            letter-spacing: 2px;
+            color: var(--gold);
+            z-index: 9;
+        }
+
+        #toast {
+            position: absolute;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(10, 13, 18, .96);
+            border: 2px solid var(--gold);
+            color: var(--gold);
+            padding: 8px 16px;
+            font-size: 11px;
+            letter-spacing: 2px;
+            z-index: 20;
+            opacity: 0;
+            transition: opacity .2s;
+            pointer-events: none;
+        }
+
+        #toast.show {
+            opacity: 1;
+        }
+
+        #help {
+            position: absolute;
+            bottom: 34px;
+            left: 194px;
+            max-width: 520px;
+            background: rgba(10, 13, 18, .85);
+            border: 1px solid var(--border);
+            padding: 6px 10px;
+            font-size: 9px;
+            color: var(--muted);
+            z-index: 9;
+            line-height: 1.7;
+            pointer-events: none;
+        }
+
+        #help b {
+            color: var(--gold);
+        }
+
+        #libraryList,
+        #libraryContainer {
+            display: block !important;
+            min-height: 40px;
+            visibility: visible !important;
+        }
+
+        /* Ensure buttons/items inside the library are visible */
+        #libraryList button,
+        .library-item {
+            display: block;
+            width: 100%;
+            color: #e0e6ed !important;
+            /* Visible light text */
+            background: #1e2638 !important;
+            /* Visible dark card background */
+            border: 1px solid #3a4663;
+            padding: 8px 12px;
+            margin-bottom: 6px;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        #libraryList button:hover {
+            background: #2a3650 !important;
+        }
+    </style>
+</head>
+
+<body>
+
+    <canvas id="view"></canvas>
+
+    <div id="topbar">
+        <div class="title">◈ STRUCTURE EDITOR</div>
+        <button id="btnNew">NEW</button>
+        <button id="btnSave">SAVE</button>
+        <button id="btnExport">EXPORT</button>
+        <button id="btnImport">IMPORT</button>
+        <button id="btnCopyGame">COPY SNIPPET</button>
+        <button id="btnResize">RESIZE</button>
+        <button id="btnUndo" title="Ctrl+Z" disabled>↶ UNDO</button>
+        <button id="btnRedo" title="Ctrl+Y / Ctrl+Shift+Z" disabled>↷ REDO</button>
+        <button id="btnPlayer" class="active" title="Toggle player scale reference (P)">👤 PLAYER</button>
+        <button id="btnMovePlayer" title="Click to reposition the player reference">📍 MOVE</button>
+        <button id="btnFullscreen" title="Toggle Fullscreen (F)">⛶ FULLSCREEN</button>
+        <div class="badge" title="Exported structures are fully compatible with ARive's survival mode">◆ SURVIVAL-READY
+        </div>
+    </div>
+
+    <div id="palette">
+        <div class="section">SORT</div>
+        <select id="blockSort" title="Change the order the palette is listed in">
+            <option value="id">ID</option>
+            <option value="type">TYPE</option>
+            <option value="hue">COLOR (HUE)</option>
+            <option value="bright-desc">LIGHT → DARK</option>
+            <option value="bright-asc">DARK → LIGHT</option>
+        </select>
+        <div class="section">BLOCKS</div>
+        <div id="blockList"></div>
+    </div>
+
+    <div id="rightpanel">
+        <div class="section">TOOLS</div>
+        <div class="tool-group">
+            <button class="tool-btn active" data-tool="place">PLACE</button>
+            <button class="tool-btn" data-tool="erase">ERASE</button>
+            <button class="tool-btn" data-tool="paint">PAINT</button>
+            <button class="tool-btn" data-tool="pick">PICK</button>
+        </div>
+        <div class="tool-group" style="margin-top: 4px;">
+            <button class="tool-btn" data-tool="box">BOX</button>
+            <button class="tool-btn" data-tool="erase-box">ERASE BOX</button>
+            <button class="tool-btn" data-tool="replace-box">REPLACE BOX</button>
+            <button class="tool-btn" data-tool="line">LINE</button>
+        </div>
+
+        <!-- Box-mode controls: only shown while BOX is the active tool -->
+        <div id="boxModeBlock">
+            <div class="section" style="margin-top:2px;">BOX MODE</div>
+            <div class="tool-group" id="boxModeGroup">
+                <button data-box-mode="horizontal" title="Fill only X/Z at the first click's layer (H)">
+                    ⬛ HORIZONTAL
+                </button>
+                <button data-box-mode="vertical" class="active" title="Fill the full 3D AABB (V)">
+                    ⬛ VERTICAL
+                </button>
+            </div>
+            <div class="row" id="thicknessRow">
+                <label style="flex:1;color:var(--muted);font-size:10px;">
+                    THICKNESS <span id="thicknessUnit" style="color:#7a8794;">(layers ↑)</span>
+                </label>
+                <input type="number" id="boxThickness" class="dim-input" min="1" max="16" value="1"
+                    style="width:60px;" />
+            </div>
+        </div>
+
+        <!-- Replace-mode controls: only shown while REPLACE BOX is active -->
+        <div id="replaceModeBlock">
+            <div class="section" style="margin-top:2px;">REPLACE MODE</div>
+            <div class="row">
+                <label style="flex:1;color:var(--muted);font-size:10px;">TARGET BLOCK</label>
+                <select id="targetBlockSelect" style="width:120px;"></select>
+            </div>
+            <div class="row">
+                <button id="btnGlobalReplace" style="flex:1; border-color: var(--ok); color: var(--ok);">REPLACE ALL IN STRUCTURE</button>
+            </div>
+        </div>
+
+        <div class="section" style="margin-top:6px;">BRUSH</div>
+        <div class="tool-group" id="brushGroup">
+            <button data-brush="1">1×1</button>
+            <button data-brush="3">3×3</button>
+            <button data-brush="5">5×5</button>
+            <button data-brush="7">7×7</button>
+        </div>
+
+        <div class="section" style="margin-top:6px;">MIRROR</div>
+        <div class="tool-group" id="mirrorGroup">
+            <button data-mirror="x">MIRROR X</button>
+            <button data-mirror="z">MIRROR Z</button>
+        </div>
+
+        <div class="section" style="margin-top:6px;">RANDOMIZER BAG</div>
+        <div class="row">
+            <button id="btnRandomizer" style="flex:1;">OFF</button>
+            <button id="btnBagAll" style="flex:1;">ALL</button>
+            <button id="btnBagNone" style="flex:1;">NONE</button>
+        </div>
+        <div class="bag-grid" id="bagGrid"></div>
+
+        <div class="section" style="margin-top:6px;">STRUCTURE</div>
+        <div class="row"><input type="text" id="strName" placeholder="Structure name" /></div>
+        <div class="row">
+            <label style="flex:1;color:var(--muted);font-size:10px;">W×H×D</label>
+            <input type="number" class="dim-input" id="strW" value="40" min="4" max="96" style="width:50px" />
+            <input type="number" class="dim-input" id="strH" value="32" min="4" max="96" style="width:50px" />
+            <input type="number" class="dim-input" id="strD" value="40" min="4" max="96" style="width:50px" />
+        </div>
+
+        <div class="section" style="margin-top:6px;">
+            LIBRARY
+            <span id="folderStatus" style="float:right;color:#7a8794;font-size:9px;letter-spacing:0;"></span>
+        </div>
+        <div id="structureList"></div>
+    </div>
+
+    <div id="layerIndicator">LAYER <span id="layerNum">0</span></div>
+    <div id="toast"></div>
+
+    <div id="help">
+        <b>LMB drag</b> paint · <b>RMB drag</b> orbit · <b>MMB drag</b> pan · <b>Wheel</b> zoom<br>
+        <b>BOX / ERASE BOX / REPLACE BOX / LINE</b> A → ghost → B · <b>RMB / ESC</b> cancel<br>
+        <b>Q/E</b> layer −/+ · <b>[ / ]</b> brush −/+ · <b>M</b> mirror X · <b>Shift+M</b> mirror Z<br>
+        <b>R</b> randomizer · <b>P</b> player ref · <b>C</b> paint · <b>L</b> line · <b>F</b> fullscreen · <b>1..9</b> block · <b>Ctrl+Z/Y</b> undo/redo
+    </div>
+
+    <div id="status">
+        <span>BLOCKS <b id="statBlocks">0</b></span>
+        <span>MODE <b id="statMode">PLACE</b></span>
+        <span>BLOCK <b id="statBlock">—</b></span>
+        <span>BRUSH <b id="statBrush">1×1</b></span>
+        <span>MIRROR <b id="statMirror">—</b></span>
+        <span>BAG <b id="statBag">OFF</b></span>
+        <span>POS <b id="statPos">—</b></span>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="../assets/model/structureModel/index.js"></script>
+    <script>
+        /* ============================================================
+           EARLY DIAGNOSTIC — runs the moment index.js has loaded
+           ============================================================ */
+        (function () {
+            var tag = document.querySelector('script[src*="structureModel/index.js"]');
+            if (tag && tag.src) {
+                window.ARIVE_STRUCTURE_BASE = tag.src.replace(/index\.js.*$/, '');
+                console.log('[ARive] STRUCTURE_BASE  =', window.ARIVE_STRUCTURE_BASE);
+            } else {
+                console.warn('[ARive] Could NOT find the index.js script tag.');
+            }
+            console.log('[ARive] location.href        =', location.href);
+            console.log('[ARive] location.protocol   =', location.protocol);
+            console.log('[ARive] ARIVE_STRUCTURE_FILES =', window.ARIVE_STRUCTURE_FILES);
+        })();
+    </script>
+    <script>
+        /* ============================================================
+           ARive — Structure Editor
+           ============================================================ */
+        (function () {
+            'use strict';
+
+            /* ============================================================
+               BLOCKS (mirrors game.js)
+               ============================================================ */
+            const BLOCKS = {
+                1: { name: 'Asphalt', color: 0x35353b, cat: 'Ground' },
+                2: { name: 'Concrete', color: 0x9a9a92, cat: 'Stone' },
+                3: { name: 'Brick', color: 0x8c4637, cat: 'Stone' },
+                4: { name: 'Glass', color: 0x7ab8cc, cat: 'Glass', transparent: true },
+                5: { name: 'Plaster', color: 0xc0c0b8, cat: 'Stone' },
+                6: { name: 'Wood', color: 0x6a4824, cat: 'Wood' },
+                7: { name: 'Metal', color: 0x7a8088, cat: 'Metal' },
+                8: { name: 'Dirt', color: 0x54412f, cat: 'Ground' },
+                9: { name: 'Grass', color: 0x46632e, cat: 'Vegetation' },
+                10: { name: 'Rubble', color: 0x60564b, cat: 'Ground' },
+                11: { name: 'Rust', color: 0x8a5634, cat: 'Metal' },
+                12: { name: 'Sand', color: 0xa89468, cat: 'Ground' },
+                13: { name: 'Barrel', color: 0xb03024, cat: 'Prop' },
+                14: { name: 'Plank', color: 0x5a3e20, cat: 'Wood' },
+                15: { name: 'Tar', color: 0x202024, cat: 'Ground' },
+
+                16: { name: 'Paint Red', color: 0xa83030, cat: 'Paint' },
+                17: { name: 'Paint Blue', color: 0x2a4a9a, cat: 'Paint' },
+                18: { name: 'Paint Yellow', color: 0xd0a030, cat: 'Paint' },
+                19: { name: 'Paint Green', color: 0x3a7a3a, cat: 'Paint' },
+                20: { name: 'Paint White', color: 0xe8e8e0, cat: 'Paint' },
+                21: { name: 'Paint Black', color: 0x1a1a1c, cat: 'Paint' },
+
+                22: { name: 'Cobblestone', color: 0x6a6a66, cat: 'Stone' },
+                23: { name: 'Stone Brick', color: 0x8a8a80, cat: 'Stone' },
+                24: { name: 'Marble', color: 0xd8d4c8, cat: 'Stone' },
+
+                25: { name: 'Dark Wood', color: 0x3a2418, cat: 'Wood' },
+                26: { name: 'Steel', color: 0xa0a8b0, cat: 'Metal' },
+                27: { name: 'Copper', color: 0x6a8a70, cat: 'Metal' },
+                28: { name: 'Terracotta', color: 0xb06040, cat: 'Stone' },
+
+                29: { name: 'Roof Shingle', color: 0x4a3a2a, cat: 'Roof' },
+                30: { name: 'Tile Floor', color: 0xb8b8b0, cat: 'Floor' },
+                31: { name: 'Carpet Red', color: 0x8a2a2a, cat: 'Floor' },
+                32: { name: 'Carpet Blue', color: 0x2a3a7a, cat: 'Floor' },
+
+                33: { name: 'Hedge', color: 0x2a5a2a, cat: 'Vegetation' },
+                34: { name: 'Sandstone', color: 0xc8b488, cat: 'Stone' },
+
+                35: { name: 'Neon Cyan', color: 0x40e0e0, cat: 'Neon' },
+                36: { name: 'Neon Magenta', color: 0xe040a0, cat: 'Neon' }
+            };
+
+            const BLOCK_IDS = Object.keys(BLOCKS).map(Number).sort((a, b) => a - b);
+
+            /* ============================================================
+               PALETTE SORTING
+               ============================================================ */
+            const SORT_KEY = 'arive-block-sort-v1';
+            let sortMode = (() => {
+                try { return localStorage.getItem(SORT_KEY) || 'id'; }
+                catch (e) { return 'id'; }
+            })();
+
+            function hexToRgb(hex) {
+                return {
+                    r: ((hex >> 16) & 255) / 255,
+                    g: ((hex >> 8) & 255) / 255,
+                    b: (hex & 255) / 255
+                };
+            }
+
+            function blockLuminance(id) {
+                const { r, g, b } = hexToRgb(BLOCKS[id].color);
+                return 0.299 * r + 0.587 * g + 0.114 * b;
+            }
+
+            function blockHue(id) {
+                const { r, g, b } = hexToRgb(BLOCKS[id].color);
+                const max = Math.max(r, g, b);
+                const min = Math.min(r, g, b);
+                const d = max - min;
+                if (d < 1e-6) return 0;
+                let h;
+                if (max === r) h = ((g - b) / d) % 6;
+                else if (max === g) h = (b - r) / d + 2;
+                else h = (r - g) / d + 4;
+                h *= 60;
+                if (h < 0) h += 360;
+                return h;
+            }
+
+            const CAT_ORDER = [
+                'Stone', 'Paint', 'Wood', 'Metal',
+                'Ground', 'Roof', 'Floor', 'Glass',
+                'Vegetation', 'Prop', 'Neon'
+            ];
+            function catRank(id) {
+                const i = CAT_ORDER.indexOf(BLOCKS[id].cat);
+                return i < 0 ? CAT_ORDER.length : i;
+            }
+
+            function sortedBlockIds() {
+                const ids = BLOCK_IDS.slice();
+                switch (sortMode) {
+                    case 'type':
+                        ids.sort((a, b) => {
+                            const ca = catRank(a), cb = catRank(b);
+                            return (ca !== cb) ? (ca - cb) : (a - b);
+                        });
+                        break;
+                    case 'hue':
+                        ids.sort((a, b) => {
+                            const ha = blockHue(a), hb = blockHue(b);
+                            if (Math.abs(ha - hb) > 0.5) return ha - hb;
+                            return a - b;
+                        });
+                        break;
+                    case 'bright-desc':
+                        ids.sort((a, b) => {
+                            const la = blockLuminance(a), lb = blockLuminance(b);
+                            if (Math.abs(la - lb) > 1e-3) return lb - la;
+                            return a - b;
+                        });
+                        break;
+                    case 'bright-asc':
+                        ids.sort((a, b) => {
+                            const la = blockLuminance(a), lb = blockLuminance(b);
+                            if (Math.abs(la - lb) > 1e-3) return la - lb;
+                            return a - b;
+                        });
+                        break;
+                }
+                return ids;
+            }
+
+            const STORAGE_KEY = 'arive-structures-v1';
+
+            /* ============================================================
+               PLAYER REFERENCE CONSTANTS
+               ============================================================ */
+            const UNITS_PER_METER = 10;
+            const PLAYER_HEIGHT_M = 1.62;
+            const PLAYER_WIDTH_M = 0.40;
+
+            const AVATAR = {
+                colors: {
+                    skin: 0xd4a686, hair: 0x3a2418, shirt: 0x3a4a30,
+                    pants: 0x2a3a4a, boot: 0x18181a
+                },
+                body: {
+                    hipY: 0.53, legLen: 0.42, legW: 0.12, legD: 0.15, legSpread: 0.10,
+                    bootW: 0.17, bootH: 0.095, bootD: 0.24, bootOffZ: 0.04,
+                    torsoW: 0.38, torsoH: 0.72, torsoD: 0.17, torsoY: 0.86,
+                    headW: 0.22, headH: 0.22, headD: 0.22, headY: 1.31,
+                    hairW: 0.24, hairH: 0.06, hairD: 0.24, hairY: 1.44,
+                    armW: 0.11, armLen: 0.44, armSpread: 0.045, armY: 1.17,
+                    armHandW: 0.12, armHandH: 0.13, armHandD: 0.14, armHandOffset: 0.48
+                }
+            };
+
+            /* ============================================================
+               STATE
+               ============================================================ */
+            let grid = new Map();
+            let currentBlock = 2;
+            let currentTool = 'place';
+            let currentLayer = 0;
+            let structName = 'Structure';
+            let structW = 40, structH = 32, structD = 40;
+
+            let brushSize = 1;
+            let mirrorX = false;
+            let mirrorZ = false;
+            let randomizerActive = false;
+            const randomizerBag = new Set();
+
+            /* ---------- box tool state ---------- */
+            let boxMode = 'vertical';
+            let boxThickness = 1;
+
+            /* ---------- replace tool state ---------- */
+            let targetBlock = 2; // Default to Concrete
+
+            /* ---------- line tool state ---------- */
+            let lineStart = null; // Ensure this is defined!
+            let lineWidth = 1; // 1, 3, 5, 7
+
+            const undoStack = [];
+            const redoStack = [];
+            const MAX_HISTORY = 60;
+
+            let paintStroke = null;
+            let boxStart = null;
+            let lastHover = null;
+
+            /* ---------- player-reference state ---------- */
+            let showMannequin = true;
+            let moveMode = false;
+            let mannequinPos = { x: 20, y: 0, z: 20 };
+            let mannequinRoot = null;
+
+            /* ============================================================
+               THREE.JS SCENE
+               ============================================================ */
+            const canvas = document.getElementById('view');
+            const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+            renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+            renderer.setClearColor(0x0a0d12, 1);
+
+            const scene = new THREE.Scene();
+            scene.fog = new THREE.Fog(0x0a0d12, 70, 180);
+            const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 500);
+
+            const sun = new THREE.DirectionalLight(0xffffff, 0.85); sun.position.set(20, 40, 20); scene.add(sun);
+            const fil = new THREE.DirectionalLight(0x88a0c0, 0.45); fil.position.set(-20, 15, -20); scene.add(fil);
+            scene.add(new THREE.AmbientLight(0xffffff, 0.45));
+
+            /* ============================================================
+               ORBIT CAMERA
+               ============================================================ */
+            const orbit = {
+                target: new THREE.Vector3(20, 6, 20),
+                distance: 60, theta: Math.PI * 0.25, phi: Math.PI * 0.32
+            };
+            function updateCamera() {
+                const sp = Math.sin(orbit.phi), cp = Math.cos(orbit.phi);
+                const st = Math.sin(orbit.theta), ct = Math.cos(orbit.theta);
+                camera.position.set(
+                    orbit.target.x + orbit.distance * sp * st,
+                    orbit.target.y + orbit.distance * cp,
+                    orbit.target.z + orbit.distance * sp * ct);
+                camera.lookAt(orbit.target);
+            }
+
+            /* ============================================================
+               VOXEL RENDERING
+               ============================================================ */
+            const voxelGroup = new THREE.Group(); scene.add(voxelGroup);
+            const blockGeo = new THREE.BoxGeometry(0.98, 0.98, 0.98);
+            const matCache = new Map();
+            function getBlockMat(id) {
+                if (matCache.has(id)) return matCache.get(id);
+                const def = BLOCKS[id] || { color: 0xff00ff };
+                const m = new THREE.MeshLambertMaterial({
+                    color: def.color,
+                    transparent: !!def.transparent,
+                    opacity: def.transparent ? 0.35 : 1
+                });
+                matCache.set(id, m); return m;
+            }
+            const blockMeshes = new Map();
+
+            function addVoxel(x, y, z, id) {
+                const key = x + ',' + y + ',' + z;
+                if (grid.get(key) === id) return;
+                const old = blockMeshes.get(key);
+                if (old) { voxelGroup.remove(old); blockMeshes.delete(key); }
+                grid.set(key, id);
+                const m = new THREE.Mesh(blockGeo, getBlockMat(id));
+                m.position.set(x + 0.5, y + 0.5, z + 0.5);
+                m.userData.gridKey = key;
+                voxelGroup.add(m);
+                blockMeshes.set(key, m);
+            }
+            function removeVoxel(x, y, z) {
+                const key = x + ',' + y + ',' + z;
+                if (!grid.has(key)) return;
+                grid.delete(key);
+                const m = blockMeshes.get(key);
+                if (m) { voxelGroup.remove(m); blockMeshes.delete(key); }
+            }
+            function clearAll() {
+                grid.clear();
+                for (const m of blockMeshes.values()) voxelGroup.remove(m);
+                blockMeshes.clear();
+            }
+            function rebuildAll() {
+                for (const m of blockMeshes.values()) voxelGroup.remove(m);
+                blockMeshes.clear();
+                for (const [key, id] of grid) {
+                    const [x, y, z] = key.split(',').map(Number);
+                    const m = new THREE.Mesh(blockGeo, getBlockMat(id));
+                    m.position.set(x + 0.5, y + 0.5, z + 0.5);
+                    m.userData.gridKey = key;
+                    voxelGroup.add(m);
+                    blockMeshes.set(key, m);
+                }
+            }
+
+            /* ============================================================
+               FLOOR / GRID / MIRROR PLANES
+               ============================================================ */
+            let gridHelper = null, floorPlane = null, layerGrid = null;
+            let mirrorXPlane = null, mirrorZPlane = null;
+
+            function rebuildFloor() {
+                if (gridHelper) scene.remove(gridHelper);
+                if (floorPlane) scene.remove(floorPlane);
+                if (layerGrid) scene.remove(layerGrid);
+
+                const size = Math.max(structW, structD) + 4;
+                gridHelper = new THREE.GridHelper(size, size, 0x3a4a5a, 0x232b36);
+                gridHelper.position.set(structW / 2, -0.005, structD / 2);
+                scene.add(gridHelper);
+
+                floorPlane = new THREE.Mesh(
+                    new THREE.PlaneGeometry(structW, structD),
+                    new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide }));
+                floorPlane.rotation.x = -Math.PI / 2;
+                floorPlane.position.set(structW / 2, 0, structD / 2);
+                scene.add(floorPlane);
+
+                updateLayerGrid();
+                updateMirrorPlanes();
+            }
+            function updateLayerGrid() {
+                if (layerGrid) { scene.remove(layerGrid); layerGrid = null; }
+                layerGrid = new THREE.Mesh(
+                    new THREE.PlaneGeometry(structW, structD),
+                    new THREE.MeshBasicMaterial({
+                        color: 0xe8c86a, transparent: true, opacity: 0.06,
+                        side: THREE.DoubleSide, depthWrite: false
+                    }));
+                layerGrid.rotation.x = -Math.PI / 2;
+                layerGrid.position.set(structW / 2, currentLayer + 0.001, structD / 2);
+                scene.add(layerGrid);
+            }
+            function updateMirrorPlanes() {
+                if (mirrorXPlane) { scene.remove(mirrorXPlane); mirrorXPlane = null; }
+                if (mirrorZPlane) { scene.remove(mirrorZPlane); mirrorZPlane = null; }
+
+                const H = structH + 2;
+                if (mirrorX) {
+                    mirrorXPlane = new THREE.Mesh(
+                        new THREE.PlaneGeometry(structD, H),
+                        new THREE.MeshBasicMaterial({
+                            color: 0xff8080, transparent: true, opacity: 0.10,
+                            side: THREE.DoubleSide, depthWrite: false
+                        }));
+                    mirrorXPlane.rotation.y = Math.PI / 2;
+                    mirrorXPlane.position.set(structW / 2, structH / 2, structD / 2);
+                    scene.add(mirrorXPlane);
+                }
+                if (mirrorZ) {
+                    mirrorZPlane = new THREE.Mesh(
+                        new THREE.PlaneGeometry(structW, H),
+                        new THREE.MeshBasicMaterial({
+                            color: 0x8080ff, transparent: true, opacity: 0.10,
+                            side: THREE.DoubleSide, depthWrite: false
+                        }));
+                    mirrorZPlane.position.set(structW / 2, structH / 2, structD / 2);
+                    scene.add(mirrorZPlane);
+                }
+            }
+
+            /* ============================================================
+               HOVER OUTLINE
+               ============================================================ */
+            const hover = new THREE.LineSegments(
+                new THREE.EdgesGeometry(new THREE.BoxGeometry(1.02, 1.02, 1.02)),
+                new THREE.LineBasicMaterial({ color: 0xe8c86a }));
+            hover.visible = false;
+            scene.add(hover);
+
+            /* ============================================================
+               BOX / LINE GHOST PREVIEW
+               ============================================================ */
+            const GHOST_WIRE_COLOR = 0x6ac8e8;
+            const GHOST_FILL_COLOR = 0x6ac8e8;
+
+            const ghostWireGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
+            const ghostFillGeo = new THREE.BoxGeometry(1, 1, 1);
+
+            const boxGhosts = [];
+
+            function getGhost(i) {
+                if (boxGhosts[i]) return boxGhosts[i];
+
+                const wire = new THREE.LineSegments(
+                    ghostWireGeo,
+                    new THREE.LineBasicMaterial({
+                        color: GHOST_WIRE_COLOR,
+                        transparent: true, opacity: 0.95,
+                        depthTest: false, depthWrite: false
+                    })
+                );
+                wire.renderOrder = 998;
+                wire.visible = false;
+                scene.add(wire);
+
+                const fill = new THREE.Mesh(
+                    ghostFillGeo,
+                    new THREE.MeshBasicMaterial({
+                        color: GHOST_FILL_COLOR,
+                        transparent: true, opacity: 0.12,
+                        depthTest: false, depthWrite: false,
+                        side: THREE.DoubleSide
+                    })
+                );
+                fill.renderOrder = 997;
+                fill.visible = false;
+                scene.add(fill);
+
+                boxGhosts[i] = { wire, fill };
+                return boxGhosts[i];
+            }
+
+            function boxFootprintRaw(a, b) {
+                if (boxMode === 'horizontal') {
+                    return {
+                        x0: Math.min(a.x, b.x), x1: Math.max(a.x, b.x),
+                        z0: Math.min(a.z, b.z), z1: Math.max(a.z, b.z),
+                        y0: a.y,
+                        y1: a.y + (boxThickness - 1)
+                    };
+                }
+                return {
+                    x0: Math.min(a.x, b.x), x1: Math.max(a.x, b.x),
+                    y0: Math.min(a.y, b.y), y1: Math.max(a.y, b.y),
+                    z0: Math.min(a.z, b.z), z1: Math.max(a.z, b.z)
+                };
+            }
+
+            function computeGhostBoxes(a, b) {
+                const base = boxFootprintRaw(a, b);
+                const xMirrors = mirrorX ? [false, true] : [false];
+                const zMirrors = mirrorZ ? [false, true] : [false];
+                const raw = [];
+                for (const mX of xMirrors) {
+                    for (const mZ of zMirrors) {
+                        let x0 = base.x0, x1 = base.x1;
+                        let z0 = base.z0, z1 = base.z1;
+                        if (mX) {
+                            const mx0 = structW - 1 - base.x0;
+                            const mx1 = structW - 1 - base.x1;
+                            x0 = Math.min(mx0, mx1);
+                            x1 = Math.max(mx0, mx1);
+                        }
+                        if (mZ) {
+                            const mz0 = structD - 1 - base.z0;
+                            const mz1 = structD - 1 - base.z1;
+                            z0 = Math.min(mz0, mz1);
+                            z1 = Math.max(mz0, mz1);
+                        }
+                        raw.push({ x0, x1, y0: base.y0, y1: base.y1, z0, z1 });
+                    }
+                }
+                const seen = new Set();
+                const out = [];
+                for (const box of raw) {
+                    const k = `${box.x0},${box.y0},${box.z0},${box.x1},${box.y1},${box.z1}`;
+                    if (seen.has(k)) continue;
+                    seen.add(k);
+                    out.push(box);
+                }
+                return out;
+            }
+
+            function updateBoxGhosts(a, b) {
+                if (!a || !b) { hideAllBoxGhosts(); return; }
+
+                const boxes = computeGhostBoxes(a, b);
+
+                for (let i = 0; i < boxes.length; i++) {
+                    const box = boxes[i];
+                    const g = getGhost(i);
+                    const cx = (box.x0 + box.x1 + 1) * 0.5;
+                    const cy = (box.y0 + box.y1 + 1) * 0.5;
+                    const cz = (box.z0 + box.z1 + 1) * 0.5;
+                    const sx = box.x1 - box.x0 + 1;
+                    const sy = box.y1 - box.y0 + 1;
+                    const sz = box.z1 - box.z0 + 1;
+
+                    g.wire.position.set(cx, cy, cz);
+                    g.wire.scale.set(sx, sy, sz);
+                    g.wire.visible = true;
+
+                    g.fill.position.set(cx, cy, cz);
+                    g.fill.scale.set(sx, sy, sz);
+                    g.fill.visible = true;
+                }
+
+                for (let i = boxes.length; i < boxGhosts.length; i++) {
+                    boxGhosts[i].wire.visible = false;
+                    boxGhosts[i].fill.visible = false;
+                }
+            }
+
+            function hideAllBoxGhosts() {
+                for (const g of boxGhosts) {
+                    g.wire.visible = false;
+                    g.fill.visible = false;
+                }
+            }
+
+            /* --- LINE GHOST --- */
+            let lineGhost = null;
+            function updateLineGhost(a, b) {
+                if (!a || !b) { hideLineGhost(); return; }
+                const points = [
+                    new THREE.Vector3(a.x + 0.5, a.y + 0.5, a.z + 0.5),
+                    new THREE.Vector3(b.x + 0.5, b.y + 0.5, b.z + 0.5)
+                ];
+                const geo = new THREE.BufferGeometry().setFromPoints(points);
+                if (!lineGhost) {
+                    lineGhost = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x6ac8e8, linewidth: 2 }));
+                    scene.add(lineGhost);
+                } else {
+                    lineGhost.geometry.dispose();
+                    lineGhost.geometry = geo;
+                }
+                lineGhost.visible = true;
+            }
+            function hideLineGhost() {
+                if (lineGhost) lineGhost.visible = false;
+            }
+
+            /* ============================================================
+               CELL GENERATION HELPERS
+               ============================================================ */
+            function computeBoxCells(a, b) {
+                const fp = boxFootprintRaw(a, b);
+                const cells = [];
+                for (let x = fp.x0; x <= fp.x1; x++)
+                    for (let y = fp.y0; y <= fp.y1; y++)
+                        for (let z = fp.z0; z <= fp.z1; z++)
+                            cells.push([x, y, z]);
+                return cells;
+            }
+
+            function getLineCells(a, b) {
+                const cells = [];
+                let x0 = a.x, y0 = a.y, z0 = a.z;
+                const x1 = b.x, y1 = b.y, z1 = b.z;
+                const dx = x1 - x0, dy = y1 - y0, dz = z1 - z0;
+                const steps = Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz));
+                if (steps === 0) return [[x0, y0, z0]];
+                for (let i = 0; i <= steps; i++) {
+                    const t = i / steps;
+                    cells.push([
+                        Math.round(x0 + dx * t),
+                        Math.round(y0 + dy * t),
+                        Math.round(z0 + dz * t)
+                    ]);
+                }
+                const seen = new Set();
+                const out = [];
+                for (const c of cells) {
+                    const k = c.join(',');
+                    if (seen.has(k)) continue;
+                    seen.add(k);
+                    out.push(c);
+                }
+                return out;
+            }
+
+            function getOffsetsForSize(size) {
+                const r = (size - 1) >> 1;
+                const offs = [];
+                for (let dx = -r; dx <= r; dx++)
+                    for (let dy = -r; dy <= r; dy++)
+                        for (let dz = -r; dz <= r; dz++)
+                            offs.push([dx, dy, dz]);
+                return offs;
+            }
+
+            function getThickLineCells(a, b, width) {
+                const centerCells = getLineCells(a, b);
+                if (width <= 1) return centerCells;
+
+                const offsets = getOffsetsForSize(width);
+                const thickSet = new Set();
+                
+                for (const [cx, cy, cz] of centerCells) {
+                    for (const [dx, dy, dz] of offsets) {
+                        thickSet.add(`${cx + dx},${cy + dy},${cz + dz}`);
+                    }
+                }
+                
+                return Array.from(thickSet).map(str => {
+                    const [x, y, z] = str.split(',').map(Number);
+                    return [x, y, z];
+                });
+            }
+
+            /* ============================================================
+               PLAYER MANNEQUIN + SCALE REFERENCE
+               ============================================================ */
+            function makeTextSprite(text, color) {
+                const cv = document.createElement('canvas');
+                cv.width = 256; cv.height = 128;
+                const ctx = cv.getContext('2d');
+                ctx.fillStyle = 'rgba(6, 10, 16, 0.82)';
+                ctx.fillRect(0, 0, 256, 128);
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 3;
+                ctx.strokeRect(2, 2, 252, 124);
+                ctx.font = 'bold 60px "Courier New", monospace';
+                ctx.fillStyle = color;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(text, 128, 68);
+
+                const tex = new THREE.CanvasTexture(cv);
+                tex.minFilter = THREE.LinearFilter;
+                const mat = new THREE.SpriteMaterial({
+                    map: tex, transparent: true,
+                    depthTest: false, depthWrite: false
+                });
+                const sp = new THREE.Sprite(mat);
+                sp.renderOrder = 900;
+                return sp;
+            }
+
+            function buildMannequin() {
+                const g = new THREE.Group();
+                const B = AVATAR.body, C = AVATAR.colors;
+                const S = UNITS_PER_METER;
+
+                const SKIN = new THREE.MeshLambertMaterial({ color: C.skin });
+                const HAIR = new THREE.MeshLambertMaterial({ color: C.hair });
+                const SHIRT = new THREE.MeshLambertMaterial({ color: C.shirt });
+                const PANTS = new THREE.MeshLambertMaterial({ color: C.pants });
+                const BOOT = new THREE.MeshLambertMaterial({ color: C.boot });
+
+                function buildLeg(side) {
+                    const grp = new THREE.Group();
+                    const leg = new THREE.Mesh(
+                        new THREE.BoxGeometry(B.legW * S, B.legLen * S, B.legD * S), PANTS);
+                    leg.position.y = (B.hipY - B.legLen * 0.5) * S;
+                    grp.add(leg);
+                    const boot = new THREE.Mesh(
+                        new THREE.BoxGeometry(B.bootW * S, B.bootH * S, B.bootD * S), BOOT);
+                    boot.position.set(
+                        0,
+                        (B.hipY - B.legLen - B.bootH * 0.5 - 0.01) * S,
+                        B.bootOffZ * S);
+                    grp.add(boot);
+                    grp.position.x = B.legSpread * side * S;
+                    return grp;
+                }
+                g.add(buildLeg(-1), buildLeg(+1));
+
+                const torso = new THREE.Mesh(
+                    new THREE.BoxGeometry(B.torsoW * S, B.torsoH * S, B.torsoD * S), SHIRT);
+                torso.position.y = B.torsoY * S;
+                g.add(torso);
+
+                const head = new THREE.Mesh(
+                    new THREE.BoxGeometry(B.headW * S, B.headH * S, B.headD * S), SKIN);
+                head.position.y = B.headY * S;
+                g.add(head);
+                const hair = new THREE.Mesh(
+                    new THREE.BoxGeometry(B.hairW * S, B.hairH * S, B.hairD * S), HAIR);
+                hair.position.y = B.hairY * S;
+                g.add(hair);
+
+                function buildArm(side) {
+                    const grp = new THREE.Group();
+                    const arm = new THREE.Mesh(
+                        new THREE.BoxGeometry(B.armW * S, B.armLen * S, B.armW * S), SHIRT);
+                    arm.position.y = -B.armLen * 0.5 * S;
+                    grp.add(arm);
+                    const hand = new THREE.Mesh(
+                        new THREE.BoxGeometry(B.armHandW * S, B.armHandH * S, B.armHandD * S), SKIN);
+                    hand.position.y = -B.armHandOffset * S;
+                    grp.add(hand);
+                    grp.position.set(side * (B.torsoW * 0.5 + B.armSpread) * S, B.armY * S, 0);
+                    return grp;
+                }
+                g.add(buildArm(-1), buildArm(+1));
+
+                return g;
+            }
+
+            function buildPlayerBBox() {
+                const w = PLAYER_WIDTH_M * UNITS_PER_METER;
+                const h = PLAYER_HEIGHT_M * UNITS_PER_METER;
+                const d = w;
+                const box = new THREE.LineSegments(
+                    new THREE.EdgesGeometry(new THREE.BoxGeometry(w, h, d)),
+                    new THREE.LineBasicMaterial({
+                        color: 0x6ac8e8, transparent: true, opacity: 0.75
+                    }));
+                box.position.y = h * 0.5;
+                return box;
+            }
+
+            function buildRuler() {
+                const g = new THREE.Group();
+                const AX = -3;
+                const TICK_LEN = 2;
+                const LABEL_X = AX - 3.4;
+                const MAX_M = 8;
+
+                const lineMat = new THREE.LineBasicMaterial({
+                    color: 0xe8c86a, transparent: true, opacity: 0.55
+                });
+                const playerMat = new THREE.LineBasicMaterial({
+                    color: 0x6ac8e8, transparent: true, opacity: 0.95
+                });
+
+                g.add(new THREE.Line(
+                    new THREE.BufferGeometry().setFromPoints([
+                        new THREE.Vector3(AX, 0, 0),
+                        new THREE.Vector3(AX, MAX_M * UNITS_PER_METER, 0)
+                    ]), lineMat));
+
+                for (let m = 1; m <= MAX_M; m++) {
+                    const y = m * UNITS_PER_METER;
+                    g.add(new THREE.Line(
+                        new THREE.BufferGeometry().setFromPoints([
+                            new THREE.Vector3(AX, y, 0),
+                            new THREE.Vector3(AX + TICK_LEN, y, 0)
+                        ]), lineMat));
+
+                    const lbl = makeTextSprite(m + 'm', '#e8c86a');
+                    lbl.scale.set(4, 2, 1);
+                    lbl.position.set(LABEL_X, y, 0);
+                    g.add(lbl);
+                }
+
+                const py = PLAYER_HEIGHT_M * UNITS_PER_METER;
+                g.add(new THREE.Line(
+                    new THREE.BufferGeometry().setFromPoints([
+                        new THREE.Vector3(AX - 1.5, py, 0),
+                        new THREE.Vector3(AX + TICK_LEN + 1.5, py, 0)
+                    ]), playerMat));
+
+                const pLbl = makeTextSprite('PLAYER 1.62m', '#6ac8e8');
+                pLbl.scale.set(8, 3, 1);
+                pLbl.position.set(LABEL_X - 2.5, py, 0);
+                g.add(pLbl);
+
+                return g;
+            }
+
+            function buildMannequinRoot() {
+                const root = new THREE.Group();
+                root.add(buildMannequin());
+                root.add(buildPlayerBBox());
+                root.add(buildRuler());
+                return root;
+            }
+
+            function updateMannequinPosition() {
+                if (!mannequinRoot) return;
+                mannequinRoot.position.set(
+                    mannequinPos.x + 0.5,
+                    mannequinPos.y,
+                    mannequinPos.z + 0.5
+                );
+            }
+
+            function placeMannequinAt(x, z) {
+                mannequinPos.x = x;
+                mannequinPos.z = z;
+                let topY = 0;
+                for (let y = structH - 1; y >= 0; y--) {
+                    if (grid.has(x + ',' + y + ',' + z)) { topY = y + 1; break; }
+                }
+                mannequinPos.y = topY;
+                updateMannequinPosition();
+            }
+
+            function clampMannequinToBounds() {
+                if (mannequinPos.x >= structW) mannequinPos.x = structW - 1;
+                if (mannequinPos.z >= structD) mannequinPos.z = structD - 1;
+                if (mannequinPos.x < 0) mannequinPos.x = 0;
+                if (mannequinPos.z < 0) mannequinPos.z = 0;
+                placeMannequinAt(mannequinPos.x, mannequinPos.z);
+            }
+
+            /* ============================================================
+               RAYCASTING
+               ============================================================ */
+            const raycaster = new THREE.Raycaster();
+            const ndc = new THREE.Vector2();
+
+            function raycastGrid(e) {
+                const r = canvas.getBoundingClientRect();
+                ndc.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+                ndc.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+                raycaster.setFromCamera(ndc, camera);
+
+                const hits = raycaster.intersectObjects(Array.from(blockMeshes.values()), false);
+                if (hits.length) {
+                    const h = hits[0];
+                    const [x, y, z] = h.object.userData.gridKey.split(',').map(Number);
+                    const n = h.face.normal.clone().transformDirection(h.object.matrixWorld);
+                    return {
+                        x, y, z, hit: 'voxel',
+                        nx: Math.round(n.x), ny: Math.round(n.y), nz: Math.round(n.z)
+                    };
+                }
+                const fHits = floorPlane ? raycaster.intersectObject(floorPlane, false) : [];
+                if (fHits.length) {
+                    const p = fHits[0].point;
+                    return { x: Math.floor(p.x), y: -1, z: Math.floor(p.z), hit: 'floor', nx: 0, ny: 1, nz: 0 };
+                }
+                return null;
+            }
+            function inBounds(x, y, z) {
+                return x >= 0 && y >= 0 && z >= 0 && x < structW && y < structH && z < structD;
+            }
+
+            function getTargetCell(r) {
+                if (!r) return null;
+                if (r.hit === 'voxel') {
+                    // Tools that target the adjacent empty space
+                    if (['place', 'box', 'line'].includes(currentTool))
+                        return { x: r.x + r.nx, y: r.y + r.ny, z: r.z + r.nz };
+                    // Tools that target the voxel itself (erase, paint, pick, erase-box, replace-box)
+                    return { x: r.x, y: r.y, z: r.z };
+                }
+                return { x: r.x, y: currentLayer, z: r.z };
+            }
+
+            function updateHover(e) {
+                const r = raycastGrid(e);
+                lastHover = r;
+
+                if (!r) {
+                    hover.visible = false;
+                    hideAllBoxGhosts();
+                    hideLineGhost();
+                    return;
+                }
+
+                const t = getTargetCell(r);
+
+                if (t && inBounds(t.x, t.y, t.z)) {
+                    hover.position.set(t.x + 0.5, t.y + 0.5, t.z + 0.5);
+                    hover.scale.setScalar(brushSize);
+                    hover.visible = true;
+                    document.getElementById('statPos').textContent = `${t.x},${t.y},${t.z}`;
+                } else {
+                    hover.visible = false;
+                }
+
+                /* ---- BOX / ERASE BOX / REPLACE BOX ghost preview ---- */
+                if ((currentTool === 'box' || currentTool === 'erase-box' || currentTool === 'replace-box') && boxStart && t && inBounds(t.x, t.y, t.z)) {
+                    updateBoxGhosts(boxStart, t);
+                } else {
+                    hideAllBoxGhosts();
+                }
+
+                /* ---- LINE ghost preview ---- */
+                if (currentTool === 'line' && lineStart && t && inBounds(t.x, t.y, t.z)) {
+                    updateLineGhost(lineStart, t);
+                } else {
+                    hideLineGhost();
+                }
+            }
+
+            /* ============================================================
+               BRUSH + MIRROR + RANDOMIZER HELPERS
+               ============================================================ */
+            function getBrushOffsets() {
+                return getOffsetsForSize(brushSize);
+            }
+
+            function mirrorCells(x, y, z) {
+                let cells = [[x, y, z]];
+                if (mirrorX) {
+                    const mx = structW - 1 - x;
+                    const add = [];
+                    for (const c of cells) add.push([mx, c[1], c[2]]);
+                    cells = cells.concat(add);
+                }
+                if (mirrorZ) {
+                    const mz = structD - 1 - z;
+                    const add = [];
+                    for (const c of cells) add.push([c[0], c[1], mz]);
+                    cells = cells.concat(add);
+                }
+                const seen = new Set();
+                const out = [];
+                for (const c of cells) {
+                    const k = c[0] + ',' + c[1] + ',' + c[2];
+                    if (seen.has(k)) continue;
+                    seen.add(k);
+                    out.push(c);
+                }
+                return out;
+            }
+
+            function pickBlock() {
+                if (randomizerActive && randomizerBag.size > 0) {
+                    const arr = Array.from(randomizerBag);
+                    return arr[(Math.random() * arr.length) | 0];
+                }
+                return currentBlock;
+            }
+
+            function applyCells(cells, mode) {
+                for (const [x, y, z] of cells) {
+                    if (!inBounds(x, y, z)) continue;
+                    const mirrored = mirrorCells(x, y, z);
+                    for (const [mx, my, mz] of mirrored) {
+                        if (!inBounds(mx, my, mz)) continue;
+                        const key = mx + ',' + my + ',' + mz;
+                        if (mode === 'place' || mode === 'paint' || mode === 'replace') {
+                            if (mode === 'paint' && !grid.has(key)) continue; // Only paint existing blocks
+                            if (mode === 'replace') {
+                                if (!grid.has(key) || grid.get(key) !== targetBlock) continue; // Only replace target
+                            }
+                            if (paintStroke && paintStroke.placedCells.has(key)) continue;
+                            if (paintStroke) paintStroke.placedCells.add(key);
+                            addVoxel(mx, my, mz, pickBlock());
+                        } else if (mode === 'erase') {
+                            removeVoxel(mx, my, mz);
+                        }
+                    }
+                }
+            }
+
+            function applyBrush(cx, cy, cz, mode) {
+                const offs = getBrushOffsets();
+                const cells = [];
+                for (const [dx, dy, dz] of offs) cells.push([cx + dx, cy + dy, cz + dz]);
+                applyCells(cells, mode);
+                if (paintStroke) paintStroke.dirty = true;
+            }
+
+            /* ============================================================
+               TOOLS
+               ============================================================ */
+            function handlePrimary() {
+                if (!lastHover) return;
+                const target = getTargetCell(lastHover);
+                if (!target) return;
+
+                if (currentTool === 'place') {
+                    applyBrush(target.x, target.y, target.z, 'place');
+                } else if (currentTool === 'erase') {
+                    applyBrush(target.x, target.y, target.z, 'erase');
+                } else if (currentTool === 'paint') {
+                    applyBrush(target.x, target.y, target.z, 'paint');
+                } else if (currentTool === 'pick') {
+                    if (lastHover.hit === 'voxel') {
+                        const id = grid.get(lastHover.x + ',' + lastHover.y + ',' + lastHover.z);
+                        if (id) { currentBlock = id; refreshBlockButtons(); toast('PICKED BLOCK ' + id); }
+                    }
+                } else if (currentTool === 'box' || currentTool === 'erase-box' || currentTool === 'replace-box') {
+                    if (!boxStart) {
+                        boxStart = { x: target.x, y: target.y, z: target.z };
+                        toast((currentTool === 'erase-box' ? 'ERASE BOX' : currentTool === 'replace-box' ? 'REPLACE BOX' : 'BOX') + ' start — move cursor, click to apply');
+                        updateBoxGhosts(boxStart, target);
+                    } else {
+                        const cells = computeBoxCells(boxStart, target);
+                        applyCells(cells, currentTool === 'erase-box' ? 'erase' : currentTool === 'replace-box' ? 'replace' : 'place');
+                        boxStart = null;
+                        hideAllBoxGhosts();
+                        commit();
+                        toast((currentTool === 'erase-box' ? 'ERASE BOX' : currentTool === 'replace-box' ? 'REPLACE BOX' : 'BOX') + ' done — ' + cells.length + ' cells');
+                    }
+                } else if (currentTool === 'line') {
+                    if (!lineStart) {
+                        lineStart = { x: target.x, y: target.y, z: target.z };
+                        toast('LINE start — move cursor, click to draw (W' + lineWidth + ')');
+                    } else {
+                        const cells = getThickLineCells(lineStart, target, lineWidth);
+                        applyCells(cells, 'place');
+                        lineStart = null;
+                        hideLineGhost();
+                        commit();
+                        toast('LINE drawn — ' + cells.length + ' blocks');
+                    }
+                }
+            }
+
+            function cancelDrawing() {
+                let canceled = false;
+                if (boxStart) { boxStart = null; hideAllBoxGhosts(); canceled = true; }
+                if (lineStart) { lineStart = null; hideLineGhost(); canceled = true; }
+                if (canceled) toast('CANCELED');
+            }
+
+            /* ============================================================
+               UNDO / REDO
+               ============================================================ */
+            function snapshot() { return Array.from(grid.entries()); }
+            function restoreSnapshot(snap) {
+                grid.clear();
+                for (const [k, v] of snap) grid.set(k, v);
+                rebuildAll();
+            }
+            function commit() {
+                undoStack.push(snapshot());
+                if (undoStack.length > MAX_HISTORY) undoStack.shift();
+                redoStack.length = 0;
+                updateHistoryButtons();
+                updateStatus();
+            }
+            function undo() {
+                if (undoStack.length <= 1) return;
+                const current = undoStack.pop();
+                redoStack.push(current);
+                restoreSnapshot(undoStack[undoStack.length - 1]);
+                updateHistoryButtons(); updateStatus();
+                toast('UNDO');
+            }
+            function redo() {
+                if (redoStack.length === 0) return;
+                const snap = redoStack.pop();
+                undoStack.push(snap);
+                restoreSnapshot(snap);
+                updateHistoryButtons(); updateStatus();
+                toast('REDO');
+            }
+            function updateHistoryButtons() {
+                document.getElementById('btnUndo').disabled = undoStack.length <= 1;
+                document.getElementById('btnRedo').disabled = redoStack.length === 0;
+            }
+
+            /* ============================================================
+               POINTER INPUT
+               ============================================================ */
+            let drag = null, last = { x: 0, y: 0 };
+
+            canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+            canvas.addEventListener('pointerdown', e => {
+                if (e.button === 2) {
+                    if (boxStart || lineStart) {
+                        cancelDrawing();
+                        e.preventDefault();
+                        return;
+                    }
+                    drag = 'orbit';
+                    last = { x: e.clientX, y: e.clientY };
+                    canvas.setPointerCapture(e.pointerId);
+                    e.preventDefault();
+                    return;
+                }
+                if (e.button === 1) {
+                    drag = 'pan';
+                    last = { x: e.clientX, y: e.clientY };
+                    canvas.setPointerCapture(e.pointerId);
+                    e.preventDefault();
+                    return;
+                }
+                if (e.button === 0) {
+                    if (moveMode) {
+                        const r = raycastGrid(e);
+                        if (r) {
+                            placeMannequinAt(r.x, r.z);
+                            moveMode = false;
+                            document.getElementById('btnMovePlayer').classList.remove('active');
+                            toast('PLAYER PLACED');
+                        }
+                        return;
+                    }
+
+                    if (currentTool === 'place' || currentTool === 'erase' || currentTool === 'paint') {
+                        drag = 'paint';
+                        paintStroke = { placedCells: new Set(), dirty: false };
+                    }
+                    updateHover(e);
+                    handlePrimary();
+                    canvas.setPointerCapture(e.pointerId);
+                }
+            });
+
+            canvas.addEventListener('pointermove', e => {
+                if (drag === 'orbit') {
+                    const dx = e.clientX - last.x, dy = e.clientY - last.y;
+                    last = { x: e.clientX, y: e.clientY };
+                    orbit.theta -= dx * 0.008;
+                    orbit.phi = Math.max(0.15, Math.min(Math.PI - 0.15, orbit.phi - dy * 0.008));
+                    updateCamera();
+                    return;
+                }
+                if (drag === 'pan') {
+                    const dx = e.clientX - last.x, dy = e.clientY - last.y;
+                    last = { x: e.clientX, y: e.clientY };
+                    const r = new THREE.Vector3(), u = new THREE.Vector3();
+                    camera.matrixWorld.extractBasis(r, u, new THREE.Vector3());
+                    const k = orbit.distance * 0.0016;
+                    orbit.target.addScaledVector(r, -dx * k);
+                    orbit.target.addScaledVector(u, dy * k);
+                    updateCamera();
+                    return;
+                }
+                updateHover(e);
+                if (drag === 'paint') handlePrimary();
+            });
+
+            canvas.addEventListener('pointerup', e => {
+                if (drag === 'paint' && paintStroke && paintStroke.dirty) commit();
+                paintStroke = null;
+                drag = null;
+                try { canvas.releasePointerCapture(e.pointerId); } catch (_) { }
+            });
+
+            canvas.addEventListener('pointerleave', () => {
+                if (!boxStart && !lineStart) {
+                    hideAllBoxGhosts();
+                    hideLineGhost();
+                }
+                hover.visible = false;
+            });
+
+            canvas.addEventListener('wheel', e => {
+                e.preventDefault();
+                orbit.distance = Math.max(5, Math.min(220, orbit.distance * Math.exp(e.deltaY * 0.001)));
+                updateCamera();
+            }, { passive: false });
+
+            /* ---------- SAVE / LOAD ---------- */
+            function getStructures() {
+                try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch (e) { return []; }
+            }
+            function setStructures(a) {
+                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(a)); } catch (e) { }
+            }
+            function buildObj() {
+                const blocks = [];
+                for (const [key, id] of grid) {
+                    const [x, y, z] = key.split(',').map(Number);
+                    blocks.push([x, y, z, id]);
+                }
+                const existing = getStructures().find(s => s.name === (structName || 'Untitled'));
+                return {
+                    name: structName || 'Untitled',
+                    size: [structW, structH, structD],
+                    spawn: existing ? !!existing.spawn : false,
+                    blocks
+                };
+            }
+            function loadObj(obj) {
+                clearAll();
+                structName = obj.name || 'Untitled';
+                structW = obj.size ? obj.size[0] : 40;
+                structH = obj.size ? obj.size[1] : 32;
+                structD = obj.size ? obj.size[2] : 40;
+                document.getElementById('strName').value = structName;
+                document.getElementById('strW').value = structW;
+                document.getElementById('strH').value = structH;
+                document.getElementById('strD').value = structD;
+                for (const [x, y, z, id] of (obj.blocks || [])) grid.set(x + ',' + y + ',' + z, id);
+                rebuildAll(); rebuildFloor();
+                orbit.target.set(structW / 2, 4, structD / 2);
+                updateCamera(); updateStatus(); refreshStructureList();
+                undoStack.length = 0; redoStack.length = 0;
+                commit();
+            }
+
+            function deleteStructure(name) {
+                const list = getStructures().filter(s => s.name !== name);
+                setStructures(list);
+                refreshStructureList();
+            }
+
+            function saveCurrent() {
+                const obj = buildObj();
+                const list = getStructures();
+                const idx = list.findIndex(s => s.name === obj.name);
+                if (idx >= 0) list[idx] = obj;
+                else list.push(obj);
+                setStructures(list);
+                refreshStructureList();
+                toast('SAVED: ' + obj.name + ' (' + obj.blocks.length + ' blocks)');
+            }
+
+            function getStructureBase() {
+                if (window.ARIVE_STRUCTURE_BASE) return window.ARIVE_STRUCTURE_BASE;
+
+                for (let i = 0; i < document.scripts.length; i++) {
+                    const s = document.scripts[i];
+                    if (s.src && /structureModel\/index\.js(\?|$)/.test(s.src)) {
+                        return s.src.replace(/index\.js.*$/, '');
+                    }
+                }
+                return new URL('../assets/model/structureModel/', location.href).href;
+            }
+            const STRUCTURE_BASE = getStructureBase();
+
+            function setFolderStatus(text, color) {
+                const el = document.getElementById('folderStatus');
+                if (!el) return;
+                el.textContent = text || '';
+                el.style.color = color || '#7a8794';
+            }
+
+            async function autoImportFolderStructures(silent) {
+                setFolderStatus('…', '#6ac8e8');
+
+                if (location.protocol === 'file:') {
+                    setFolderStatus('FILE://', '#e05a5a');
+                    console.error(
+                        '[ARive] Cannot auto-import: page is open via file://.\n' +
+                        'Open the page through a web server (Live Server, python -m http.server, …).'
+                    );
+                    toast('OPEN VIA HTTP — see console');
+                    return;
+                }
+
+                let names = window.ARIVE_STRUCTURE_FILES;
+
+                if (!names || !names.length) {
+                    console.warn('[ARive] ARIVE_STRUCTURE_FILES is empty — trying to fetch index.js directly.');
+                    try {
+                        const r = await fetch(STRUCTURE_BASE + 'index.js', { cache: 'no-store' });
+                        if (r.ok) {
+                            const txt = await r.text();
+                            const m = txt.match(/window\.ARIVE_STRUCTURE_FILES\s*=\s*(\[[\s\S]*?\])\s*;/);
+                            if (m) names = new Function('return ' + m[1])();
+                        } else {
+                            console.warn('[ARive] index.js fetch returned', r.status);
+                        }
+                    } catch (e) {
+                        console.warn('[ARive] index.js fetch threw', e);
+                    }
+                }
+
+                if (!names || !names.length) {
+                    setFolderStatus('NO INDEX', '#e0a050');
+                    console.warn('[ARive] No filenames to import. Check index.js.');
+                    return;
+                }
+
+                console.group('[ARive] Folder auto-import');
+                console.log('  STRUCTURE_BASE :', STRUCTURE_BASE);
+                console.log('  filenames      :', names.join(', '));
+
+                const probeUrl = STRUCTURE_BASE + names[0];
+                console.log('  probing        :', probeUrl);
+                try {
+                    const pr = await fetch(probeUrl, { cache: 'no-store' });
+                    console.log('  probe response :', pr.status, pr.statusText,
+                        '| content-type:', pr.headers.get('content-type'));
+                    if (!pr.ok) {
+                        console.error(
+                            '  ✗ Probe failed. Open this URL in a new tab to see what the server returns:\n   ' +
+                            probeUrl
+                        );
+                    }
+                } catch (e) {
+                    console.error('  ✗ Probe threw:', e);
+                }
+
+                const loaded = await Promise.all(names.map(async (name) => {
+                    const url = STRUCTURE_BASE + name;
+                    try {
+                        const r = await fetch(url, { cache: 'no-store' });
+                        if (!r.ok) {
+                            console.warn('  ✗', name, '— HTTP', r.status, url);
+                            return null;
+                        }
+                        const text = await r.text();
+                        let obj;
+                        try {
+                            obj = JSON.parse(text);
+                        } catch (parseErr) {
+                            console.warn('  ✗', name, '— JSON parse error:', parseErr.message);
+                            console.warn('     First 200 chars:', text.slice(0, 200));
+                            return null;
+                        }
+                        if (!obj || !obj.name ||
+                            !Array.isArray(obj.blocks) || !Array.isArray(obj.size)) {
+                            console.warn('  ✗', name, '— malformed shape:',
+                                'name=' + typeof obj.name,
+                                'blocks=' + (Array.isArray(obj.blocks) ? 'array' : typeof obj.blocks),
+                                'size=' + (Array.isArray(obj.size) ? 'array' : typeof obj.size));
+                            return null;
+                        }
+                        console.log('  ✓', name, '→', obj.name,
+                            '(' + obj.size.join('×') + ', ' + obj.blocks.length + ' blocks)');
+                        return obj;
+                    } catch (e) {
+                        console.warn('  ✗', name, '— threw:', e.message);
+                        return null;
+                    }
+                }));
+
+                const okCount = loaded.filter(Boolean).length;
+
+                const list = getStructures();
+                let added = 0, synced = 0;
+
+                for (const obj of loaded) {
+                    if (!obj) continue;
+                    const idx = list.findIndex(s => s.name === obj.name);
+                    if (idx >= 0) {
+                        obj.spawn = !!list[idx].spawn;
+                        list[idx] = obj;
+                        synced++;
+                    } else {
+                        obj.spawn = !!obj.spawn;
+                        list.push(obj);
+                        added++;
+                    }
+                }
+
+                setStructures(list);
+                refreshStructureList();
+
+                console.log('  library now    :',
+                    getStructures().map(s => s.name).join(', ') || '(empty)');
+                console.groupEnd();
+
+                if (okCount === names.length) {
+                    setFolderStatus(okCount + ' ✓', '#6ac87a');
+                } else if (okCount === 0) {
+                    setFolderStatus('0/' + names.length + ' ✗', '#e05a5a');
+                } else {
+                    setFolderStatus(okCount + '/' + names.length, '#e0a050');
+                }
+
+                if (!silent) {
+                    toast('FOLDER: ' + okCount + '/' + names.length +
+                        ' loaded  ·  +' + added + ' new, ↻' + synced + ' synced');
+                }
+            }
+
+            /* ============================================================
+               UI — BLOCK PALETTE
+               ============================================================ */
+            function refreshBlockButtons() {
+                const list = document.getElementById('blockList'); list.innerHTML = '';
+                for (const id of sortedBlockIds()) {
+                    const def = BLOCKS[id];
+                    const btn = document.createElement('button');
+                    btn.className = 'block-btn' + (id === currentBlock ? ' active' : '');
+                    const sw = document.createElement('div');
+                    sw.className = 'block-swatch';
+                    sw.style.background = '#' + def.color.toString(16).padStart(6, '0');
+                    const lbl = document.createElement('span');
+                    lbl.textContent = id + ' ' + def.name;
+                    btn.appendChild(sw); btn.appendChild(lbl);
+                    btn.onclick = () => { currentBlock = id; refreshBlockButtons(); updateStatus(); };
+                    list.appendChild(btn);
+                }
+                document.getElementById('statBlock').textContent =
+                    currentBlock + ' ' + (BLOCKS[currentBlock]?.name || '?');
+            }
+
+            function refreshToolButtons() {
+                document.querySelectorAll('.tool-btn').forEach(b => {
+                    b.classList.toggle('active', b.dataset.tool === currentTool);
+                    b.onclick = () => {
+                        if ((currentTool === 'box' || currentTool === 'erase-box' || currentTool === 'replace-box') && boxStart) {
+                            boxStart = null; hideAllBoxGhosts();
+                        }
+                        if (currentTool === 'line' && lineStart) {
+                            lineStart = null; hideLineGhost();
+                        }
+                        currentTool = b.dataset.tool;
+                        boxStart = null; hideAllBoxGhosts();
+                        lineStart = null; hideLineGhost();
+                        refreshToolButtons();
+                        refreshBoxModeBlock();
+                        refreshReplaceModeBlock();
+                        updateModeDisplay();
+                    };
+                });
+            }
+
+            function refreshBrushButtons() {
+                document.querySelectorAll('#brushGroup button').forEach(b => {
+                    b.classList.toggle('active', parseInt(b.dataset.brush, 10) === brushSize);
+                    b.onclick = () => {
+                        brushSize = parseInt(b.dataset.brush, 10);
+                        refreshBrushButtons(); updateStatus();
+                    };
+                });
+            }
+
+            function refreshMirrorButtons() {
+                document.querySelectorAll('#mirrorGroup button').forEach(b => {
+                    const ax = b.dataset.mirror;
+                    const on = (ax === 'x' && mirrorX) || (ax === 'z' && mirrorZ);
+                    b.classList.toggle('active', on);
+                    b.onclick = () => {
+                        if (ax === 'x') mirrorX = !mirrorX;
+                        if (ax === 'z') mirrorZ = !mirrorZ;
+                        refreshMirrorButtons();
+                        updateMirrorPlanes();
+                        updateStatus();
+                        if ((boxStart || lineStart) && lastHover) {
+                            const t = getTargetCell(lastHover);
+                            if (t && inBounds(t.x, t.y, t.z)) {
+                                if (boxStart) updateBoxGhosts(boxStart, t);
+                                if (lineStart) updateLineGhost(lineStart, t);
+                            }
+                        }
+                    };
+                });
+            }
+
+            function refreshBoxModeBlock() {
+                const block = document.getElementById('boxModeBlock');
+                block.classList.toggle('visible', currentTool === 'box' || currentTool === 'erase-box' || currentTool === 'replace-box');
+                const thicknessRow = document.getElementById('thicknessRow');
+                thicknessRow.classList.toggle('visible', boxMode === 'horizontal');
+            }
+
+            function refreshReplaceModeBlock() {
+                const block = document.getElementById('replaceModeBlock');
+                block.classList.toggle('visible', currentTool === 'replace-box');
+            }
+
+            function refreshBoxModeButtons() {
+                document.querySelectorAll('#boxModeGroup button').forEach(b => {
+                    b.classList.toggle('active', b.dataset.boxMode === boxMode);
+                    b.onclick = () => {
+                        boxMode = b.dataset.boxMode;
+                        refreshBoxModeButtons();
+                        refreshBoxModeBlock();
+                        updateModeDisplay();
+                        if (boxStart && lastHover) {
+                            const t = getTargetCell(lastHover);
+                            if (t && inBounds(t.x, t.y, t.z)) updateBoxGhosts(boxStart, t);
+                        }
+                        toast('BOX MODE: ' + boxMode.toUpperCase());
+                    };
+                });
+            }
+
+            function refreshTargetBlockSelect() {
+                const sel = document.getElementById('targetBlockSelect');
+                if (!sel) return;
+                sel.innerHTML = '';
+                for (const id of BLOCK_IDS) {
+                    const opt = document.createElement('option');
+                    opt.value = id;
+                    opt.textContent = id + ' ' + BLOCKS[id].name;
+                    if (id === targetBlock) opt.selected = true;
+                    sel.appendChild(opt);
+                }
+                sel.onchange = () => {
+                    targetBlock = parseInt(sel.value, 10);
+                    toast('TARGET BLOCK: ' + BLOCKS[targetBlock].name);
+                };
+            }
+
+            function bindThicknessInput() {
+                const input = document.getElementById('boxThickness');
+                function apply() {
+                    let v = parseInt(input.value, 10);
+                    if (!Number.isFinite(v)) v = boxThickness;
+                    v = Math.max(1, Math.min(16, v));
+                    input.value = v;
+                    if (v === boxThickness) return;
+                    boxThickness = v;
+                    input.classList.add('flash');
+                    setTimeout(() => input.classList.remove('flash'), 220);
+                    if (boxStart && lastHover) {
+                        const t = getTargetCell(lastHover);
+                        if (t && inBounds(t.x, t.y, t.z)) updateBoxGhosts(boxStart, t);
+                    }
+                }
+                input.addEventListener('change', apply);
+                input.addEventListener('blur', apply);
+                input.addEventListener('keydown', ev => {
+                    if (ev.code === 'Enter') { ev.preventDefault(); apply(); input.blur(); }
+                });
+            }
+
+            function bindSortSelect() {
+                const sel = document.getElementById('blockSort');
+                if (!sel) return;
+                sel.value = sortMode;
+                sel.addEventListener('change', () => {
+                    sortMode = sel.value;
+                    try { localStorage.setItem(SORT_KEY, sortMode); } catch (e) { }
+                    refreshBlockButtons();
+                    buildBagGrid();
+                });
+            }
+
+            function refreshRandomizerUI() {
+                const btn = document.getElementById('btnRandomizer');
+                btn.textContent = randomizerActive ? 'ON' : 'OFF';
+                btn.classList.toggle('active', randomizerActive);
+                document.getElementById('bagGrid').classList.toggle('disabled', !randomizerActive);
+                updateStatus();
+            }
+            function buildBagGrid() {
+                const wrap = document.getElementById('bagGrid');
+                wrap.innerHTML = '';
+                for (const id of sortedBlockIds()) {
+                    const def = BLOCKS[id];
+                    const chip = document.createElement('div');
+                    chip.className = 'block-chip' + (randomizerBag.has(id) ? ' active' : '');
+                    chip.style.background = '#' + def.color.toString(16).padStart(6, '0');
+                    chip.title = id + ' ' + def.name;
+                    chip.onclick = () => {
+                        if (randomizerBag.has(id)) randomizerBag.delete(id);
+                        else randomizerBag.add(id);
+                        chip.classList.toggle('active', randomizerBag.has(id));
+                        updateStatus();
+                    };
+                    wrap.appendChild(chip);
+                }
+            }
+
+            function refreshStructureList() {
+                const list = document.getElementById('structureList'); list.innerHTML = '';
+                const arr = getStructures();
+                if (!arr.length) {
+                    const e = document.createElement('div');
+                    e.style.cssText = 'padding:8px;font-size:10px;color:#7a8794;text-align:center;';
+                    e.textContent = '(empty — press SAVE)';
+                    list.appendChild(e); return;
+                }
+                for (const s of arr) {
+                    const row = document.createElement('div'); row.className = 'str-item';
+
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.checked = !!s.spawn;
+                    cb.title = 'Include this structure in the generated world';
+                    cb.style.cssText = 'cursor:pointer;accent-color:#6ac87a;flex-shrink:0;';
+                    cb.onclick = (ev) => {
+                        ev.stopPropagation();
+                        const list2 = getStructures();
+                        const tgt = list2.find(o => o.name === s.name);
+                        if (tgt) tgt.spawn = cb.checked;
+                        setStructures(list2);
+                        toast(cb.checked ? 'SPAWN ON: ' + s.name : 'SPAWN OFF: ' + s.name);
+                    };
+
+                    const nm = document.createElement('span');
+                    const isFolderStructure =
+                        (window.ARIVE_STRUCTURE_FILES || []).some(n =>
+                            n.replace(/\.json$/i, '') === s.name ||
+                            n === s.name + '.json');
+                    nm.textContent = (isFolderStructure ? '📁 ' : '') + s.name;
+
+                    nm.style.flex = '1';
+                    nm.style.marginLeft = '6px';
+
+                    const del = document.createElement('span');
+                    del.className = 'del';
+                    del.textContent = '✕';
+                    del.onclick = (e) => {
+                        e.stopPropagation();
+                        if (confirm('Delete "' + s.name + '"?')) deleteStructure(s.name);
+                    };
+
+                    row.appendChild(cb);
+                    row.appendChild(nm);
+                    row.appendChild(del);
+                    row.onclick = () => loadObj(s);
+                    list.appendChild(row);
+                }
+            }
+
+            function updateModeDisplay() {
+                let m = currentTool.toUpperCase().replace('-', ' ');
+                if (currentTool === 'box' || currentTool === 'erase-box' || currentTool === 'replace-box') {
+                    m += ' · ' + (boxMode === 'horizontal' ? 'HORIZ' : 'VERT');
+                    if (boxMode === 'horizontal' && boxThickness > 1) m += ' ×' + boxThickness;
+                }
+                document.getElementById('statMode').textContent = m;
+            }
+
+            function updateStatus() {
+                document.getElementById('statBlocks').textContent = grid.size;
+                document.getElementById('statBrush').textContent = brushSize + '×' + brushSize;
+                let m = '—';
+                if (mirrorX && mirrorZ) m = 'X + Z';
+                else if (mirrorX) m = 'X';
+                else if (mirrorZ) m = 'Z';
+                document.getElementById('statMirror').textContent = m;
+                document.getElementById('statBag').textContent =
+                    randomizerActive ? ('ON (' + randomizerBag.size + ')') : 'OFF';
+                updateModeDisplay();
+            }
+
+            let tT = null;
+            function toast(t) {
+                const el = document.getElementById('toast');
+                el.textContent = t; el.classList.add('show');
+                clearTimeout(tT);
+                tT = setTimeout(() => el.classList.remove('show'), 1400);
+            }
+
+            /* ============================================================
+               DIMENSION INPUTS
+               ============================================================ */
+            function applyDimension(axis, rawValue) {
+                const input = document.getElementById(
+                    axis === 'w' ? 'strW' : axis === 'h' ? 'strH' : 'strD');
+
+                let v = parseInt(rawValue, 10);
+                if (!Number.isFinite(v)) {
+                    v = axis === 'w' ? structW : axis === 'h' ? structH : structD;
+                }
+                v = Math.max(4, Math.min(96, v));
+                input.value = v;
+
+                let changed = false;
+                if (axis === 'w' && v !== structW) { structW = v; changed = true; }
+                if (axis === 'h' && v !== structH) { structH = v; changed = true; }
+                if (axis === 'd' && v !== structD) { structD = v; changed = true; }
+
+                if (!changed) return;
+
+                if (currentLayer >= structH) {
+                    currentLayer = structH - 1;
+                    layerHud();
+                }
+
+                rebuildFloor();
+                orbit.target.set(structW / 2, Math.min(orbit.target.y, structH * 0.5), structD / 2);
+                updateCamera();
+                clampMannequinToBounds();
+                updateStatus();
+
+                if ((boxStart || lineStart) && lastHover) {
+                    const t = getTargetCell(lastHover);
+                    if (t && inBounds(t.x, t.y, t.z)) {
+                        if (boxStart) updateBoxGhosts(boxStart, t);
+                        if (lineStart) updateLineGhost(lineStart, t);
+                    }
+                }
+
+                input.classList.add('flash');
+                setTimeout(() => input.classList.remove('flash'), 220);
+            }
+
+            function bindDimensionInputs() {
+                const pairs = [['strW', 'w'], ['strH', 'h'], ['strD', 'd']];
+                for (const [id, axis] of pairs) {
+                    const el = document.getElementById(id);
+                    el.addEventListener('change', () => applyDimension(axis, el.value));
+                    el.addEventListener('blur', () => applyDimension(axis, el.value));
+                    el.addEventListener('keydown', ev => {
+                        if (ev.code === 'Enter') {
+                            ev.preventDefault();
+                            applyDimension(axis, el.value);
+                            el.blur();
+                        }
+                    });
+                }
+            }
+
+            /* ============================================================
+               TOP BAR BUTTONS
+               ============================================================ */
+            document.getElementById('btnNew').onclick = () => {
+                if (grid.size && !confirm('Discard current structure?')) return;
+                clearAll();
+                undoStack.length = 0; redoStack.length = 0;
+                commit(); rebuildFloor();
+                toast('NEW');
+            };
+            document.getElementById('btnSave').onclick = saveCurrent;
+            document.getElementById('btnUndo').onclick = undo;
+            document.getElementById('btnRedo').onclick = redo;
+
+            document.getElementById('btnExport').onclick = () => {
+                const obj = buildObj();
+                const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = (obj.name.replace(/[^a-z0-9]+/gi, '_') || 'structure') + '.json';
+                a.click(); URL.revokeObjectURL(a.href);
+                toast('EXPORTED JSON');
+            };
+
+            document.getElementById('btnImport').onclick = () => {
+                const inp = document.createElement('input');
+                inp.type = 'file'; inp.accept = '.json,application/json';
+                inp.onchange = () => {
+                    const f = inp.files[0]; if (!f) return;
+                    const r = new FileReader();
+                    r.onload = () => {
+                        try { loadObj(JSON.parse(r.result)); toast('IMPORTED'); }
+                        catch (e) { toast('IMPORT FAILED'); }
+                    };
+                    r.readAsText(f);
+                };
+                inp.click();
+            };
+
+            document.getElementById('btnCopyGame').onclick = () => {
+                const obj = buildObj();
+                const body = obj.blocks.map(b => `      [${b[0]}, ${b[1]}, ${b[2]}, ${b[3]}]`).join(',\n');
+                const snippet =
+                    `ARIVE_STRUCTURES.push({
+  name: ${JSON.stringify(obj.name)},
+  size: [${obj.size.join(', ')}],
+  blocks: [
+${body}
+  ]
+});`;
+                navigator.clipboard.writeText(snippet).then(
+                    () => toast('GAME SNIPPET COPIED'),
+                    () => prompt('Copy:', snippet)
+                );
+            };
+
+            document.getElementById('btnResize').onclick = () => {
+                const w = parseInt(prompt('Width (4–96):', structW), 10); if (!w) return;
+                const h = parseInt(prompt('Height (4–96):', structH), 10); if (!h) return;
+                const d = parseInt(prompt('Depth (4–96):', structD), 10); if (!d) return;
+                document.getElementById('strW').value = w;
+                document.getElementById('strH').value = h;
+                document.getElementById('strD').value = d;
+                applyDimension('w', w);
+                applyDimension('h', h);
+                applyDimension('d', d);
+            };
+
+            document.getElementById('strName').oninput = e => {
+                structName = e.target.value || 'Untitled';
+            };
+
+            document.getElementById('btnPlayer').onclick = () => {
+                showMannequin = !showMannequin;
+                if (mannequinRoot) mannequinRoot.visible = showMannequin;
+                document.getElementById('btnPlayer').classList.toggle('active', showMannequin);
+                toast('PLAYER REFERENCE ' + (showMannequin ? 'ON' : 'OFF'));
+            };
+
+            document.getElementById('btnMovePlayer').onclick = () => {
+                moveMode = !moveMode;
+                document.getElementById('btnMovePlayer').classList.toggle('active', moveMode);
+                toast(moveMode ? 'CLICK TO PLACE PLAYER' : 'CANCELED');
+            };
+
+            document.getElementById('btnFullscreen').onclick = toggleFullscreen;
+
+            document.getElementById('btnRandomizer').onclick = () => {
+                randomizerActive = !randomizerActive;
+                refreshRandomizerUI();
+            };
+            document.getElementById('btnBagAll').onclick = () => {
+                for (const id of BLOCK_IDS) randomizerBag.add(id);
+                buildBagGrid(); updateStatus();
+            };
+            document.getElementById('btnBagNone').onclick = () => {
+                randomizerBag.clear();
+                buildBagGrid(); updateStatus();
+            };
+
+            document.getElementById('btnGlobalReplace').onclick = () => {
+                if (!confirm('Replace all instances of ' + BLOCKS[targetBlock].name + ' with ' + BLOCKS[pickBlock()].name + ' across the whole structure?')) return;
+                let count = 0;
+                for (const [key, id] of grid) {
+                    if (id === targetBlock) {
+                        const [x, y, z] = key.split(',').map(Number);
+                        addVoxel(x, y, z, pickBlock());
+                        count++;
+                    }
+                }
+                if (count > 0) {
+                    commit();
+                    toast('GLOBAL REPLACE: ' + count + ' blocks replaced');
+                } else {
+                    toast('NO ' + BLOCKS[targetBlock].name + ' FOUND');
+                }
+            };
+
+            document.addEventListener('dragover', e => { e.preventDefault(); });
+            document.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const f = e.dataTransfer.files && e.dataTransfer.files[0];
+                if (!f) return;
+                const r = new FileReader();
+                r.onload = () => {
+                    try { loadObj(JSON.parse(r.result)); toast('LOADED: ' + f.name); }
+                    catch (err) { toast('INVALID JSON'); }
+                };
+                r.readAsText(f);
+            });
+
+            /* ============================================================
+               FULLSCREEN
+               ============================================================ */
+            function toggleFullscreen() {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen().catch(err => {
+                        console.warn(`Error attempting to enable fullscreen: ${err.message}`);
+                    });
+                } else {
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen();
+                    }
+                }
+            }
+
+            /* ============================================================
+               KEYBOARD
+               ============================================================ */
+            window.addEventListener('keydown', e => {
+                if (e.target.tagName === 'INPUT') return;
+
+                if (e.code === 'Escape' && (boxStart || lineStart)) {
+                    cancelDrawing();
+                    e.preventDefault();
+                    return;
+                }
+
+                if (e.ctrlKey || e.metaKey) {
+                    if (e.code === 'KeyZ' && !e.shiftKey) { undo(); e.preventDefault(); return; }
+                    if (e.code === 'KeyY' || (e.code === 'KeyZ' && e.shiftKey)) {
+                        redo(); e.preventDefault(); return;
+                    }
+                }
+
+                if (e.code === 'Delete') { if (confirm('Clear all?')) { clearAll(); commit(); } return; }
+
+                if (e.code === 'KeyP') {
+                    showMannequin = !showMannequin;
+                    if (mannequinRoot) mannequinRoot.visible = showMannequin;
+                    document.getElementById('btnPlayer').classList.toggle('active', showMannequin);
+                    toast('PLAYER REFERENCE ' + (showMannequin ? 'ON' : 'OFF'));
+                    return;
+                }
+
+                if (e.code === 'KeyH') {
+                    if (currentTool !== 'box' && currentTool !== 'erase-box' && currentTool !== 'replace-box') return;
+                    boxMode = 'horizontal';
+                    refreshBoxModeButtons();
+                    refreshBoxModeBlock();
+                    updateModeDisplay();
+                    if (boxStart && lastHover) {
+                        const t = getTargetCell(lastHover);
+                        if (t && inBounds(t.x, t.y, t.z)) updateBoxGhosts(boxStart, t);
+                    }
+                    toast('BOX MODE: HORIZONTAL');
+                    return;
+                }
+                if (e.code === 'KeyV') {
+                    if (currentTool !== 'box' && currentTool !== 'erase-box' && currentTool !== 'replace-box') return;
+                    boxMode = 'vertical';
+                    refreshBoxModeButtons();
+                    refreshBoxModeBlock();
+                    updateModeDisplay();
+                    if (boxStart && lastHover) {
+                        const t = getTargetCell(lastHover);
+                        if (t && inBounds(t.x, t.y, t.z)) updateBoxGhosts(boxStart, t);
+                    }
+                    toast('BOX MODE: VERTICAL');
+                    return;
+                }
+
+                if (e.code === 'KeyQ' || e.code === 'BracketLeft') {
+                    if (e.shiftKey) { brushSize = Math.max(1, brushSize - 2); refreshBrushButtons(); updateStatus(); }
+                    else { currentLayer = Math.max(0, currentLayer - 1); layerHud(); }
+                    return;
+                }
+                if (e.code === 'KeyE' || e.code === 'BracketRight') {
+                    if (e.shiftKey) { brushSize = Math.min(7, brushSize + 2); refreshBrushButtons(); updateStatus(); }
+                    else { currentLayer = Math.min(structH - 1, currentLayer + 1); layerHud(); }
+                    return;
+                }
+
+                if (e.code === 'KeyM') {
+                    if (e.shiftKey) mirrorZ = !mirrorZ; else mirrorX = !mirrorX;
+                    refreshMirrorButtons(); updateMirrorPlanes(); updateStatus();
+                    toast('MIRROR ' + (e.shiftKey ? 'Z ' : 'X ') + ((e.shiftKey ? mirrorZ : mirrorX) ? 'ON' : 'OFF'));
+                    if ((boxStart || lineStart) && lastHover) {
+                        const t = getTargetCell(lastHover);
+                        if (t && inBounds(t.x, t.y, t.z)) {
+                            if (boxStart) updateBoxGhosts(boxStart, t);
+                            if (lineStart) updateLineGhost(lineStart, t);
+                        }
+                    }
+                    return;
+                }
+
+                if (e.code === 'KeyR') {
+                    randomizerActive = !randomizerActive;
+                    refreshRandomizerUI();
+                    toast('RANDOMIZER ' + (randomizerActive ? 'ON' : 'OFF'));
+                    return;
+                }
+
+                if (e.code === 'KeyC') {
+                    currentTool = 'paint';
+                    boxStart = null; hideAllBoxGhosts();
+                    lineStart = null; hideLineGhost();
+                    refreshToolButtons(); refreshBoxModeBlock(); refreshReplaceModeBlock(); updateModeDisplay();
+                    toast('TOOL: PAINT');
+                    return;
+                }
+                if (e.code === 'KeyL') {
+                    currentTool = 'line';
+                    boxStart = null; hideAllBoxGhosts();
+                    lineStart = null; hideLineGhost();
+                    refreshToolButtons(); refreshBoxModeBlock(); refreshReplaceModeBlock(); updateModeDisplay();
+                    toast('TOOL: LINE');
+                    return;
+                }
+
+                if (e.code === 'KeyF') {
+                    toggleFullscreen();
+                    return;
+                }
+
+                if (e.code.startsWith('Digit')) {
+                    const n = parseInt(e.code.slice(5), 10);
+                    if (n >= 1 && n <= 9 && BLOCK_IDS[n - 1]) {
+                        currentBlock = BLOCK_IDS[n - 1];
+                        refreshBlockButtons(); updateStatus();
+                    }
+                }
+            });
+
+            function layerHud() {
+                document.getElementById('layerNum').textContent = currentLayer;
+                updateLayerGrid();
+            }
+
+            /* ============================================================
+               BOOT
+               ============================================================ */
+            function resize() {
+                const w = innerWidth, h = innerHeight;
+                renderer.setSize(w, h, false);
+                camera.aspect = w / h;
+                camera.updateProjectionMatrix();
+            }
+            window.addEventListener('resize', resize);
+            resize();
+
+            refreshBlockButtons();
+            bindSortSelect();
+            refreshToolButtons();
+            refreshBoxModeButtons();
+            refreshBoxModeBlock();
+            refreshTargetBlockSelect();
+            refreshReplaceModeBlock();
+            bindThicknessInput();
+            refreshBrushButtons();
+            refreshMirrorButtons();
+            buildBagGrid();
+            refreshRandomizerUI();
+            refreshStructureList();
+            rebuildFloor();
+            layerHud();
+            updateCamera();
+            updateStatus();
+            bindDimensionInputs();
+
+            mannequinRoot = buildMannequinRoot();
+            mannequinRoot.visible = showMannequin;
+            scene.add(mannequinRoot);
+            placeMannequinAt(Math.floor(structW / 2), Math.floor(structD / 2));
+
+            randomizerBag.add(2);
+            randomizerBag.add(3);
+            randomizerBag.add(10);
+            buildBagGrid();
+            refreshRandomizerUI();
+
+            undoStack.length = 0; redoStack.length = 0;
+            commit();
+
+            autoImportFolderStructures(true);
+
+            (function animate() {
+                requestAnimationFrame(animate);
+                renderer.render(scene, camera);
+            })();
+
+            console.log('[ARive] structure editor ready (+ paint, erase-box, line tools + fullscreen + replace tools)');
+        })();
+    </script>
+</body>
+
+</html>
