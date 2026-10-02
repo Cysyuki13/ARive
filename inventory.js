@@ -47,21 +47,30 @@
   text-align:center; margin-bottom:12px;
   text-shadow:2px 2px 0 #0c1119;
 }
+
 .inv-grid-wrap {
-  position:relative; padding:4px;
-  background:#0a0d12; border:2px solid #232b36;
-  box-shadow:inset 0 0 0 1px #05070a;
+    position: relative;
+    padding: 4px;
+    background: #0a0d12;
+    border: 2px solid #232b36;
+    box-shadow: inset 0 0 0 1px #05070a;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
 }
+
 .inv-grid {
-  position:relative;
-  width:calc(var(--cols) * ${CELL}px);
-  height:calc(var(--rows) * ${CELL}px);
-  background-color:rgba(0,0,0,0.38);
-  background-image:
-    linear-gradient(to right, rgba(255,255,255,0.055) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255,255,255,0.055) 1px, transparent 1px);
-  background-size:${CELL}px ${CELL}px;
+    position: relative;
+    flex: 0 0 auto;
+    width: calc(var(--cols) * ${CELL}px);
+    height: calc(var(--rows) * ${CELL}px);
+    background-color: rgba(0, 0, 0, 0.38);
+    background-image:
+        linear-gradient(to right, rgba(255,255,255,0.055) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255,255,255,0.055) 1px, transparent 1px);
+    background-size: ${CELL}px ${CELL}px;
 }
+
 .inv-item {
   position:absolute; box-sizing:border-box;
   border:2px solid rgba(0,0,0,0.55);
@@ -215,6 +224,74 @@
     background:#1a2530;
     border-color:#6ac8e8;
 }
+
+/* ===== INCOMING — compact side card ===== */
+.inv-incoming {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 8px;
+    background: #0a0d12;
+    border: 2px dashed #e8c86a;
+    border-radius: 4px;
+    box-shadow: inset 0 0 0 1px #05070a;
+    min-width: 116px;
+    transition: opacity .15s ease-out;
+}
+
+.inv-incoming-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: #e8c86a;
+    text-align: center;
+    writing-mode: horizontal-tb;
+    transform: none;
+    opacity: 0.9;
+}
+
+.inv-incoming-slot {
+    position: relative;
+    width: 96px;
+    height: 96px;
+    background-color: rgba(0, 0, 0, 0.4);
+    background-image:
+        linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px);
+    background-size: 8px 8px;
+    border: 1px solid #232b36;
+    overflow: hidden;
+}
+
+.inv-incoming-slot.empty::after {
+    content: '—';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #3a4a5a;
+    font-size: 18px;
+}
+
+.inv-item-incoming {
+    position: absolute !important;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    cursor: grab;
+}
+
+/* Keep every item icon contained, whatever the tile's inner size. */
+.inv-item-img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    display: block;
+    pointer-events: none;
+}
+
 .inv-drag-layer { position:fixed; inset:0; pointer-events:none; z-index:40; }
 .inv-drag-ghost {
   position:absolute; box-sizing:border-box;
@@ -318,7 +395,11 @@
                 color: def.color || '#4a5a6a',
                 rotated: !!def.rotated,
                 x: 0, y: 0,
-                meta: def.meta || null
+                meta: def.meta || null,
+                /* Carry the furniture tags through the bag so a stashed piece
+                   still knows it's furniture when it comes back out. */
+                size: def.size,
+                furnitureKey: def.furnitureKey
             };
             const spot = this._findFreeSpot(item);
             if (!spot) return null;
@@ -367,9 +448,25 @@
             if (!this.isOpen) return;
             this._cancelDrag();
             this._hideOverflowPanel();
+
+            /* Flip `isOpen` BEFORE firing the drop callback.  The callback
+               may re-enter close() (furniture drops do this when they route
+               through dropItemInWorld → enterFurnitureCarry).  The early-
+               return guard must already be armed, otherwise we'd recurse. */
             this.isOpen = false;
             this.root.classList.add('hidden');
             document.removeEventListener('keydown', this._onKeyDown, true);
+
+            /* Anything left in the incoming staging slot is dumped to the
+               world.  Furniture enters carry mode via dropItemInWorld;
+               regular items simply fall to the floor. */
+            if (this.incomingItem && this.onDropOutside) {
+                const staged = this.incomingItem;
+                this.incomingItem = null;
+                try { this.onDropOutside(staged); }
+                catch (e) { console.error(e); }
+            }
+
             if (this.onClose) this.onClose();
         }
         toggle() { this.isOpen ? this.close() : this.open(); }
@@ -380,18 +477,54 @@
          * Do NOT fill every hole inside grid; leave contiguous empty area for new pickups.
          */
         autoArrange() {
-            const oldItems = [...this.items];
+            /* Snapshot with original positions so a piece that can't be
+               re-packed at all can still fall back to where it was, rather
+               than vanishing from the inventory. */
+            const snapshot = this.items.map(it => ({
+                it,
+                x: it.x,
+                y: it.y,
+                rotated: it.rotated
+            }));
+
+            /* Greedy bin-packing heuristic: sort largest-first.
+               Without this, a bunch of 1×1 items would eat every top-left
+               cell before a 3×1 or 2×2 item got a chance, and the big item
+               would be silently dropped. */
+            snapshot.sort((a, b) => {
+                const areaA = a.it.w * a.it.h;
+                const areaB = b.it.w * b.it.h;
+                if (areaA !== areaB) return areaB - areaA;
+                /* Tie-break on longest edge, so 3×1 beats 2×2 at the same area. */
+                const longA = Math.max(a.it.w, a.it.h);
+                const longB = Math.max(b.it.w, b.it.h);
+                return longB - longA;
+            });
+
             this.items.length = 0;
-            for (const it of oldItems) {
-                it.x = 0; it.y = 0;
-                it.rotated = false; // reset rotation on arrange (optional, you can remove)
+
+            for (const entry of snapshot) {
+                const it = entry.it;
+                it.x = 0;
+                it.y = 0;
+                it.rotated = false;
+
                 const spot = this._findFreeSpot(it);
                 if (spot) {
                     it.x = spot.x;
                     it.y = spot.y;
                     this.items.push(it);
+                } else {
+                    /* Couldn't re-pack — restore the pre-sort position so the
+                       item never disappears.  It may overlap with the re-packed
+                       pieces; the player can drag it manually if that happens. */
+                    it.x = entry.x;
+                    it.y = entry.y;
+                    it.rotated = entry.rotated;
+                    this.items.push(it);
                 }
             }
+
             this.render();
             this._emitChange();
         }
@@ -422,6 +555,10 @@
                 '  <div class="inv-title">FIELD PACK</div>' +
                 '  <div class="inv-grid-wrap">' +
                 '    <div class="inv-grid"></div>' +
+                '    <div class="inv-incoming" title="Incoming item — drag into the bag">' +
+                '      <div class="inv-incoming-label">INCOMING</div>' +
+                '      <div class="inv-incoming-slot"></div>' +
+                '    </div>' +
                 '    <!-- OVERFLOW PANEL -->' +
                 '    <div class="inv-overflow-wrap">' +
                 '        <div class="inv-overflow-title">INCOMING ITEM</div>' +
@@ -463,6 +600,8 @@
             this.dragLayer = root.querySelector('.inv-drag-layer');
             this.sizeRowEl = root.querySelector('.inv-size-row');
             this._overflowWrapEl = root.querySelector('.inv-overflow-wrap');
+            this.incomingSlotEl = root.querySelector('.inv-incoming-slot');
+            this.incomingWrapEl = root.querySelector('.inv-incoming');
 
             this.gridEl.style.setProperty('--cols', this.cols);
             this.gridEl.style.setProperty('--rows', this.rows);
@@ -513,6 +652,18 @@
                 el.innerHTML = this._itemHtml(it, w, h);
                 el.addEventListener('pointerdown', (e) => this._onItemPointerDown(e, it));
                 this.gridEl.appendChild(el);
+            }
+            /* Draw the incoming slot every render, so it reflects the latest
+               piece the player picked up with a full bag.  Runs once — after
+               the loop — so an empty inventory still shows the slot. */
+            this._renderIncomingSlot();
+            /* The incoming card only appears when something is actually
+               staged there.  An empty dashed box was confusing because it
+               never disappeared after the item was dragged into the grid. */
+            if (this.incomingWrapEl) {
+                const hasItem = !!this.incomingItem;
+                this.incomingWrapEl.style.display = hasItem ? '' : 'none';
+                this.incomingWrapEl.style.opacity = hasItem ? '1' : '0';
             }
         }
 
@@ -628,10 +779,19 @@
             const cy = Math.round(localY / (CELL * scale));
             d.gridX = cx; d.gridY = cy;
 
-            // SWAP LOGIC: if target cell is occupied → treat as valid for swap
-            const occ = this._occupancy(d.item.id);
-            const targetOccupied = (cy >= 0 && cx >= 0 && cy < this.rows && cx < this.cols) && !!occ[cy][cx];
-            d.valid = this._canPlace(d.item, cx, cy, d.item.rotated, d.item.id) || targetOccupied;
+            // SWAP LOGIC: an item already in the grid may be dropped onto
+            // another grid item (→ swap).  An incoming item has no grid
+            // slot to swap *from*, so it may only land on a free cell.
+            const canPlace = this._canPlace(d.item, cx, cy, d.item.rotated, d.item.id);
+            if (d.fromIncoming) {
+                d.valid = canPlace;
+            } else {
+                const occ = this._occupancy(d.item.id);
+                const targetOccupied =
+                    (cy >= 0 && cx >= 0 && cy < this.rows && cx < this.cols) &&
+                    !!occ[cy][cx];
+                d.valid = canPlace || targetOccupied;
+            }
 
             this._dragGhost.style.left = (gr.left + cx * CELL * scale) + 'px';
             this._dragGhost.style.top = (gr.top + cy * CELL * scale) + 'px';
@@ -658,6 +818,8 @@
                     this._drag = null;
                     window.removeEventListener('pointermove', this._onPointerMove);
                     window.removeEventListener('pointerup', this._onPointerUp);
+                    /* removeItem() finds the record by id, so it works whether the
+                       drop came from a grid slot or from the incoming staging slot. */
                     this.removeItem(dropped.id);
                     try { if (this.onDropOutside) this.onDropOutside(dropped); } catch (err) { console.error(err); }
                     return;
@@ -670,7 +832,8 @@
             const ty = d.gridY;
             // ========= SWAP IMPLEMENTATION =========
             let swapTargetItem = null;
-            if (ty >= 0 && tx >= 0 && ty < this.rows && tx < this.cols) {
+            if (!d.fromIncoming &&
+                ty >= 0 && tx >= 0 && ty < this.rows && tx < this.cols) {
                 const targetId = occ[ty][tx];
                 if (targetId) {
                     swapTargetItem = this.items.find(it => it.id === targetId);
@@ -692,6 +855,20 @@
             } else if (this._canPlace(d.item, d.originX, d.originY, d.item.rotated, d.item.id)) {
                 d.item.x = d.originX; d.item.y = d.originY;
                 placed = true;
+            } else if (d.fromIncoming) {
+                /* Incoming item couldn't be placed — put it back in the
+                   incoming slot.  Remove the ghostItem by id, not by
+                   position, so we never yank the wrong item. */
+                const gi = this.items.findIndex(it => it.id === d.item.id);
+                if (gi >= 0) this.items.splice(gi, 1);
+                this.addToIncoming(d.item);
+                this._destroyGhost();
+                this._drag = null;
+                window.removeEventListener('pointermove', this._onPointerMove);
+                window.removeEventListener('pointerup', this._onPointerUp);
+                this.render();
+                this._emitChange();
+                return;
             } else {
                 d.item.x = d.originX; d.item.y = d.originY;
                 d.item.rotated = d.originRotated;
@@ -708,8 +885,18 @@
         _cancelDrag() {
             const d = this._drag;
             if (d) {
-                d.item.x = d.originX; d.item.y = d.originY;
-                d.item.rotated = d.originRotated;
+                if (d.fromIncoming) {
+                    /* Incoming drags have no grid origin to return to.
+                       Pull the ghost out of items and put it back in the
+                       staging slot so the piece isn't lost. */
+                    const gi = this.items.findIndex(it => it.id === d.item.id);
+                    if (gi >= 0) this.items.splice(gi, 1);
+                    this.addToIncoming(d.item);
+                } else {
+                    d.item.x = d.originX;
+                    d.item.y = d.originY;
+                    d.item.rotated = d.originRotated;
+                }
             }
             this._destroyGhost();
             this._drag = null;
@@ -755,6 +942,127 @@
 
         _emitChange() {
             if (this.onChange) { try { this.onChange(this.getItems()); } catch (err) { console.error(err); } }
+        }
+
+        /* ============================================================
+           INCOMING SLOT
+           ------------------------------------------------------------
+           A single-cell staging area for items the player picked up
+           while the bag was full.  The item shows up here; the player
+           drags it into a free cell to commit it.  If a second item
+           arrives while the slot is occupied, the previous one is
+           dropped to the floor (via onDropOutside) so nothing is
+           silently lost.
+           ============================================================ */
+        addToIncoming(def) {
+            if (this.incomingItem && this.onDropOutside) {
+                /* Spill the stale incoming item to the world first. */
+                try { this.onDropOutside(this.incomingItem); }
+                catch (e) { console.error(e); }
+            }
+            this.incomingItem = Object.assign({}, def);
+            this.incomingItem._incoming = true;
+            this.render();               // refresh → draws the slot
+        }
+
+        _clearIncoming() {
+            this.incomingItem = null;
+            this.render();
+        }
+
+        /* Builds the clickable tile that lives in the incoming slot.
+           Uses the same .inv-item visual language as a real grid item
+           so the player immediately recognises it as draggable. */
+        _renderIncomingSlot() {
+            const host = this.incomingSlotEl;
+            if (!host) return;
+            host.innerHTML = '';
+            if (!this.incomingItem) {
+                host.classList.add('empty');
+                return;
+            }
+            host.classList.remove('empty');
+
+            const it = this.incomingItem;
+            const w = it.rotated ? it.h : it.w;
+            const h = it.rotated ? it.w : it.h;
+
+            /* Fit the item inside the 96×96 slot, leaving a small visual margin.
+               We keep the item's w:h aspect ratio, then scale both axes by the
+               same factor so it never overflows — long rifles get squashed to
+               88×22, a 2×2 crate becomes 88×88, and so on. */
+            const SLOT_W = 96, SLOT_H = 96;
+            const PAD = 8;
+            const availW = SLOT_W - PAD * 2;
+            const availH = SLOT_H - PAD * 2;
+            const cellW = availW / w;
+            const cellH = availH / h;
+            const cw = Math.min(cellW, cellH);
+
+            const el = document.createElement('div');
+            el.className = 'inv-item inv-item-incoming';
+            el.style.width = (cw * w) + 'px';
+            el.style.height = (cw * h) + 'px';
+            el.style.background = it.color;
+            el.innerHTML = this._itemHtml(it, w, h);
+            el.addEventListener('pointerdown', (e) => this._onIncomingPointerDown(e, it));
+            host.appendChild(el);
+        }
+
+        _onIncomingPointerDown(e, it) {
+            if (e.button !== 0) return;
+            if (this._drag) return;
+            e.preventDefault(); e.stopPropagation();
+
+            const el = e.currentTarget;
+            const r = el.getBoundingClientRect();
+
+            /* Move the item out of the slot and into the drag flow. */
+            this.incomingItem = null;
+            this.render();
+
+            /* Only promote the tags if this is genuinely a furniture piece.
+               Anything else keeps the plain item flow — grab with hand tool,
+               drop as a physics body. */
+            const isFurnitureItem = (it.size === 'small' ||
+                it.size === 'medium' ||
+                it.size === 'large');
+
+            const ghostItem = {
+                id: 'incoming-' + (this._nextId++),
+                name: it.name,
+                w: Math.max(1, it.w | 0),
+                h: Math.max(1, it.h | 0),
+                icon: it.icon || '',
+                iconImage: it.iconImage || '',
+                iconImageRotated: it.iconImageRotated || '',
+                color: it.color || '#4a5a6a',
+                rotated: !!it.rotated,
+                x: -99, y: -99,
+                meta: it.meta || null,
+                size: isFurnitureItem ? it.size : undefined,
+                furnitureKey: isFurnitureItem ? it.furnitureKey : undefined
+            };
+
+            this.items.push(ghostItem);
+
+            this._drag = {
+                item: ghostItem,
+                originX: -99, originY: -99,
+                originRotated: ghostItem.rotated,
+                grabX: e.clientX - r.left,
+                grabY: e.clientY - r.top,
+                pointerX: e.clientX,
+                pointerY: e.clientY,
+                gridX: 0, gridY: 0,
+                valid: true,
+                fromIncoming: true
+            };
+            el.remove();
+            this._createGhost(ghostItem);
+            window.addEventListener('pointermove', this._onPointerMove);
+            window.addEventListener('pointerup', this._onPointerUp);
+            this._updateDragPos(e.clientX, e.clientY);
         }
     }
     global.GridInventory = GridInventory;

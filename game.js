@@ -1292,6 +1292,64 @@
             setVRaw(wx, wy, wz, id);
             markDirty(wx, wy, wz);
         }
+
+        /* -----------------------------------------------------------------
+           Furniture boxes — spawn one random item whose `size` matches
+           the box the editor placed.  The item is dropped in as a normal
+           world pickup, so the standard E-to-collect / drop-to-place
+           loop handles it afterwards.
+           ----------------------------------------------------------------- */
+        if (Array.isArray(struct.furniture) && struct.furniture.length &&
+            window.ARIVE_FURNITURE && window.ARIVE_FURNITURE.length) {
+
+            /* Pre-bucket furniture by size so the inner loop is O(k). */
+            const bySize = { small: [], medium: [], large: [] };
+            for (const f of window.ARIVE_FURNITURE) {
+                if (bySize[f.size]) bySize[f.size].push(f);
+            }
+
+            for (const fb of struct.furniture) {
+                if (!fb || !fb.size) continue;
+
+                let tx = fb.x, tz = fb.z;
+                if (rotY) {
+                    const cx = (W - 1) * 0.5, cz = (D - 1) * 0.5;
+                    const dx = fb.x - cx, dz = fb.z - cz;
+                    tx = Math.round(cx + dx * cos - dz * sin);
+                    tz = Math.round(cz + dx * sin + dz * cos);
+                }
+
+                const wx = ox + tx;
+                const wy = oy + fb.y;
+                const wz = oz + tz;
+                if (wx < 0 || wy < 0 || wz < 0 ||
+                    wx >= SX || wy >= SY || wz >= SZ) continue;
+
+                const pool = bySize[fb.size];
+                if (!pool || !pool.length) continue;
+
+                const pick = pool[(Math.random() * pool.length) | 0];
+
+                /* Centre of the voxel the marker sits in. */
+                const worldPos = new THREE.Vector3(
+                    (wx + 0.5) * VOXEL,
+                    (wy + 0.5) * VOXEL,
+                    (wz + 0.5) * VOXEL
+                );
+
+                spawnPickup({
+                    name: pick.name,
+                    iconImage: pick.iconImage,
+                    iconImageRotated: pick.iconImageRotated,
+                    w: pick.w,
+                    h: pick.h,
+                    color: pick.color,
+                    meta: pick.meta,
+                    furnitureKey: pick.key,
+                    size: pick.size
+                }, worldPos);
+            }
+        }
     }
 
     /* ---- The main city generator ---- */
@@ -1401,16 +1459,17 @@
        forces a jump. */
     const STEP_HEIGHT = 0.5;
 
-    function tryStepUp(pos, hw, h, maxStep) {
+    function tryStepUp(pos, hw, h, maxStep, testFn) {
+        testFn = testFn || collidesAABB;
         const y0 = pos.y;
         const maxSteps = Math.ceil(maxStep / VOXEL) + 1;
         for (let s = 1; s <= maxSteps; s++) {
             pos.y = y0 + s * VOXEL;
-            if (collidesAABB(pos, hw, h)) continue;
+            if (testFn(pos, hw, h)) continue;
             let by = pos.y;
             while (by - VOXEL >= y0 - 1e-6) {
                 pos.y = by - VOXEL;
-                if (collidesAABB(pos, hw, h)) break;
+                if (testFn(pos, hw, h)) break;
                 by -= VOXEL;
             }
             pos.y = by;
@@ -1432,6 +1491,42 @@
                 for (let x = x0; x <= x1; x++)
                     if (getV(x, y, z) !== 0) return true;
         return false;
+    }
+
+    /* ---- Furniture collision (exact rotated AABB vs player cylinder/AABB) ----
+       Only *locked* / settled furniture blocks the player, so a piece that is
+       still tumbling or being carried never traps anyone.  Uses the same
+       rotMin/rotMax that physics + rendering already maintain. */
+    function playerHitsFurniture(pos, hw, h) {
+        const plMinX = pos.x - hw, plMaxX = pos.x + hw;
+        const plMinY = pos.y, plMaxY = pos.y + h;
+        const plMinZ = pos.z - hw, plMaxZ = pos.z + hw;
+
+        for (let i = 0; i < pickups.length; i++) {
+            const p = pickups[i];
+            if (!p.isFurniture) continue;
+            if (!p.locked) continue;          // only settled furniture is solid
+            if (p.carriedBy) continue;        // never block on the carried piece
+            if (furnMode && p === furnMode.p) continue;
+
+            const minX = p.mesh.position.x + p.rotMin.x;
+            const maxX = p.mesh.position.x + p.rotMax.x;
+            const minY = p.mesh.position.y + p.rotMin.y;
+            const maxY = p.mesh.position.y + p.rotMax.y;
+            const minZ = p.mesh.position.z + p.rotMin.z;
+            const maxZ = p.mesh.position.z + p.rotMax.z;
+
+            if (plMaxX <= minX || plMinX >= maxX) continue;
+            if (plMaxY <= minY || plMinY >= maxY) continue;
+            if (plMaxZ <= minZ || plMinZ >= maxZ) continue;
+            return true;
+        }
+        return false;
+    }
+
+    /* Combined test — voxels OR locked furniture. */
+    function collidesPlayer(pos, hw, h) {
+        return collidesAABB(pos, hw, h) || playerHitsFurniture(pos, hw, h);
     }
 
     function placePlayerOnGround(wx, wz) {
@@ -1560,7 +1655,6 @@
             }
         }
     ];
-
 
     function buildItemMesh(model) {
         const g = new THREE.Group();
@@ -1832,49 +1926,158 @@
         return url;
     }
 
-    for (const def of ITEM_DEFS) {
-        /* Icon for the item's declared shape. */
-        def.iconImage = renderItemThumbnail(def, def.w, def.h);
+    /* -----------------------------------------------------------------
+   Furniture folder → ARIVE_FURNITURE
+   ------------------------------------------------------------
+   Reads every JSON listed in assets/model/furnitureModel/index.js
+   and merges it into window.ARIVE_FURNITURE.  Falls back to a real
+   directory scan for servers that expose one.  Entries already in
+   ARIVE_FURNITURE (from the legacy furnitureModel.js) are
+   overwritten by key, so folder files always win.
+   ----------------------------------------------------------------- */
+    const FURNITURE_BASE = 'assets/model/furnitureModel/';
 
-        /* Non-square items can also be shown rotated in the inventory
-           (1×2 → 2×1, 3×1 → 1×3, …).  Pre-render the other orientation
-           so the inventory has a matching PNG with the correct override
-           (iconPortrait / iconLandscape) already baked in. */
-        if (def.w !== def.h) {
-            def.iconImageRotated = renderItemThumbnail(def, def.h, def.w);
+    /* Convert "0x6a4824" / "#6a4824" / number → 24-bit int.
+       Applied to every `c` and `e` field of every model part. */
+    function _resolveHexColor(v) {
+        if (typeof v === 'number') return v | 0;
+        if (typeof v !== 'string') return 0xff00ff;
+        const s = v.trim().replace(/^#/, '').replace(/^0x/i, '');
+        const n = parseInt(s, 16);
+        return Number.isFinite(n) ? n : 0xff00ff;
+    }
+
+    function _normalizeFurniture(f) {
+        if (!f || !f.meta || !Array.isArray(f.meta.model)) return null;
+        for (const part of f.meta.model) {
+            if ('c' in part) part.c = _resolveHexColor(part.c);
+            if ('e' in part) part.e = _resolveHexColor(part.e);
+        }
+        if (!f.model) f.model = f.meta.model;
+        return f;
+    }
+
+    async function loadFurnitureFromFolder() {
+        window.ARIVE_FURNITURE = window.ARIVE_FURNITURE || [];
+
+        let names = window.ARIVE_FURNITURE_FILES || null;
+
+        /* Fallback to a real directory listing (Python http.server,
+           nginx autoindex, npx serve, …).  Silently skipped on servers
+           that return 403 for folder URLs. */
+        if (!names || !names.length) {
+            const listing = await fetchDirectoryListing(FURNITURE_BASE);
+            if (listing !== null) names = extractJsonNames(listing);
+        }
+
+        if (!names || !names.length) {
+            console.log('[ARive] No furniture files listed — ' +
+                'using whatever ARIVE_FURNITURE already holds.');
+            return;
+        }
+
+        console.log('[ARive] Loading ' + names.length +
+            ' furniture file(s):', names.join(', '));
+
+        const loaded = await Promise.all(names.map(async (name) => {
+            try {
+                const r = await fetch(FURNITURE_BASE + name, { cache: 'no-cache' });
+                if (!r.ok) { console.warn('[ARive] ✗', name, r.status); return null; }
+                return _normalizeFurniture(await r.json());
+            } catch (e) {
+                console.warn('[ARive] ✗', name, e.message);
+                return null;
+            }
+        }));
+
+        for (const f of loaded) {
+            if (!f || !f.key) continue;
+            const idx = window.ARIVE_FURNITURE.findIndex(x => x.key === f.key);
+            if (idx >= 0) window.ARIVE_FURNITURE[idx] = f;
+            else window.ARIVE_FURNITURE.push(f);
+            console.log('[ARive] ✓ furniture', f.key,
+                '(' + f.size + ', ' + f.meta.model.length + ' parts)');
         }
     }
 
-    const inventory = new GridInventory({
-        cols: 10,
-        rows: 6,
-        onOpen: () => {
-            mouseDown = false;
-            throwCharging = false;
-            if (typeof heldPickup !== 'undefined' && heldPickup) releasePickup(0);
-            document.exitPointerLock();
-        },
-        onClose: () => {
-            if (gameRunning && player.alive) {
-                const p = canvas.requestPointerLock();
-                if (p && typeof p.catch === 'function') p.catch(() => { });
-            }
-        },
-        onDropOutside: (item) => {
-            dropItemInWorld(item);
-        }
-    });
+    /* -----------------------------------------------------------------
+       Item icons + inventory — must run AFTER furniture is loaded, so
+       it is deferred into boot() instead of running at parse time.
+       ----------------------------------------------------------------- */
+    let inventory = null;
+    let itemsInitialized = false;
 
-    for (const def of ITEM_DEFS) {
-        inventory.addItem({
-            name: def.name,
-            iconImage: def.iconImage,
-            iconImageRotated: def.iconImageRotated,   // ← NEW
-            w: def.w,
-            h: def.h,
-            color: def.color,
-            meta: { model: def.model }
+    async function initItemsAndInventory() {
+        if (itemsInitialized) return;
+        itemsInitialized = true;
+
+        await loadFurnitureFromFolder();
+
+        if (window.ARIVE_FURNITURE && Array.isArray(window.ARIVE_FURNITURE)) {
+            for (const f of window.ARIVE_FURNITURE) {
+                /* The thumbnail renderer + inventory.addItem both read
+                   `def.model` at the top level, while the furniture
+                   registry keeps it under `meta`.  Mirror it across so
+                   both call-sites see it, whichever shape the source
+                   used. */
+                if (!f.meta) f.meta = {};
+                if (!f.model && Array.isArray(f.meta.model)) f.model = f.meta.model;
+                if (!f.meta.model && Array.isArray(f.model)) f.meta.model = f.model;
+                ITEM_DEFS.push(f);
+            }
+            console.log('[ARive] merged ' + window.ARIVE_FURNITURE.length +
+                ' furniture item(s) into ITEM_DEFS');
+        }
+
+        for (const def of ITEM_DEFS) {
+            def.iconImage = renderItemThumbnail(def, def.w, def.h);
+            if (def.w !== def.h) {
+                def.iconImageRotated = renderItemThumbnail(def, def.h, def.w);
+            }
+        }
+
+        inventory = new GridInventory({
+            cols: 10,
+            rows: 6,
+            onOpen: () => {
+                mouseDown = false;
+                throwCharging = false;
+                if (typeof heldPickup !== 'undefined' && heldPickup) releasePickup(0);
+                document.exitPointerLock();
+            },
+            onClose: () => {
+                if (gameRunning && player.alive) {
+                    const p = canvas.requestPointerLock();
+                    if (p && typeof p.catch === 'function') p.catch(() => { });
+                }
+            },
+            onDropOutside: (item) => {
+                dropItemInWorld(item);
+            }
         });
+
+        for (const def of ITEM_DEFS) {
+            /* Only ARIVE_FURNITURE entries carry a `size` of
+               'small' / 'medium' / 'large'.  Regular ITEM_DEFS — rifle,
+               sledge, medkit, bandage, … — have no size.  We must NOT tag
+               those with `furnitureKey`, or every dropped item would be
+               mis-classified as furniture and snap into carry mode. */
+            const isFurnitureItem = (def.size === 'small' ||
+                def.size === 'medium' ||
+                def.size === 'large');
+
+            inventory.addItem({
+                name: def.name,
+                iconImage: def.iconImage,
+                iconImageRotated: def.iconImageRotated,
+                w: def.w,
+                h: def.h,
+                color: def.color,
+                meta: { model: def.model },
+                size: isFurnitureItem ? def.size : undefined,
+                furnitureKey: isFurnitureItem ? def.key : undefined
+            });
+        }
     }
 
     /* =========================================================================
@@ -1930,7 +2133,7 @@
         new THREE.LineBasicMaterial({
             color: 0xffffff,
             transparent: true,
-            opacity: 0.95,
+            opacity: 0.45,
             depthTest: false,
             depthWrite: false,
             fog: false
@@ -1993,6 +2196,225 @@
         }
         return el;
     })();
+
+    /* ---- Hold-E furniture-lift progress bar (created once) ---- */
+    const eHoldBarEl = (function () {
+        let el = document.getElementById('eHoldBar');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'eHoldBar';
+            el.style.cssText =
+                'position:fixed;left:50%;bottom:186px;transform:translateX(-50%);' +
+                'width:220px;height:16px;background:#12161d;border:2px solid #e8c86a;' +
+                'box-shadow:inset 0 0 0 1px #05070a,0 0 14px rgba(232,200,106,.35);' +
+                'z-index:6;pointer-events:none;opacity:0;transition:opacity .12s;';
+
+            const fill = document.createElement('div');
+            fill.id = 'eHoldBarFill';
+            fill.style.cssText =
+                'height:100%;width:0%;' +
+                'background:linear-gradient(to right,#6a9a40,#e8c86a);' +
+                'transition:width .03s linear;';
+            el.appendChild(fill);
+
+            const label = document.createElement('div');
+            label.textContent = 'LIFTING';
+            label.style.cssText =
+                'position:absolute;left:50%;top:-18px;transform:translateX(-50%);' +
+                'font:bold 11px "Courier New",monospace;letter-spacing:3px;' +
+                'color:#e8c86a;text-shadow:1px 1px 0 #000;white-space:nowrap;';
+            el.appendChild(label);
+
+            document.body.appendChild(el);
+        }
+        return el;
+    })();
+
+    /* =========================================================================
+   FURNITURE CARRY MODE
+   -------------------------------------------------------------------------
+   Looking at a piece of furniture and HOLDING E for E_FURN_HOLD_MS
+   lifts it off the ground into a floating carry state:
+
+     · the piece follows the crosshair, always hovering just above
+       whatever surface the crosshair is on
+     · Q / E tap → rotate 45° around Y
+     · wheel → rotate 45° around Y
+     · LMB → place down (anchors the piece in place, locked)
+     · RMB → stow into inventory (or the incoming slot if full)
+
+   Tap-E on furniture does nothing: this is deliberate so players
+   can't accidentally grab-and-drop when they meant to just look.
+   ========================================================================= */
+    let furnMode = null;         // { p, rotY, baseQuat, liftedAt } or null
+    let eHeldFurniture = null;   // furniture under the crosshair while E is held
+    let eHeldStart = 0;          // ms timestamp when the E hold began
+
+    const E_FURN_HOLD_MS = 1000; // hold E this long to lift the piece
+    const E_FURN_ROT_GRACE_MS = 300; // ignore E rotates right after lift
+    const FURN_PREVIEW_DIST = 2.4;
+    const FURN_ROT_STEP = Math.PI / 180;
+
+    /* ---- continuous rotation while Q / E are held ---- */
+    let qHeld = false;                    // Q key physically down (in furnMode)
+    let eHeld = false;                    // E key physically down (in furnMode)
+    const FURN_ROT_FAST = Math.PI * 1.2;  // ≈ 216° / s
+
+    function enterFurnitureCarry(p) {
+        if (furnMode) return;
+        qHeld = false;
+        eHeld = false;
+
+        furnMode = {
+            p,
+            rotY: 0,
+            baseQuat: p.mesh.quaternion.clone(),
+            liftedAt: performance.now()
+        };
+        p.carriedBy = 'local';    // physics loop skips it
+        p.locked = false;         // temporarily unlockable
+        p.settled = false;
+        p.vx = p.vy = p.vz = 0;
+        p.avx = p.avy = p.avz = 0;
+    }
+
+    function rotateFurnitureBy(d) {
+        if (!furnMode) return;
+        furnMode.rotY += d;
+        const TAU = Math.PI * 2;
+        furnMode.rotY = ((furnMode.rotY % TAU) + TAU) % TAU;
+    }
+
+    function updateFurnitureMode(dt) {
+        if (!furnMode) return;
+        const p = furnMode.p;
+
+        const origin = camera.position;
+        const dir = getLookDir();
+        const hit = raycastVoxel(origin, dir, FURN_PREVIEW_DIST + 1.5);
+
+        let tx, ty, tz;
+        if (hit && hit.ny === 1) {
+            tx = (hit.x + 0.5) * VOXEL;
+            ty = (hit.y + 1.0) * VOXEL - p.aabb.min.y;
+            tz = (hit.z + 0.5) * VOXEL;
+        } else if (hit) {
+            tx = (hit.x + 0.5 + hit.nx * 0.5) * VOXEL;
+            ty = (hit.y + 0.5 + hit.ny * 0.5) * VOXEL - p.aabb.min.y;
+            tz = (hit.z + 0.5 + hit.nz * 0.5) * VOXEL;
+        } else {
+            tx = origin.x + dir.x * FURN_PREVIEW_DIST;
+            ty = origin.y + dir.y * FURN_PREVIEW_DIST - p.aabb.min.y;
+            tz = origin.z + dir.z * FURN_PREVIEW_DIST;
+        }
+
+        const k = Math.min(1, dt * 20);
+        p.mesh.position.x += (tx - p.mesh.position.x) * k;
+        p.mesh.position.y += (ty - p.mesh.position.y) * k;
+        p.mesh.position.z += (tz - p.mesh.position.z) * k;
+
+        /* ---- continuous rotation while Q / E are held ---- */
+        if (qHeld) rotateFurnitureBy(-FURN_ROT_FAST * dt);
+        if (eHeld) rotateFurnitureBy(FURN_ROT_FAST * dt);
+
+        const qy = new THREE.Quaternion().setFromAxisAngle(
+            new THREE.Vector3(0, 1, 0), furnMode.rotY);
+        p.mesh.quaternion.copy(qy).multiply(furnMode.baseQuat);
+
+        computeRotatedAABB(p);
+    }
+
+    /* LMB — anchor in place. */
+    function placeFurniture() {
+        if (!furnMode) return;
+        qHeld = false;
+        eHeld = false;
+
+        const p = furnMode.p;
+        p.carriedBy = null;
+        p.vx = p.vy = p.vz = 0;
+        p.avx = p.avy = p.avz = 0;
+        computeRotatedAABB(p);
+        seatOnFloor(p);
+        p.settled = true;
+        p.locked = true;
+        furnMode = null;
+        if (!p.isRemote && p.pid && window.ARiveMP &&
+            window.ARiveMP.connected &&
+            window.ARiveMP.onLocalPickupSettled) {
+            window.ARiveMP.onLocalPickupSettled(p);
+        }
+    }
+
+    /* RMB — stow into inventory (or incoming slot). */
+    function storeFurniture() {
+        if (!furnMode) return;
+        qHeld = false;
+        eHeld = false;
+        const p = furnMode.p;
+        furnMode = null;
+        p.carriedBy = null;
+        p.vx = p.vy = p.vz = 0;
+        p.avx = p.avy = p.avz = 0;
+
+        const result = attemptInventoryAdd(p.def);
+        if (result !== 'none') {
+            scene.remove(p.mesh);
+            p.mesh.traverse(o => {
+                if (o.geometry) o.geometry.dispose();
+                if (o.material) o.material.dispose();
+            });
+            const idx = pickups.indexOf(p);
+            if (idx >= 0) pickups.splice(idx, 1);
+            if (p.pid && window.ARiveMP && window.ARiveMP.connected) {
+                window.ARiveMP.onLocalPickupRemove(p);
+            }
+            if (result === 'incoming' || result === 'overflow') {
+                inventory.open();
+            }
+        } else {
+            /* Nowhere to put it — re-anchor it where it stands. */
+            computeRotatedAABB(p);
+            seatOnFloor(p);
+            p.settled = true;
+            p.locked = true;
+        }
+    }
+
+    /* -----------------------------------------------------------------
+       Shared inventory-add helper.
+       Returns 'stored'    → added to a free grid slot.
+               'incoming'  → inventory full, item staged in the incoming
+                             slot for the player to drag in later.
+               'overflow'  → legacy overflow panel handled it.
+               'none'      → no way to store the item right now.
+       ----------------------------------------------------------------- */
+    function attemptInventoryAdd(def) {
+        if (inventory.addItem(def)) return 'stored';
+
+        /* Preferred path — the inventory's dedicated incoming slot. */
+        if (typeof inventory.addToIncoming === 'function') {
+            inventory.addToIncoming(def);
+            return 'incoming';
+        }
+
+        /* Fallback — the older overflow-panel API. */
+        if (typeof inventory.showOverflowPanel === 'function') {
+            inventory.onOverflowDropToFloor = (itemDef) => {
+                spawnPickup(itemDef, new THREE.Vector3(
+                    player.pos.x, player.pos.y + 1.2, player.pos.z));
+                showToast('Item dropped to floor');
+            };
+            inventory.onOverflowSwapComplete = () => {
+                showToast('Item swapped into inventory');
+            };
+            inventory.showOverflowPanel(def);
+            inventory.open();
+            return 'overflow';
+        }
+
+        return 'none';
+    }
 
     function updateThrowChargeHud() {
         const fill = document.getElementById('throwChargeFill');
@@ -2270,7 +2692,11 @@
                 iconImageRotated: item.iconImageRotated,
                 w: item.w, h: item.h,
                 color: item.color,
-                meta: item.meta
+                meta: item.meta,
+                /* NEW: preserve the furniture tags so a stowed piece
+                   still knows what it is when it comes back out. */
+                size: item.size,
+                furnitureKey: item.furnitureKey
             },
             mesh: mesh,
             aabb: aabb,
@@ -2286,6 +2712,17 @@
             settled: false,
             carriedBy: null,
             mass: (item.meta && item.meta.mass) ? item.meta.mass : 1.0,
+            /* NEW: is this a piece of furniture? */
+            /* Is this a piece of furniture?  Require an explicit
+               small/medium/large size — that tag is only ever set by the
+               ARIVE_FURNITURE loader and by stampStructure().  A stray
+               `furnitureKey` on its own no longer promotes a rifle to a
+               placeable crate. */
+            isFurniture: (item.size === 'small' ||
+                item.size === 'medium' ||
+                item.size === 'large'),
+            /* NEW: locked-in-place placed prop (no physics). */
+            locked: false
         };
         pickups.push(p);
 
@@ -2302,7 +2739,16 @@
         const px = clamp(player.pos.x + fx * DROP_DISTANCE, 0.4, WORLD_W - 0.4);
         const pz = clamp(player.pos.z + fz * DROP_DISTANCE, 0.4, WORLD_D - 0.4);
         const py = player.pos.y + player.eye - 0.25;
-        spawnPickup(item, new THREE.Vector3(px, py, pz));
+        const p = spawnPickup(item, new THREE.Vector3(px, py, pz));
+
+        /* A piece of furniture that leaves the bag should NOT just tumble
+           to the ground like a rifle or a can.  It goes straight into
+           carry mode so the player can aim it and place it deliberately,
+           exactly like a piece lifted off the floor with a hold-E. */
+        if (p && p.isFurniture) {
+            if (inventory && inventory.isOpen) inventory.close();
+            enterFurnitureCarry(p);
+        }
     }
 
     /* ============================================================
@@ -2311,6 +2757,7 @@
 
     function grabPickup(p) {
         if (heldPickup) return;
+        if (p.isFurniture) return;
         heldPickup = p;
         p.settled = false;
         p.carriedBy = 'local';       // tells the physics loop this is ours
@@ -2447,34 +2894,28 @@
         const p = currentPickupTarget || findLookAtPickup(PICKUP_RANGE);
         if (!p) return;
 
-        // Try normal add first
-        const added = inventory.addItem(p.def);
-        if (added) {
-            scene.remove(p.mesh);
-            p.mesh.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
-            const idx = pickups.indexOf(p);
-            if (idx >= 0) pickups.splice(idx, 1);
-            currentPickupTarget = null;
-            if (p.pid && window.ARiveMP && window.ARiveMP.connected) {
-                window.ARiveMP.onLocalPickupRemove(p);
-            }
-            return;
+        const result = attemptInventoryAdd(p.def);
+        if (result === 'none') return;
+
+        /* Item is now either in the grid or in the incoming slot —
+           remove the world entity. */
+        scene.remove(p.mesh);
+        p.mesh.traverse(o => {
+            if (o.geometry) o.geometry.dispose();
+            if (o.material) o.material.dispose();
+        });
+        const idx = pickups.indexOf(p);
+        if (idx >= 0) pickups.splice(idx, 1);
+        currentPickupTarget = null;
+        if (p.pid && window.ARiveMP && window.ARiveMP.connected) {
+            window.ARiveMP.onLocalPickupRemove(p);
         }
 
-        // ===== INVENTORY FULL → SHOW OVERFLOW PANEL =====
-        // Open inventory modal automatically
-        inventory.open();
-        // bind overflow callbacks
-        inventory.onOverflowDropToFloor = (itemDef) => {
-            // drop back to world floor
-            spawnPickup(itemDef, new THREE.Vector3(player.pos.x, player.pos.y + 1.2, player.pos.z));
-            showToast('Item dropped to floor');
-        };
-        inventory.onOverflowSwapComplete = () => {
-            showToast('Item swapped into inventory');
-        };
-        inventory.showOverflowPanel(p.def);
-        // keep original world pickup entity, player can drag‑swap in overflow panel or drop
+        /* If the item landed in the incoming slot or the legacy
+           overflow panel, open the bag so the player can drag it in. */
+        if (result === 'incoming' || result === 'overflow') {
+            inventory.open();
+        }
     }
 
 
@@ -2483,26 +2924,79 @@
            Fixes: items shaking on floor, player kicks sending items flying, item‑vs‑item realistic collision
            ============================================================ */
     function updatePickups(dt) {
-        /* ---------- Prompt / target ---------- */
-        if (heldPickup) {
+        /* ---------- Furniture carry: drive the piece every frame ---------- */
+        if (furnMode) updateFurnitureMode(dt);
+
+        /* ---------- 1-second E-hold → lift furniture ---------- */
+        if (!furnMode && eHeldFurniture && keys['KeyE']) {
+            if (performance.now() - eHeldStart >= E_FURN_HOLD_MS) {
+                enterFurnitureCarry(eHeldFurniture);
+                eHeldFurniture = null;
+            }
+        }
+        /* If the player looked away while holding, cancel the lift. */
+        if (!furnMode && eHeldFurniture) {
+            const still = findLookAtPickup(PICKUP_RANGE);
+            if (still !== eHeldFurniture) eHeldFurniture = null;
+        }
+
+        /* ---------- prompt + targeting ---------- */
+        let showEHoldBar = false;
+        let eHoldBarT = 0;
+
+        if (furnMode) {
             currentPickupTarget = null;
-            updateHeldToolModel();   // hide the tool while carrying
-            pickupPromptEl.textContent = '[LMB]  DROP   ·   HOLD [RMB]  TO CHARGE THROW';
+            updateHeldToolModel();
+            pickupPromptEl.textContent =
+                'Q / E  ROTATE   ·   LMB  PLACE   ·   RMB  STORE';
+            pickupPromptEl.style.opacity = '1';
+        } else if (eHeldFurniture && keys['KeyE']) {
+            currentPickupTarget = null;
+            updateHeldToolModel();
+            eHoldBarT = Math.min(1,
+                (performance.now() - eHeldStart) / E_FURN_HOLD_MS);
+            const pct = Math.round(eHoldBarT * 100);
+            pickupPromptEl.textContent = 'LIFTING…  ' + pct + '%';
+            pickupPromptEl.style.opacity = '1';
+            showEHoldBar = true;
+        } else if (heldPickup) {
+            currentPickupTarget = null;
+            updateHeldToolModel();
+            pickupPromptEl.textContent =
+                '[LMB]  DROP   ·   HOLD [RMB]  TO CHARGE THROW';
             pickupPromptEl.style.opacity = '1';
         } else {
-            currentPickupTarget = (gameRunning && player.alive && !inventory.isOpen && !devMenuActive)
-                ? findLookAtPickup(PICKUP_RANGE)
-                : null;
+            currentPickupTarget =
+                (gameRunning && player.alive && !inventory.isOpen && !devMenuActive)
+                    ? findLookAtPickup(PICKUP_RANGE)
+                    : null;
             updateHeldToolModel();
             if (currentPickupTarget) {
                 const isHand = TOOLS[selectedTool].id === 'hand';
-                pickupPromptEl.textContent = (isHand ? '[LMB]  HOLD  ' : '[E]  PICK UP  ')
-                    + currentPickupTarget.def.name;
+                if (currentPickupTarget.isFurniture) {
+                    pickupPromptEl.textContent =
+                        'HOLD [E]  1s  TO LIFT   ·   ' +
+                        currentPickupTarget.def.name;
+                } else {
+                    pickupPromptEl.textContent =
+                        (isHand ? '[LMB]  HOLD  ' : '[E]  PICK UP  ') +
+                        currentPickupTarget.def.name;
+                }
                 pickupPromptEl.style.opacity = '1';
             } else {
                 pickupPromptEl.style.opacity = '0';
             }
         }
+
+        /* ---------- Hold-E progress bar ---------- */
+        if (showEHoldBar) {
+            const fill = document.getElementById('eHoldBarFill');
+            if (fill) fill.style.width = (eHoldBarT * 100).toFixed(1) + '%';
+            eHoldBarEl.style.opacity = '1';
+        } else {
+            eHoldBarEl.style.opacity = '0';
+        }
+
         /* ---------- Throw‑charge power bar ---------- */
         updateThrowChargeHud();
         /* ---------- White outline on the targeted pickup ---------- */
@@ -2537,12 +3031,11 @@
         for (let i = pickups.length - 1; i >= 0; i--) {
             const p = pickups[i];
 
-            /* --- Pickup currently parented to a remote player's arm —
-                   its transform is driven by that player; skip all
-                   physics and camera-follow logic. --- */
+            /* Item currently parented to a remote player's arm — skip. */
             if (p.carriedBy && p !== heldPickup) continue;
 
-            /* --- Held items: follow the camera, no physics --- */
+            /* Held item — camera-locked, no physics. */
+            /* Held item — camera-locked, no physics. */
             if (p === heldPickup) {
                 _handTarget.copy(_handOffset).applyQuaternion(camera.quaternion).add(camera.position);
                 const k = Math.min(1, dt * 22);
@@ -2561,7 +3054,21 @@
                 computeRotatedAABB(p);
                 continue;
             }
-            /* --- Player bump → kick (true AABB vs AABB) --- */
+
+            /* NEW — furniture preview: position is driven by
+               updateFurnitureMode(); skip every physics branch. */
+            if (furnMode && p === furnMode.p) {
+                computeRotatedAABB(p);
+                continue;
+            }
+
+            /* NEW — locked placed furniture: fully static. */
+            if (p.locked) {
+                computeRotatedAABB(p);
+                continue;
+            }
+
+            /* --- Player bump → kick --- */
             if (gameRunning && player.alive) {
                 const plMinX = player.pos.x - player.halfW;
                 const plMaxX = player.pos.x + player.halfW;
@@ -2614,13 +3121,16 @@
             /* --- Vertical physics — voxel‑precise sweep --- */
             p.vy -= PICKUP_GRAVITY * dt;
             if (p.vy < -30) p.vy = -30;
-            // Safety: if the item is somehow already embedded (rotated into a wall, shoved by the player, etc.), push it free first.
-            {
-                let guard = 0;
-                while (itemHitsVoxels(p) && guard++ < 30) {
-                    p.mesh.position.y += VOXEL * 0.5;
-                }
+
+            /* If the item is already embedded in geometry, push it out
+               along the axis of *least* penetration instead of blindly
+               shoving it upward.  The old while-loop teleported any
+               item that grazed a wall to the top of that wall. */
+            if (itemHitsVoxels(p)) {
+                resolveVoxelPenetration(p);
+                computeRotatedAABB(p);
             }
+
             let onFloor = false;
             const stepY = p.vy * dt;
             if (stepY < 0) {
@@ -2742,6 +3252,10 @@
                         p.mesh.quaternion.copy(_qAlign);
                         seatOnFloor(p);
                         p.settled = true;
+                        /* Furniture anchors the moment it comes to rest:
+                           no further player kick, no debris shove, no
+                           item-vs-item nudge — it stays exactly here. */
+                        if (p.isFurniture) p.locked = true;
                         if (!p.isRemote && p.pid && window.ARiveMP && window.ARiveMP.connected) {
                             window.ARiveMP.onLocalPickupSettled(p);
                         }
@@ -2754,6 +3268,7 @@
                     p.mesh.quaternion.copy(_qAlign);
                     seatOnFloor(p);
                     p.settled = true;
+                    if (p.isFurniture) p.locked = true;
                     if (!p.isRemote && p.pid && window.ARiveMP && window.ARiveMP.connected) {
                         window.ARiveMP.onLocalPickupSettled(p);
                     }
@@ -2797,9 +3312,13 @@
             for (let i = 0; i < N; i++) {
                 const a = pickups[i];
                 if (a === heldPickup) continue;
+                if (a.carriedBy) continue;              // held / carried by a peer
+                if (furnMode && a === furnMode.p) continue;
                 for (let j = i + 1; j < N; j++) {
                     const b = pickups[j];
                     if (b === heldPickup) continue;
+                    if (b.carriedBy) continue;          // held / carried by a peer
+                    if (furnMode && b === furnMode.p) continue;
                     const aMinX = a.mesh.position.x + a.rotMin.x;
                     const aMaxX = a.mesh.position.x + a.rotMax.x;
                     const bMinX = b.mesh.position.x + b.rotMin.x;
@@ -2829,40 +3348,58 @@
                         nz = (a.mesh.position.z < b.mesh.position.z) ? -1 : 1;
                         depth = ovZ;
                     }
+                    const aImm = a.locked, bImm = b.locked;
                     const half = depth * 0.5;
                     const aOldX = a.mesh.position.x, aOldY = a.mesh.position.y, aOldZ = a.mesh.position.z;
                     const bOldX = b.mesh.position.x, bOldY = b.mesh.position.y, bOldZ = b.mesh.position.z;
-                    a.mesh.position.x += nx * half;
-                    a.mesh.position.y += ny * half;
-                    a.mesh.position.z += nz * half;
-                    b.mesh.position.x -= nx * half;
-                    b.mesh.position.y -= ny * half;
-                    b.mesh.position.z -= nz * half;
+                    if (!aImm) {
+                        a.mesh.position.x += nx * (bImm ? depth : half);
+                        a.mesh.position.y += ny * (bImm ? depth : half);
+                        a.mesh.position.z += nz * (bImm ? depth : half);
+                    }
+                    if (!bImm) {
+                        b.mesh.position.x -= nx * (aImm ? depth : half);
+                        b.mesh.position.y -= ny * (aImm ? depth : half);
+                        b.mesh.position.z -= nz * (aImm ? depth : half);
+                    }
+
                     computeRotatedAABB(a);
-                    if (itemHitsVoxels(a)) {
-                        a.mesh.position.x = aOldX; a.mesh.position.y = aOldY; a.mesh.position.z = aOldZ;
+                    if (!aImm && itemHitsVoxels(a)) {
+                        a.mesh.position.x = aOldX;
+                        a.mesh.position.y = aOldY;
+                        a.mesh.position.z = aOldZ;
                         computeRotatedAABB(a);
                     }
                     computeRotatedAABB(b);
-                    if (itemHitsVoxels(b)) {
-                        b.mesh.position.x = bOldX; b.mesh.position.y = bOldY; b.mesh.position.z = bOldZ;
+                    if (!bImm && itemHitsVoxels(b)) {
+                        b.mesh.position.x = bOldX;
+                        b.mesh.position.y = bOldY;
+                        b.mesh.position.z = bOldZ;
                         computeRotatedAABB(b);
                     }
+
                     const relV = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny + (b.vz - a.vz) * nz;
                     if (relV < 0) {
-                        // two‑body collision impulse with mass
-                        const m1 = a.mass;
-                        const m2 = b.mass;
-                        const restitution = 0.22; // bounciness (0=no‑bounce;0.4=rubber)
-                        const j = -(1 + restitution) * relV / (1 / m1 + 1 / m2);
+                        const aImm = a.locked;
+                        const bImm = b.locked;
+                        if (aImm && bImm) continue;    // both immovable — ignore
 
-                        a.vx -= nx * j / m1;
-                        a.vy -= ny * j / m1;
-                        a.vz -= nz * j / m1;
+                        const m1 = aImm ? Infinity : a.mass;
+                        const m2 = bImm ? Infinity : b.mass;
+                        const invSum = (1 / m1) + (1 / m2);   // = 1/mass for movable one
+                        const restitution = 0.22;
+                        const j = -(1 + restitution) * relV / invSum;
 
-                        b.vx += nx * j / m2;
-                        b.vy += ny * j / m2;
-                        b.vz += nz * j / m2;
+                        if (!aImm) {
+                            a.vx -= nx * j / m1;
+                            a.vy -= ny * j / m1;
+                            a.vz -= nz * j / m1;
+                        }
+                        if (!bImm) {
+                            b.vx += nx * j / m2;
+                            b.vy += ny * j / m2;
+                            b.vz += nz * j / m2;
+                        }
 
                         // angular impulse also scaled
                         const tumble = Math.min(4.0, Math.abs(relV) * 1.8);
@@ -2906,9 +3443,34 @@
         }
 
         if (e.code === 'KeyE') {
-            if (gameRunning && player.alive && !inventory.isOpen && !devMenuActive) {
-                e.preventDefault();
+            if (e.repeat) return;
+            if (!gameRunning || !player.alive || inventory.isOpen || devMenuActive) return;
+            e.preventDefault();
+
+            if (furnMode) {
+                /* Carrying a piece: start spinning clockwise 1° per tap. */
+                if (performance.now() - furnMode.liftedAt > E_FURN_ROT_GRACE_MS) {
+                    eHeld = true;
+                    rotateFurnitureBy(FURN_ROT_STEP);
+                }
+                return;
+            }
+
+            const tgt = findLookAtPickup(PICKUP_RANGE);
+            if (tgt && tgt.isFurniture) {
+                eHeldFurniture = tgt;
+                eHeldStart = performance.now();
+            } else {
                 tryPickup();
+            }
+            return;
+        }
+
+        if (e.code === 'KeyQ') {
+            if (furnMode) {
+                qHeld = true;
+                rotateFurnitureBy(-FURN_ROT_STEP);
+                e.preventDefault();
             }
             return;
         }
@@ -2934,6 +3496,15 @@
         keys[e.code] = false;
         if (e.code === 'AltLeft' || e.code === 'AltRight') {
             restorePointerFromAlt();
+        }
+        if (e.code === 'KeyE') {
+            eHeld = false;
+            if (!furnMode && eHeldFurniture) {
+                eHeldFurniture = null;   // cancelled a lift-in-progress
+            }
+        }
+        if (e.code === 'KeyQ') {
+            qHeld = false;
         }
     });
 
@@ -3008,6 +3579,18 @@
     canvas.addEventListener('mousedown', (e) => {
         if (!gameRunning) return;
 
+        /* --- Furniture carry mode captures the mouse --- */
+        if (furnMode) {
+            if (e.button === 0) {          // LMB — place & anchor
+                e.preventDefault();
+                placeFurniture();
+            } else if (e.button === 2) {   // RMB — stow in inventory
+                e.preventDefault();
+                storeFurniture();
+            }
+            return;
+        }
+
         /* If we aren't pointer-locked yet, this click is meant to
            acquire the lock — not to interact with the world.
     
@@ -3040,7 +3623,7 @@
         if (TOOLS[selectedTool].id === 'hand') {
             if (!heldPickup) {
                 const tgt = findLookAtPickup(HAND_RANGE);
-                if (tgt) grabPickup(tgt);
+                if (tgt && !tgt.isFurniture) grabPickup(tgt);
             }
         } else {
             useTool();
@@ -3079,6 +3662,10 @@
     canvas.addEventListener('wheel', (e) => {
         if (!gameRunning) return;
         e.preventDefault();
+        if (furnMode) {
+            rotateFurnitureBy(e.deltaY > 0 ? FURN_ROT_STEP : -FURN_ROT_STEP);
+            return;
+        }
         selectedTool = (selectedTool + (e.deltaY > 0 ? 1 : -1) + TOOLS.length) % TOOLS.length;
         if (heldPickup && TOOLS[selectedTool].id !== 'hand') releasePickup(0);
         renderHotbar();
@@ -3639,10 +4226,9 @@
         const wantCrouch = !!keys['KeyC'];
         let targetCrouchT = wantCrouch ? 1 : 0;
 
-        /* Refuse to stand up if the standing AABB wouldn't fit — this is
-           what stops you popping through a low ceiling. */
+        /* Refuse to stand up if the standing AABB wouldn't fit */
         if (targetCrouchT < player.crouchT &&
-            collidesAABB(player.pos, player.halfW, STAND_HEIGHT)) {
+            collidesPlayer(player.pos, player.halfW, STAND_HEIGHT)) {
             targetCrouchT = player.crouchT;
         }
 
@@ -3689,7 +4275,7 @@
 
         const dy = player.vel.y * dt;
         player.pos.y += dy;
-        if (collidesAABB(player.pos, player.halfW, player.height)) {
+        if (collidesPlayer(player.pos, player.halfW, player.height)) {
             player.pos.y -= dy;
             if (dy < 0) player.onGround = true;
             player.vel.y = 0;
@@ -3700,9 +4286,9 @@
         const dx = player.vel.x * dt;
         if (dx !== 0) {
             player.pos.x += dx;
-            if (collidesAABB(player.pos, hw, hh)) {
-                if (!(player.onGround && tryStepUp(player.pos, hw, hh, STEP_HEIGHT))) {
-                    player.pos.x -= dx;      // only roll back on failure
+            if (collidesPlayer(player.pos, hw, hh)) {
+                if (!(player.onGround && tryStepUp(player.pos, hw, hh, STEP_HEIGHT, collidesPlayer))) {
+                    player.pos.x -= dx;
                     player.vel.x = 0;
                 }
             }
@@ -3710,8 +4296,8 @@
         const dz = player.vel.z * dt;
         if (dz !== 0) {
             player.pos.z += dz;
-            if (collidesAABB(player.pos, hw, hh)) {
-                if (!(player.onGround && tryStepUp(player.pos, hw, hh, STEP_HEIGHT))) {
+            if (collidesPlayer(player.pos, hw, hh)) {
+                if (!(player.onGround && tryStepUp(player.pos, hw, hh, STEP_HEIGHT, collidesPlayer))) {
                     player.pos.z -= dz;
                     player.vel.z = 0;
                 }
@@ -4758,8 +5344,9 @@
         resizeRenderer();
         clearWorld();
 
+        await initItemsAndInventory();           // ← furniture folder + icons + bag
         mergeLocalStructures();                  // localStorage → ARIVE_STRUCTURES
-        await loadStructuresFromFolder();        // ← NEW: fetch every .json in index.js
+        await loadStructuresFromFolder();        // fetch every structure .json in index.js
 
         const seed = (forceSeed !== undefined && forceSeed !== null)
             ? forceSeed

@@ -246,7 +246,7 @@
             border: 1px solid var(--border);
             cursor: pointer;
         }
-        
+
         select:hover {
             border-color: var(--gold);
         }
@@ -472,6 +472,17 @@
         #libraryList button:hover {
             background: #2a3650 !important;
         }
+
+        /* FURNITURE tool block — only shown while the furniture tool is active */
+        #furnitureModeBlock {
+            display: none;
+        }
+
+        #furnitureModeBlock.visible {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
     </style>
 </head>
 
@@ -522,6 +533,7 @@
             <button class="tool-btn" data-tool="erase-box">ERASE BOX</button>
             <button class="tool-btn" data-tool="replace-box">REPLACE BOX</button>
             <button class="tool-btn" data-tool="line">LINE</button>
+            <button class="tool-btn" data-tool="furniture">FURNITURE</button>
         </div>
 
         <!-- Box-mode controls: only shown while BOX is the active tool -->
@@ -552,7 +564,27 @@
                 <select id="targetBlockSelect" style="width:120px;"></select>
             </div>
             <div class="row">
-                <button id="btnGlobalReplace" style="flex:1; border-color: var(--ok); color: var(--ok);">REPLACE ALL IN STRUCTURE</button>
+                <button id="btnGlobalReplace" style="flex:1; border-color: var(--ok); color: var(--ok);">REPLACE ALL IN
+                    STRUCTURE</button>
+            </div>
+        </div>
+
+        <!-- Furniture controls: only shown while FURNITURE is active -->
+        <div id="furnitureModeBlock">
+            <div class="section" style="margin-top:2px;">FURNITURE BOX</div>
+            <div class="tool-group" id="furnitureSizeGroup">
+                <button data-furn-size="small">SMALL</button>
+                <button data-furn-size="medium" class="active">MEDIUM</button>
+                <button data-furn-size="large">LARGE</button>
+            </div>
+            <div class="row" style="margin-top:4px;">
+                <button id="btnClearFurniture" style="flex:1; border-color: #c06060; color: #c06060;">
+                    CLEAR ALL FURNITURE BOXES
+                </button>
+            </div>
+            <div style="font-size:9px;color:#7a8794;line-height:1.5;">
+                Click empty space to drop a box.<br>
+                Click an existing box to remove it.
             </div>
         </div>
 
@@ -601,7 +633,8 @@
         <b>LMB drag</b> paint · <b>RMB drag</b> orbit · <b>MMB drag</b> pan · <b>Wheel</b> zoom<br>
         <b>BOX / ERASE BOX / REPLACE BOX / LINE</b> A → ghost → B · <b>RMB / ESC</b> cancel<br>
         <b>Q/E</b> layer −/+ · <b>[ / ]</b> brush −/+ · <b>M</b> mirror X · <b>Shift+M</b> mirror Z<br>
-        <b>R</b> randomizer · <b>P</b> player ref · <b>C</b> paint · <b>L</b> line · <b>F</b> fullscreen · <b>1..9</b> block · <b>Ctrl+Z/Y</b> undo/redo
+        <b>R</b> randomizer · <b>P</b> player ref · <b>C</b> paint · <b>L</b> line · <b>F</b> fullscreen · <b>1..9</b>
+        block · <b>Ctrl+Z/Y</b> undo/redo
     </div>
 
     <div id="status">
@@ -616,6 +649,7 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="../assets/model/structureModel/index.js"></script>
+    <script src="../assets/model/furnitureModel.js"></script>
     <script>
         /* ============================================================
            EARLY DIAGNOSTIC — runs the moment index.js has loaded
@@ -822,6 +856,13 @@
             /* ---------- line tool state ---------- */
             let lineStart = null; // Ensure this is defined!
             let lineWidth = 1; // 1, 3, 5, 7
+
+            /* ---------- furniture-box tool state ---------- */
+            let furnitureBoxes = [];               // [{ x, y, z, size }]
+            let furnitureSize = 'medium';         // 'small' | 'medium' | 'large'
+
+            const FURN_BOX_DIMS = { small: 3, medium: 6, large: 10 };
+            const FURN_COLOR = 0xffa040;
 
             const undoStack = [];
             const redoStack = [];
@@ -1154,6 +1195,95 @@
             }
 
             /* ============================================================
+   FURNITURE BOXES — committed markers + hover ghost
+   ============================================================ */
+            const furnitureGroup = new THREE.Group();
+            scene.add(furnitureGroup);
+
+            function buildFurnitureVisuals() {
+                while (furnitureGroup.children.length) {
+                    const c = furnitureGroup.children.pop();
+                    if (c.geometry) c.geometry.dispose();
+                    if (c.material) c.material.dispose();
+                }
+                for (const fb of furnitureBoxes) {
+                    const d = FURN_BOX_DIMS[fb.size] || 6;
+                    const cx = fb.x + d * 0.5;
+                    const cy = fb.y + d * 0.5;
+                    const cz = fb.z + d * 0.5;
+
+                    const wire = new THREE.LineSegments(
+                        new THREE.EdgesGeometry(new THREE.BoxGeometry(d, d, d)),
+                        new THREE.LineBasicMaterial({
+                            color: FURN_COLOR,
+                            transparent: true, opacity: 0.9,
+                            depthTest: false, depthWrite: false
+                        })
+                    );
+                    wire.position.set(cx, cy, cz);
+                    wire.renderOrder = 996;
+                    furnitureGroup.add(wire);
+
+                    const fill = new THREE.Mesh(
+                        new THREE.BoxGeometry(d, d, d),
+                        new THREE.MeshBasicMaterial({
+                            color: FURN_COLOR, transparent: true, opacity: 0.10,
+                            depthTest: false, depthWrite: false,
+                            side: THREE.DoubleSide
+                        })
+                    );
+                    fill.position.set(cx, cy, cz);
+                    fill.renderOrder = 995;
+                    furnitureGroup.add(fill);
+                }
+            }
+
+            let furnitureGhost = null;
+            function updateFurnitureGhost(cell) {
+                if (!cell) {
+                    if (furnitureGhost) furnitureGhost.visible = false;
+                    return;
+                }
+                const d = FURN_BOX_DIMS[furnitureSize] || 6;
+                if (!furnitureGhost) {
+                    const g = new THREE.Group();
+                    const wire = new THREE.LineSegments(
+                        new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
+                        new THREE.LineBasicMaterial({
+                            color: FURN_COLOR,
+                            transparent: true, opacity: 0.95,
+                            depthTest: false, depthWrite: false
+                        })
+                    );
+                    wire.renderOrder = 998;
+                    const fill = new THREE.Mesh(
+                        new THREE.BoxGeometry(1, 1, 1),
+                        new THREE.MeshBasicMaterial({
+                            color: FURN_COLOR, transparent: true, opacity: 0.15,
+                            depthTest: false, depthWrite: false,
+                            side: THREE.DoubleSide
+                        })
+                    );
+                    fill.renderOrder = 997;
+                    g.add(wire);
+                    g.add(fill);
+                    scene.add(g);
+                    furnitureGhost = g;
+                }
+                furnitureGhost.visible = true;
+                furnitureGhost.position.set(
+                    cell.x + d * 0.5,
+                    cell.y + d * 0.5,
+                    cell.z + d * 0.5
+                );
+                furnitureGhost.children[0].scale.set(d, d, d);
+                furnitureGhost.children[1].scale.set(d, d, d);
+            }
+            function hideFurnitureGhost() {
+                if (furnitureGhost) furnitureGhost.visible = false;
+            }
+
+            /* ============================================================
                CELL GENERATION HELPERS
                ============================================================ */
             function computeBoxCells(a, b) {
@@ -1208,13 +1338,13 @@
 
                 const offsets = getOffsetsForSize(width);
                 const thickSet = new Set();
-                
+
                 for (const [cx, cy, cz] of centerCells) {
                     for (const [dx, dy, dz] of offsets) {
                         thickSet.add(`${cx + dx},${cy + dy},${cz + dz}`);
                     }
                 }
-                
+
                 return Array.from(thickSet).map(str => {
                     const [x, y, z] = str.split(',').map(Number);
                     return [x, y, z];
@@ -1446,7 +1576,7 @@
                 if (!r) return null;
                 if (r.hit === 'voxel') {
                     // Tools that target the adjacent empty space
-                    if (['place', 'box', 'line'].includes(currentTool))
+                    if (['place', 'box', 'line', 'furniture'].includes(currentTool))
                         return { x: r.x + r.nx, y: r.y + r.ny, z: r.z + r.nz };
                     // Tools that target the voxel itself (erase, paint, pick, erase-box, replace-box)
                     return { x: r.x, y: r.y, z: r.z };
@@ -1488,6 +1618,13 @@
                     updateLineGhost(lineStart, t);
                 } else {
                     hideLineGhost();
+                }
+
+                /* ---- FURNITURE box preview ---- */
+                if (currentTool === 'furniture' && t && inBounds(t.x, t.y, t.z)) {
+                    updateFurnitureGhost(t);
+                } else {
+                    hideFurnitureGhost();
                 }
             }
 
@@ -1605,6 +1742,30 @@
                         commit();
                         toast('LINE drawn — ' + cells.length + ' blocks');
                     }
+                } else if (currentTool === 'furniture') {
+                    /* Clicking inside an existing furniture box removes it. */
+                    let removed = false;
+                    for (let i = furnitureBoxes.length - 1; i >= 0; i--) {
+                        const fb = furnitureBoxes[i];
+                        const d = FURN_BOX_DIMS[fb.size] || 6;
+                        if (target.x >= fb.x && target.x < fb.x + d &&
+                            target.z >= fb.z && target.z < fb.z + d &&
+                            target.y >= fb.y && target.y < fb.y + d) {
+                            furnitureBoxes.splice(i, 1);
+                            removed = true;
+                            toast('FURNITURE BOX removed');
+                            break;
+                        }
+                    }
+                    if (!removed) {
+                        furnitureBoxes.push({
+                            x: target.x, y: target.y, z: target.z,
+                            size: furnitureSize
+                        });
+                        toast('FURNITURE BOX placed (' + furnitureSize.toUpperCase() + ')');
+                    }
+                    buildFurnitureVisuals();
+                    commit();
                 }
             }
 
@@ -1618,12 +1779,20 @@
             /* ============================================================
                UNDO / REDO
                ============================================================ */
-            function snapshot() { return Array.from(grid.entries()); }
+            function snapshot() {
+                return {
+                    grid: Array.from(grid.entries()),
+                    furniture: furnitureBoxes.slice()
+                };
+            }
             function restoreSnapshot(snap) {
                 grid.clear();
-                for (const [k, v] of snap) grid.set(k, v);
+                for (const [k, v] of snap.grid) grid.set(k, v);
                 rebuildAll();
+                furnitureBoxes = snap.furniture.slice();
+                buildFurnitureVisuals();
             }
+
             function commit() {
                 undoStack.push(snapshot());
                 if (undoStack.length > MAX_HISTORY) undoStack.shift();
@@ -1753,6 +1922,7 @@
             function setStructures(a) {
                 try { localStorage.setItem(STORAGE_KEY, JSON.stringify(a)); } catch (e) { }
             }
+
             function buildObj() {
                 const blocks = [];
                 for (const [key, id] of grid) {
@@ -1764,9 +1934,11 @@
                     name: structName || 'Untitled',
                     size: [structW, structH, structD],
                     spawn: existing ? !!existing.spawn : false,
-                    blocks
+                    blocks,
+                    furniture: furnitureBoxes.slice()
                 };
             }
+
             function loadObj(obj) {
                 clearAll();
                 structName = obj.name || 'Untitled';
@@ -1778,7 +1950,10 @@
                 document.getElementById('strH').value = structH;
                 document.getElementById('strD').value = structD;
                 for (const [x, y, z, id] of (obj.blocks || [])) grid.set(x + ',' + y + ',' + z, id);
+                furnitureBoxes = Array.isArray(obj.furniture) ? obj.furniture.slice() : [];
                 rebuildAll(); rebuildFloor();
+                buildFurnitureVisuals();
+
                 orbit.target.set(structW / 2, 4, structD / 2);
                 updateCamera(); updateStatus(); refreshStructureList();
                 undoStack.length = 0; redoStack.length = 0;
@@ -1988,10 +2163,29 @@
                         currentTool = b.dataset.tool;
                         boxStart = null; hideAllBoxGhosts();
                         lineStart = null; hideLineGhost();
+                        if (currentTool !== 'furniture') hideFurnitureGhost();
+
                         refreshToolButtons();
                         refreshBoxModeBlock();
                         refreshReplaceModeBlock();
+                        refreshFurnitureModeBlock();
                         updateModeDisplay();
+                    };
+                });
+            }
+
+            function refreshFurnitureModeBlock() {
+                const block = document.getElementById('furnitureModeBlock');
+                block.classList.toggle('visible', currentTool === 'furniture');
+            }
+
+            function refreshFurnitureSizeButtons() {
+                document.querySelectorAll('#furnitureSizeGroup button').forEach(b => {
+                    b.classList.toggle('active', b.dataset.furnSize === furnitureSize);
+                    b.onclick = () => {
+                        furnitureSize = b.dataset.furnSize;
+                        refreshFurnitureSizeButtons();
+                        toast('FURNITURE SIZE: ' + furnitureSize.toUpperCase());
                     };
                 });
             }
@@ -2561,11 +2755,25 @@ ${body}
 
             refreshBlockButtons();
             bindSortSelect();
+
             refreshToolButtons();
             refreshBoxModeButtons();
             refreshBoxModeBlock();
             refreshTargetBlockSelect();
             refreshReplaceModeBlock();
+            refreshFurnitureModeBlock();
+            refreshFurnitureSizeButtons();
+            buildFurnitureVisuals();
+
+            document.getElementById('btnClearFurniture').onclick = () => {
+                if (!furnitureBoxes.length) return;
+                if (!confirm('Remove all furniture boxes?')) return;
+                furnitureBoxes = [];
+                buildFurnitureVisuals();
+                commit();
+                toast('FURNITURE BOXES CLEARED');
+            };
+
             bindThicknessInput();
             refreshBrushButtons();
             refreshMirrorButtons();
