@@ -46,7 +46,7 @@
         <div id="scrap"><b id="scrapCount">0</b> <span>SCRAP</span></div>
         <div id="hotbar"></div>
 
-        <div id="mpBadge" style="display:none; position:absolute; top:14px; left:18px;
+        <div id="mpBadge" style="display:none; position:absolute; top:14px; right:18px;
              font-size:11px; letter-spacing:1px; color:#e8c86a;
              text-shadow:0 1px 0 #000,0 0 8px rgba(232,200,106,.45);"></div>
 
@@ -56,8 +56,8 @@
             <span id="peers">SURVIVORS 1</span>
         </div>
 
-        <div id="hint">LMB use tool &nbsp;·&nbsp; 1-7 select &nbsp;·&nbsp; WHEEL cycle &nbsp;·&nbsp; E pick up
-            &nbsp;·&nbsp; HAND = grab &nbsp;·&nbsp; TAB bag &nbsp;·&nbsp; ESC menu</div>
+        <div id="hint">1/2 gun &nbsp;·&nbsp; 3-7 tool &nbsp;·&nbsp; LMB fire/use &nbsp;·&nbsp; RMB scope &nbsp;·&nbsp; R
+            reload &nbsp;·&nbsp; E pick up &nbsp;·&nbsp; TAB bag &nbsp;·&nbsp; ESC menu</div>
 
         <!-- NEW: dev tools panel (sandbox map only) -->
         <div id="devMenu" class="hidden">
@@ -101,7 +101,7 @@
     <div id="loading" class="screen hidden">
         <div class="panel">
             <h1 class="glow">GENERATING RUINS…</h1>
-            <p class="sub">Filling 6,291,456 voxels · carving streets · raising towers</p>
+            <p class="sub">Streaming terrain around you · carving streets · raising towers</p>
             <div id="progressWrap">
                 <div id="progressBar"></div>
             </div>
@@ -137,7 +137,9 @@
                 <div><b>SPACE</b><span>Jump</span></div>
                 <div><b>SHIFT</b><span>Sprint</span></div>
                 <div><b>LMB</b><span>Use tool</span></div>
-                <div><b>1 – 6</b><span>Select tool</span></div>
+                <div><b>1 / 2</b><span>Weapon slot</span></div>
+                <div><b>3 – 7</b><span>Select tool</span></div>
+                <div><b>R</b><span>Reload</span></div>
                 <div><b>TAB</b><span>Inventory</span></div>
                 <div><b>G</b><span>Dev tools (sandbox)</span></div>
                 <div><b>ESC</b><span>Pause</span></div>
@@ -182,6 +184,22 @@
                     <label for="setSensitivity">MOUSE SENSITIVITY</label>
                     <span class="setting-value" id="setSensitivityVal">x1.0</span>
                     <input type="range" id="setSensitivity" min="0.2" max="3" step="0.1" value="1">
+                </div>
+                <div class="setting-row">
+                    <label for="setViewChunks">VIEWING CHUNKS</label>
+                    <span class="setting-value" id="setViewChunksVal">6</span>
+                    <input type="range" id="setViewChunks" min="3" max="12" step="1" value="6">
+                </div>
+                <div class="setting-row">
+                    <label for="setMasterVolume">MASTER VOLUME</label>
+                    <input type="range" id="setMasterVolume" min="0" max="1" step="0.05" value="1">
+                    <span id="setMasterVolumeVal" class="set-val">100%</span>
+                </div>
+
+                <div class="setting-row">
+                    <label for="setSeVolume">SE VOLUME</label>
+                    <input type="range" id="setSeVolume" min="0" max="1" step="0.05" value="1">
+                    <span id="setSeVolumeVal" class="set-val">100%</span>
                 </div>
             </div>
 
@@ -257,6 +275,9 @@
     <script src="assets/model/toolModels.js"></script>
     <script src="assets/model/itemModels.js"></script>
 
+    <script src="assets/model/weaponModel.js"></script>
+    <script src="assets/model/weaponModel/index.js"></script>
+
     <script src="assets/model/structureModel.js"></script>
     <script src="assets/model/structureModel/index.js"></script>
 
@@ -265,9 +286,16 @@
 
     <!-- Main.js -->
 
+    <script src="sfx.js"></script>
+    <script src="weaponSound.js"></script>
+    <script src="weapons.js"></script>
+
     <script src="inventory.js"></script>
+    <script src="map.js"></script>
     <script src="game.js"></script>
+
     <script src="multiplayer.js"></script>
+
 </body>
 
 </html>

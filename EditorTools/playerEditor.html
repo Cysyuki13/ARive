@@ -6,283 +6,607 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Player Model Editor — Ruin City</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-        html, body {
-            width: 100%; height: 100%; overflow: hidden;
-            background: #0a0d12; color: #dfe4ea;
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #0a0d12;
+            color: #dfe4ea;
             font-family: "Courier New", Courier, monospace;
             font-size: 12px;
         }
 
-        #app { display: flex; height: 100vh; }
+        #app {
+            display: flex;
+            height: 100vh;
+        }
 
         #viewport {
-            flex: 1; position: relative;
-            background: #10141a; overflow: hidden;
+            flex: 1;
+            position: relative;
+            background: #10141a;
+            overflow: hidden;
         }
-        #viewport canvas { display: block; }
+
+        #viewport canvas {
+            display: block;
+        }
 
         /* ---------- Viewport toolbar ---------- */
         #toolbar {
-            position: absolute; top: 12px; left: 12px; right: 12px;
-            display: flex; align-items: center; gap: 10px;
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            right: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
             padding: 8px 12px;
             background: rgba(10, 14, 20, 0.85);
             border: 2px solid #232b36;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
-            font-size: 11px; flex-wrap: wrap; z-index: 10;
+            font-size: 11px;
+            flex-wrap: wrap;
+            z-index: 10;
         }
+
         #toolbar button {
-            font-family: inherit; font-size: 11px; padding: 5px 12px;
-            letter-spacing: 1px; color: #b8c8d8; background: #141c26;
-            border: 1px solid #2a3a4a; cursor: pointer;
+            font-family: inherit;
+            font-size: 11px;
+            padding: 5px 12px;
+            letter-spacing: 1px;
+            color: #b8c8d8;
+            background: #141c26;
+            border: 1px solid #2a3a4a;
+            cursor: pointer;
         }
+
         #toolbar button.active {
-            background: #2a3a4a; color: #e8c86a; border-color: #e8c86a;
+            background: #2a3a4a;
+            color: #e8c86a;
+            border-color: #e8c86a;
         }
-        #toolbar button:hover { background: #1a2530; }
+
+        #toolbar button:hover {
+            background: #1a2530;
+        }
+
         #toolbar label {
-            display: flex; align-items: center; gap: 6px;
-            color: #8a96a4; letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: #8a96a4;
+            letter-spacing: 0.5px;
         }
-        #toolbar .spacer { flex: 1; }
-        #toolbar input[type="range"] { width: 90px; }
+
+        #toolbar .spacer {
+            flex: 1;
+        }
+
+        #toolbar input[type="range"] {
+            width: 90px;
+        }
 
         /* ---------- Side panel ---------- */
         #panel {
-            width: 400px; background: #0e1116;
+            width: 400px;
+            background: #0e1116;
             border-left: 2px solid #232b36;
-            display: flex; flex-direction: column; overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
+
         #panel header {
             padding: 16px 18px 14px;
-            border-bottom: 2px solid #232b36; background: #0a0d12;
+            border-bottom: 2px solid #232b36;
+            background: #0a0d12;
         }
+
         #panel header h1 {
-            font-size: 14px; letter-spacing: 4px; color: #e8c86a;
+            font-size: 14px;
+            letter-spacing: 4px;
+            color: #e8c86a;
             text-shadow: 2px 2px 0 #05070a;
         }
-        #panel header .sub {
-            font-size: 10px; color: #5a6a7a; margin-top: 4px; letter-spacing: 1px;
-        }
-        #controls { flex: 1; overflow-y: auto; padding-bottom: 12px; }
-        #controls::-webkit-scrollbar { width: 8px; }
-        #controls::-webkit-scrollbar-thumb { background: #2a3a4a; }
-        #controls::-webkit-scrollbar-track { background: #0a0d12; }
 
-        details { border-bottom: 1px solid #1a2028; }
-        details[open] summary { background: #121820; }
+        #panel header .sub {
+            font-size: 10px;
+            color: #5a6a7a;
+            margin-top: 4px;
+            letter-spacing: 1px;
+        }
+
+        #controls {
+            flex: 1;
+            overflow-y: auto;
+            padding-bottom: 12px;
+        }
+
+        #controls::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #controls::-webkit-scrollbar-thumb {
+            background: #2a3a4a;
+        }
+
+        #controls::-webkit-scrollbar-track {
+            background: #0a0d12;
+        }
+
+        details {
+            border-bottom: 1px solid #1a2028;
+        }
+
+        details[open] summary {
+            background: #121820;
+        }
+
         summary {
-            padding: 10px 18px; font-size: 10px; letter-spacing: 3px;
-            color: #6ac8e8; cursor: pointer; list-style: none;
-            user-select: none; border-left: 3px solid transparent;
+            padding: 10px 18px;
+            font-size: 10px;
+            letter-spacing: 3px;
+            color: #6ac8e8;
+            cursor: pointer;
+            list-style: none;
+            user-select: none;
+            border-left: 3px solid transparent;
             transition: border-color .1s, background .1s;
         }
-        summary::-webkit-details-marker { display: none; }
-        summary::before { content: "▸ "; color: #5a6a7a; }
-        details[open] summary::before { content: "▾ "; color: #6ac8e8; }
-        summary:hover { border-left-color: #6ac8e8; }
+
+        summary::-webkit-details-marker {
+            display: none;
+        }
+
+        summary::before {
+            content: "▸ ";
+            color: #5a6a7a;
+        }
+
+        details[open] summary::before {
+            content: "▾ ";
+            color: #6ac8e8;
+        }
+
+        summary:hover {
+            border-left-color: #6ac8e8;
+        }
 
         .entry {
             display: grid;
             grid-template-columns: 100px 1fr 62px;
-            gap: 8px; align-items: center; padding: 5px 18px;
+            gap: 8px;
+            align-items: center;
+            padding: 5px 18px;
         }
+
         .entry .lbl {
-            font-size: 10px; color: #8a96a4; letter-spacing: 0.5px;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            font-size: 10px;
+            color: #8a96a4;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
+
         .entry input[type="range"] {
-            width: 100%; height: 3px; background: #1a2028;
-            appearance: none; -webkit-appearance: none;
-            outline: none; cursor: pointer;
+            width: 100%;
+            height: 3px;
+            background: #1a2028;
+            appearance: none;
+            -webkit-appearance: none;
+            outline: none;
+            cursor: pointer;
         }
+
         .entry input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none; width: 12px; height: 12px;
-            background: #6ac8e8; border: 1px solid #0a0d12; cursor: grab;
+            -webkit-appearance: none;
+            width: 12px;
+            height: 12px;
+            background: #6ac8e8;
+            border: 1px solid #0a0d12;
+            cursor: grab;
         }
+
         .entry input[type="range"]::-moz-range-thumb {
-            width: 12px; height: 12px; background: #6ac8e8;
-            border: 1px solid #0a0d12; cursor: grab;
+            width: 12px;
+            height: 12px;
+            background: #6ac8e8;
+            border: 1px solid #0a0d12;
+            cursor: grab;
         }
+
         .entry input[type="number"] {
-            width: 100%; font-family: inherit; font-size: 10px;
-            padding: 3px 4px; background: #141c26; border: 1px solid #2a3a4a;
-            color: #dfe4ea; outline: none; text-align: right;
+            width: 100%;
+            font-family: inherit;
+            font-size: 10px;
+            padding: 3px 4px;
+            background: #141c26;
+            border: 1px solid #2a3a4a;
+            color: #dfe4ea;
+            outline: none;
+            text-align: right;
         }
-        .entry input[type="number"]:focus { border-color: #6ac8e8; }
+
+        .entry input[type="number"]:focus {
+            border-color: #6ac8e8;
+        }
+
         .entry input[type="color"] {
-            width: 40px; height: 20px; background: none;
-            border: 1px solid #2a3a4a; padding: 0; cursor: pointer;
+            width: 40px;
+            height: 20px;
+            background: none;
+            border: 1px solid #2a3a4a;
+            padding: 0;
+            cursor: pointer;
         }
+
         .entry select {
-            font-family: inherit; font-size: 10px; padding: 4px 6px;
-            background: #141c26; border: 1px solid #2a3a4a;
-            color: #dfe4ea; outline: none; width: 100%; cursor: pointer;
+            font-family: inherit;
+            font-size: 10px;
+            padding: 4px 6px;
+            background: #141c26;
+            border: 1px solid #2a3a4a;
+            color: #dfe4ea;
+            outline: none;
+            width: 100%;
+            cursor: pointer;
             grid-column: 2 / 4;
         }
-        .entry select:focus { border-color: #6ac8e8; }
+
+        .entry select:focus {
+            border-color: #6ac8e8;
+        }
 
         /* ---------- Parts editor (avatar accessories) ---------- */
         .part-card {
-            margin: 6px 14px 10px; padding: 10px 10px 6px;
-            background: #10141a; border: 1px solid #232b36;
+            margin: 6px 14px 10px;
+            padding: 10px 10px 6px;
+            background: #10141a;
+            border: 1px solid #232b36;
             border-left: 3px solid #6ac8e8;
         }
+
         .part-head {
-            display: flex; justify-content: space-between;
-            align-items: center; margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
         }
+
         .part-head b {
-            font-size: 10px; letter-spacing: 2px; color: #6ac8e8;
+            font-size: 10px;
+            letter-spacing: 2px;
+            color: #6ac8e8;
         }
+
         .part-head button {
-            font-family: inherit; font-size: 10px; padding: 2px 8px;
-            background: #2a1418; color: #e08a8a; border: 1px solid #4a2a2a;
-            cursor: pointer; letter-spacing: 1px;
+            font-family: inherit;
+            font-size: 10px;
+            padding: 2px 8px;
+            background: #2a1418;
+            color: #e08a8a;
+            border: 1px solid #4a2a2a;
+            cursor: pointer;
+            letter-spacing: 1px;
         }
-        .part-head button:hover { background: #4a2020; color: #ffc8c8; }
+
+        .part-head button:hover {
+            background: #4a2020;
+            color: #ffc8c8;
+        }
+
         .part-row {
-            display: grid; grid-template-columns: 60px 1fr 46px;
-            gap: 6px; align-items: center; padding: 3px 0;
+            display: grid;
+            grid-template-columns: 60px 1fr 46px;
+            gap: 6px;
+            align-items: center;
+            padding: 3px 0;
         }
-        .part-row .lbl { font-size: 9px; color: #7a8a9a; letter-spacing: 0.3px; }
+
+        .part-row .lbl {
+            font-size: 9px;
+            color: #7a8a9a;
+            letter-spacing: 0.3px;
+        }
+
         .part-row input[type="range"] {
-            width: 100%; height: 3px; background: #1a2028;
-            appearance: none; -webkit-appearance: none; outline: none;
+            width: 100%;
+            height: 3px;
+            background: #1a2028;
+            appearance: none;
+            -webkit-appearance: none;
+            outline: none;
             cursor: pointer;
         }
+
         .part-row input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none; width: 10px; height: 10px;
-            background: #6ac8e8; border: 1px solid #0a0d12; cursor: grab;
+            -webkit-appearance: none;
+            width: 10px;
+            height: 10px;
+            background: #6ac8e8;
+            border: 1px solid #0a0d12;
+            cursor: grab;
         }
+
         .part-row input[type="number"] {
-            width: 100%; font-family: inherit; font-size: 9px;
-            padding: 2px 3px; background: #141c26; border: 1px solid #2a3a4a;
-            color: #dfe4ea; outline: none; text-align: right;
+            width: 100%;
+            font-family: inherit;
+            font-size: 9px;
+            padding: 2px 3px;
+            background: #141c26;
+            border: 1px solid #2a3a4a;
+            color: #dfe4ea;
+            outline: none;
+            text-align: right;
         }
+
         .part-row select {
-            grid-column: 2 / 4; font-family: inherit; font-size: 10px;
-            padding: 3px 5px; background: #141c26;
-            border: 1px solid #2a3a4a; color: #dfe4ea;
-            outline: none; cursor: pointer;
+            grid-column: 2 / 4;
+            font-family: inherit;
+            font-size: 10px;
+            padding: 3px 5px;
+            background: #141c26;
+            border: 1px solid #2a3a4a;
+            color: #dfe4ea;
+            outline: none;
+            cursor: pointer;
         }
+
         .add-part-btn {
-            display: block; width: calc(100% - 28px); margin: 4px 14px 12px;
-            font-family: inherit; font-size: 11px; letter-spacing: 2px;
-            padding: 8px; background: #142028; color: #6ac8e8;
-            border: 1px dashed #2a5a6a; cursor: pointer;
+            display: block;
+            width: calc(100% - 28px);
+            margin: 4px 14px 12px;
+            font-family: inherit;
+            font-size: 11px;
+            letter-spacing: 2px;
+            padding: 8px;
+            background: #142028;
+            color: #6ac8e8;
+            border: 1px dashed #2a5a6a;
+            cursor: pointer;
         }
-        .add-part-btn:hover { background: #1a2c38; color: #a8e8ff; }
+
+        .add-part-btn:hover {
+            background: #1a2c38;
+            color: #a8e8ff;
+        }
 
         /* ---------- Import / Export section ---------- */
-        .io-wrap { padding: 10px 18px 16px; }
+        .io-wrap {
+            padding: 10px 18px 16px;
+        }
+
         .io-help {
-            font-size: 10px; line-height: 1.6; color: #7a8a9a;
-            letter-spacing: 0.3px; margin-bottom: 10px;
-            border-left: 2px solid #2a3a4a; padding-left: 10px;
+            font-size: 10px;
+            line-height: 1.6;
+            color: #7a8a9a;
+            letter-spacing: 0.3px;
+            margin-bottom: 10px;
+            border-left: 2px solid #2a3a4a;
+            padding-left: 10px;
         }
-        .io-help b { color: #e8c86a; }
+
+        .io-help b {
+            color: #e8c86a;
+        }
+
         .io-help code {
-            color: #6ac8e8; font-family: inherit;
-            background: #10141a; padding: 1px 4px;
+            color: #6ac8e8;
+            font-family: inherit;
+            background: #10141a;
+            padding: 1px 4px;
         }
+
         .io-textarea {
-            width: 100%; min-height: 140px; max-height: 260px;
-            resize: vertical; font-family: inherit; font-size: 10px;
-            line-height: 1.5; padding: 8px 10px;
-            background: #0a0d12; border: 1px solid #2a3a4a;
-            color: #dfe4ea; outline: none;
-            white-space: pre; overflow: auto;
+            width: 100%;
+            min-height: 140px;
+            max-height: 260px;
+            resize: vertical;
+            font-family: inherit;
+            font-size: 10px;
+            line-height: 1.5;
+            padding: 8px 10px;
+            background: #0a0d12;
+            border: 1px solid #2a3a4a;
+            color: #dfe4ea;
+            outline: none;
+            white-space: pre;
+            overflow: auto;
         }
-        .io-textarea:focus { border-color: #6ac8e8; }
-        .io-row { display: flex; gap: 8px; margin-top: 8px; }
+
+        .io-textarea:focus {
+            border-color: #6ac8e8;
+        }
+
+        .io-row {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
         .io-row button {
-            flex: 1; font-family: inherit; font-size: 11px;
-            padding: 8px 10px; letter-spacing: 2px; cursor: pointer;
-            border: 2px solid #2a3a4a; background: #141c26; color: #b8c8d8;
+            flex: 1;
+            font-family: inherit;
+            font-size: 11px;
+            padding: 8px 10px;
+            letter-spacing: 2px;
+            cursor: pointer;
+            border: 2px solid #2a3a4a;
+            background: #141c26;
+            color: #b8c8d8;
         }
+
         .io-row button.primary {
-            background: #e8c86a; color: #0b0f14;
-            border-color: #f6e2a6; font-weight: bold;
+            background: #e8c86a;
+            color: #0b0f14;
+            border-color: #f6e2a6;
+            font-weight: bold;
         }
-        .io-row button.primary:hover { background: #f6dd8b; }
+
+        .io-row button.primary:hover {
+            background: #f6dd8b;
+        }
+
         .io-row button:hover:not(.primary) {
-            background: #1a2530; color: #e8f2ff; border-color: #6ac8e8;
+            background: #1a2530;
+            color: #e8f2ff;
+            border-color: #6ac8e8;
         }
-        .io-row button:active { transform: translateY(1px); }
+
+        .io-row button:active {
+            transform: translateY(1px);
+        }
+
         .io-status {
-            margin-top: 8px; font-size: 10px; letter-spacing: 1px;
-            min-height: 14px; color: #6ac8e8;
+            margin-top: 8px;
+            font-size: 10px;
+            letter-spacing: 1px;
+            min-height: 14px;
+            color: #6ac8e8;
         }
-        .io-status.err { color: #e05a5a; }
-        .io-status.ok { color: #7ad07a; }
+
+        .io-status.err {
+            color: #e05a5a;
+        }
+
+        .io-status.ok {
+            color: #7ad07a;
+        }
 
         /* ---------- Footer ---------- */
         #panel footer {
-            padding: 12px 18px; border-top: 2px solid #232b36;
-            background: #0a0d12; display: flex; gap: 8px;
+            padding: 12px 18px;
+            border-top: 2px solid #232b36;
+            background: #0a0d12;
+            display: flex;
+            gap: 8px;
         }
+
         #panel footer button {
-            font-family: inherit; font-size: 11px; padding: 9px 14px;
-            letter-spacing: 2px; cursor: pointer;
-            border: 2px solid #2a3a4a; background: #141c26; color: #b8c8d8;
+            font-family: inherit;
+            font-size: 11px;
+            padding: 9px 14px;
+            letter-spacing: 2px;
+            cursor: pointer;
+            border: 2px solid #2a3a4a;
+            background: #141c26;
+            color: #b8c8d8;
         }
+
         #panel footer button.primary {
-            flex: 1; background: #e8c86a; color: #0b0f14;
-            border-color: #f6e2a6; font-weight: bold;
+            flex: 1;
+            background: #e8c86a;
+            color: #0b0f14;
+            border-color: #f6e2a6;
+            font-weight: bold;
         }
-        #panel footer button.primary:hover { background: #f6dd8b; }
+
+        #panel footer button.primary:hover {
+            background: #f6dd8b;
+        }
+
         #panel footer button:hover:not(.primary) {
-            background: #1a2530; color: #e8f2ff; border-color: #6ac8e8;
+            background: #1a2530;
+            color: #e8f2ff;
+            border-color: #6ac8e8;
         }
-        #panel footer button:active { transform: translateY(1px); }
+
+        #panel footer button:active {
+            transform: translateY(1px);
+        }
 
         /* ---------- Toast ---------- */
         #toast {
-            position: absolute; bottom: 20px; left: 50%;
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
             transform: translateX(-50%) translateY(60px);
-            padding: 10px 20px; background: #e8c86a; color: #0b0f14;
-            font-weight: bold; letter-spacing: 2px; font-size: 11px;
+            padding: 10px 20px;
+            background: #e8c86a;
+            color: #0b0f14;
+            font-weight: bold;
+            letter-spacing: 2px;
+            font-size: 11px;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
             transition: transform .25s cubic-bezier(.34, 1.56, .64, 1);
-            pointer-events: none; z-index: 20;
+            pointer-events: none;
+            z-index: 20;
         }
-        #toast.show { transform: translateX(-50%) translateY(0); }
+
+        #toast.show {
+            transform: translateX(-50%) translateY(0);
+        }
 
         /* ---------- Help overlay ---------- */
         #helpOverlay {
-            position: absolute; bottom: 12px; left: 12px;
-            padding: 6px 10px; background: rgba(10, 14, 20, 0.75);
-            border: 1px solid #232b36; font-size: 10px; color: #5a6a7a;
-            letter-spacing: 0.5px; pointer-events: none;
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            padding: 6px 10px;
+            background: rgba(10, 14, 20, 0.75);
+            border: 1px solid #232b36;
+            font-size: 10px;
+            color: #5a6a7a;
+            letter-spacing: 0.5px;
+            pointer-events: none;
         }
+
         #fpLockHint {
-            position: absolute; top: 50%; left: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
             transform: translate(-50%, -50%);
-            padding: 14px 24px; background: rgba(10, 14, 20, 0.9);
-            border: 2px solid #6ac8e8; font-size: 12px;
-            letter-spacing: 2px; color: #6ac8e8;
-            pointer-events: none; display: none;
+            padding: 14px 24px;
+            background: rgba(10, 14, 20, 0.9);
+            border: 2px solid #6ac8e8;
+            font-size: 12px;
+            letter-spacing: 2px;
+            color: #6ac8e8;
+            pointer-events: none;
+            display: none;
             text-shadow: 0 0 12px rgba(106, 200, 232, 0.5);
         }
 
         /* ---------- Editor tabs ---------- */
         #tabs {
-            display: flex; gap: 2px;
-            border-bottom: 2px solid #232b36; background: #0a0d12;
+            display: flex;
+            gap: 2px;
+            border-bottom: 2px solid #232b36;
+            background: #0a0d12;
         }
+
         #tabs button {
-            flex: 1; font-family: inherit; font-size: 11px;
-            letter-spacing: 3px; padding: 11px 0;
-            color: #5a6a7a; background: transparent; border: none;
-            border-bottom: 3px solid transparent; cursor: pointer;
+            flex: 1;
+            font-family: inherit;
+            font-size: 11px;
+            letter-spacing: 3px;
+            padding: 11px 0;
+            color: #5a6a7a;
+            background: transparent;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
             transition: color .12s, border-color .12s, background .12s;
         }
-        #tabs button:hover { color: #8fa0b2; background: #10141a; }
+
+        #tabs button:hover {
+            color: #8fa0b2;
+            background: #10141a;
+        }
+
         #tabs button.active {
-            color: #e8c86a; border-bottom-color: #e8c86a; background: #0e1116;
+            color: #e8c86a;
+            border-bottom-color: #e8c86a;
+            background: #0e1116;
         }
     </style>
 </head>
@@ -332,9 +656,9 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="assets/model/playerModel.js"></script>
-    <script src="assets/model/toolModels.js"></script>
-    <script src="assets/avatarModel.js"></script>
+    <script src="../assets/model/playerModel.js"></script>
+    <script src="../assets/model/toolModels.js"></script>
+    <script src="../assets/model/avatarModel.js"></script>
     <script>
         (function () {
             'use strict';
@@ -352,11 +676,17 @@
                     bootW: 0.17, bootH: 0.10, bootD: 0.24, bootOffZ: 0.04,
                     torsoW: 0.38, torsoH: 0.56, torsoD: 0.22, torsoY: 1.18,
                     eyeX: 0.00, eyeY: 1.45, eyeZ: 0.00,
+
+                    /* ---- arm bones (FP) ---- */
+                    shoulderLX: -0.18, shoulderLY: -0.06, shoulderLZ: 0.04,
+                    shoulderRX: 0.18, shoulderRY: -0.06, shoulderRZ: 0.04,
+                    armUpperLen: 0.26, armForeLen: 0.28,
+                    armSegW: 0.10,
+                    elbowOut: 0.075, elbowDown: 0.09, elbowBack: 0.09,
                 },
                 hands: {
                     L: { x: -0.32, y: -0.30, z: -0.34, rx: -0.22, ry: 0, rz: 0.16 },
                     R: { x: 0.28, y: -0.28, z: -0.32, rx: -0.26, ry: 0, rz: -0.14 },
-                    sleeveW: 0.11, sleeveH: 0.11, sleeveL: 0.30,
                     palmW: 0.12, palmH: 0.13, palmD: 0.14,
                     thumbW: 0.04, thumbH: 0.05, thumbD: 0.07,
                     thumbX: -0.07, thumbY: 0.02, thumbZ: 0.00,
@@ -370,16 +700,35 @@
                 }
             };
 
-            const DEFAULTS = (function () {
-                const src = window.PLAYER_MODEL_DATA;
-                if (!src) return JSON.parse(JSON.stringify(FALLBACK));
-                const copy = JSON.parse(JSON.stringify(src));
-                for (const k of Object.keys(FALLBACK)) {
-                    if (!copy[k] || typeof copy[k] !== 'object')
-                        copy[k] = JSON.parse(JSON.stringify(FALLBACK[k]));
+            /* Recursively fill any missing key in `target` from `fallback`.
+               Arrays are treated as leaves.  Mutates `target` in place. */
+            function deepFillFallback(target, fallback) {
+                if (!target || typeof target !== 'object' || Array.isArray(target)) {
+                    if (Array.isArray(fallback)) return JSON.parse(JSON.stringify(fallback));
+                    if (fallback && typeof fallback === 'object')
+                        return JSON.parse(JSON.stringify(fallback));
+                    return fallback;
                 }
-                return copy;
-            })();
+                for (const k of Object.keys(fallback)) {
+                    const fb = fallback[k];
+                    const tv = target[k];
+                    if (fb && typeof fb === 'object' && !Array.isArray(fb)) {
+                        target[k] = deepFillFallback(tv || {}, fb);
+                    } else if (tv === undefined || tv === null) {
+                        target[k] = Array.isArray(fb)
+                            ? JSON.parse(JSON.stringify(fb))
+                            : fb;
+                    }
+                }
+                return target;
+            }
+
+            const DEFAULTS = deepFillFallback(
+                window.PLAYER_MODEL_DATA
+                    ? JSON.parse(JSON.stringify(window.PLAYER_MODEL_DATA))
+                    : {},
+                FALLBACK
+            );
 
             const STORAGE_KEY = 'ruincity-fp-editor-v1';
             let CFG = loadCfg() || JSON.parse(JSON.stringify(DEFAULTS));
@@ -387,7 +736,8 @@
             function loadCfg() {
                 try {
                     const s = localStorage.getItem(STORAGE_KEY);
-                    return s ? JSON.parse(s) : null;
+                    if (!s) return null;
+                    return deepFillFallback(JSON.parse(s), FALLBACK);
                 } catch (e) { return null; }
             }
             function saveCfg() {
@@ -415,16 +765,12 @@
                 parts: [],
             };
 
-            const AVATAR_DEFAULTS = (function () {
-                const src = window.AVATAR_MODEL_DATA;
-                if (!src) return JSON.parse(JSON.stringify(AVATAR_FALLBACK));
-                const copy = JSON.parse(JSON.stringify(src));
-                for (const k of Object.keys(AVATAR_FALLBACK)) {
-                    if (!copy[k] || typeof copy[k] !== 'object')
-                        copy[k] = JSON.parse(JSON.stringify(AVATAR_FALLBACK[k]));
-                }
-                return copy;
-            })();
+            const AVATAR_DEFAULTS = deepFillFallback(
+                window.AVATAR_MODEL_DATA
+                    ? JSON.parse(JSON.stringify(window.AVATAR_MODEL_DATA))
+                    : {},
+                AVATAR_FALLBACK
+            );
 
             const AVATAR_STORAGE_KEY = 'ruincity-avatar-editor-v1';
             let AVATAR_CFG = loadAvatarCfg() || JSON.parse(JSON.stringify(AVATAR_DEFAULTS));
@@ -432,7 +778,8 @@
             function loadAvatarCfg() {
                 try {
                     const s = localStorage.getItem(AVATAR_STORAGE_KEY);
-                    return s ? JSON.parse(s) : null;
+                    if (!s) return null;
+                    return deepFillFallback(JSON.parse(s), AVATAR_FALLBACK);
                 } catch (e) { return null; }
             }
             function saveAvatarCfg() {
@@ -503,11 +850,25 @@
                     ]
                 },
                 {
+                    name: 'ARM BONES (FP)', open: true,
+                    entries: [
+                        { key: 'body.shoulderLX', label: 'Shoulder L X', type: 'range', min: -0.50, max: 0.00, step: 0.01 },
+                        { key: 'body.shoulderLY', label: 'Shoulder L Y', type: 'range', min: -0.40, max: 0.20, step: 0.01 },
+                        { key: 'body.shoulderLZ', label: 'Shoulder L Z', type: 'range', min: -0.20, max: 0.30, step: 0.01 },
+                        { key: 'body.shoulderRX', label: 'Shoulder R X', type: 'range', min: 0.00, max: 0.50, step: 0.01 },
+                        { key: 'body.shoulderRY', label: 'Shoulder R Y', type: 'range', min: -0.40, max: 0.20, step: 0.01 },
+                        { key: 'body.shoulderRZ', label: 'Shoulder R Z', type: 'range', min: -0.20, max: 0.30, step: 0.01 },
+                        { key: 'body.armUpperLen', label: 'Upper arm len', type: 'range', min: 0.10, max: 0.50, step: 0.01 },
+                        { key: 'body.armForeLen', label: 'Forearm len', type: 'range', min: 0.10, max: 0.50, step: 0.01 },
+                        { key: 'body.armSegW', label: 'Arm segment w', type: 'range', min: 0.04, max: 0.20, step: 0.005 },
+                        { key: 'body.elbowOut', label: 'Elbow out', type: 'range', min: 0.00, max: 0.25, step: 0.005 },
+                        { key: 'body.elbowDown', label: 'Elbow down', type: 'range', min: 0.00, max: 0.25, step: 0.005 },
+                        { key: 'body.elbowBack', label: 'Elbow back', type: 'range', min: 0.00, max: 0.25, step: 0.005 },
+                    ]
+                },
+                {
                     name: 'HAND GEOMETRY', open: false,
                     entries: [
-                        { key: 'hands.sleeveW', label: 'Sleeve w', type: 'range', min: 0.05, max: 0.25, step: 0.005 },
-                        { key: 'hands.sleeveH', label: 'Sleeve h', type: 'range', min: 0.05, max: 0.25, step: 0.005 },
-                        { key: 'hands.sleeveL', label: 'Sleeve len', type: 'range', min: 0.05, max: 0.60, step: 0.01 },
                         { key: 'hands.palmW', label: 'Palm w', type: 'range', min: 0.05, max: 0.25, step: 0.005 },
                         { key: 'hands.palmH', label: 'Palm h', type: 'range', min: 0.05, max: 0.25, step: 0.005 },
                         { key: 'hands.palmD', label: 'Palm d', type: 'range', min: 0.05, max: 0.25, step: 0.005 },
@@ -703,6 +1064,22 @@
                 headGroup.add(rig.handL);
                 headGroup.add(rig.handR);
 
+                /* ---- three-part arm bones ---- */
+                rig.armBonesL = {
+                    upper: buildArmBone(),
+                    fore: buildArmBone(),
+                    shoulder: new THREE.Vector3(
+                        CFG.body.shoulderLX, CFG.body.shoulderLY, CFG.body.shoulderLZ),
+                };
+                rig.armBonesR = {
+                    upper: buildArmBone(),
+                    fore: buildArmBone(),
+                    shoulder: new THREE.Vector3(
+                        CFG.body.shoulderRX, CFG.body.shoulderRY, CFG.body.shoulderRZ),
+                };
+                headGroup.add(rig.armBonesL.upper, rig.armBonesL.fore);
+                headGroup.add(rig.armBonesR.upper, rig.armBonesR.fore);
+
                 headGroup.position.set(CFG.body.eyeX, CFG.body.eyeY, CFG.body.eyeZ);
                 headGroup.rotation.set(0, 0, 0);
 
@@ -737,13 +1114,6 @@
             function buildHand(side) {
                 const group = new THREE.Group();
 
-                const sleeve = new THREE.Mesh(
-                    new THREE.BoxGeometry(CFG.hands.sleeveW, CFG.hands.sleeveH, CFG.hands.sleeveL),
-                    SLEEVE_MAT
-                );
-                sleeve.position.set(0, 0, CFG.hands.sleeveL * 0.5);
-                group.add(sleeve);
-
                 const palm = new THREE.Mesh(
                     new THREE.BoxGeometry(CFG.hands.palmW, CFG.hands.palmH, CFG.hands.palmD),
                     SKIN_MAT
@@ -762,6 +1132,50 @@
                 group.add(thumb);
 
                 return group;
+            }
+
+            /* ---------- ARM BONES ---------- */
+            const _upAxis = new THREE.Vector3(0, 1, 0);
+            const _elbowScratch = new THREE.Vector3();
+            const _dirScratch = new THREE.Vector3();
+            const _midScratch = new THREE.Vector3();
+
+            function buildArmBone() {
+                const m = new THREE.Mesh(
+                    new THREE.BoxGeometry(CFG.body.armSegW,
+                        CFG.body.armUpperLen, CFG.body.armSegW),
+                    SLEEVE_MAT
+                );
+                return m;
+            }
+
+            function updateArmBones(bones, side, hand) {
+                if (!bones || !hand) return;
+                const shoulder = bones.shoulder;
+                const handPos = hand.position;
+
+                /* Elbow: below and outside the shoulder→hand midpoint.
+                   Offsets come from CFG so they're tunable in the editor. */
+                _midScratch.copy(shoulder).add(handPos).multiplyScalar(0.5);
+                _elbowScratch.set(
+                    _midScratch.x + side * CFG.body.elbowOut,
+                    _midScratch.y - CFG.body.elbowDown,
+                    _midScratch.z + CFG.body.elbowBack
+                );
+
+                /* Upper arm: shoulder → elbow */
+                _dirScratch.copy(_elbowScratch).sub(shoulder);
+                const upLen = Math.max(0.001, _dirScratch.length());
+                bones.upper.position.copy(shoulder).add(_elbowScratch).multiplyScalar(0.5);
+                bones.upper.quaternion.setFromUnitVectors(_upAxis, _dirScratch.normalize());
+                bones.upper.scale.set(1, upLen / CFG.body.armUpperLen, 1);
+
+                /* Forearm: elbow → hand */
+                _dirScratch.copy(handPos).sub(_elbowScratch);
+                const foreLen = Math.max(0.001, _dirScratch.length());
+                bones.fore.position.copy(_elbowScratch).add(handPos).multiplyScalar(0.5);
+                bones.fore.quaternion.setFromUnitVectors(_upAxis, _dirScratch.normalize());
+                bones.fore.scale.set(1, foreLen / CFG.body.armForeLen, 1);
             }
 
             function applyColors() {
@@ -964,6 +1378,15 @@
                         CFG.hands.L.y + bobY_L + effSwayX * 0.4 + breath,
                         CFG.hands.L.z + sprintLean
                     );
+                    /* ---- arm bones follow the hands every frame ---- */
+                    if (rig.armBonesL && rig.armBonesR) {
+                        rig.armBonesL.shoulder.set(
+                            CFG.body.shoulderLX, CFG.body.shoulderLY, CFG.body.shoulderLZ);
+                        rig.armBonesR.shoulder.set(
+                            CFG.body.shoulderRX, CFG.body.shoulderRY, CFG.body.shoulderRZ);
+                        updateArmBones(rig.armBonesL, -1, rig.handL);
+                        updateArmBones(rig.armBonesR, +1, rig.handR);
+                    }
                     rig.handL.rotation.set(
                         CFG.hands.L.rx + effSwayX * 1.2,
                         CFG.hands.L.ry + effSwayY * 0.8,
@@ -982,7 +1405,8 @@
                     );
                 }
 
-                const camY = CFG.body.eyeY + Math.sin(bobPhase) * bobA * bobScale;
+                const camY = CFG.body.eyeY + Math.cos(bobPhase) * bobA * bobScale;
+
                 fpCamera.position.set(CFG.body.eyeX, camY, CFG.body.eyeZ);
 
                 if (viewMode === 'fp' && editMode === 'fp') {
@@ -996,13 +1420,8 @@
                 const pitchFollow = (typeof CFG.anim.pitchFollow === 'number')
                     ? CFG.anim.pitchFollow : 0.50;
 
-                if (viewMode === 'fp' && editMode === 'fp') {
-                    headGroup.rotation.y = fpYaw * yawFollow;
-                    headGroup.rotation.x = fpPitch * pitchFollow;
-                } else {
-                    headGroup.rotation.y = 0;
-                    headGroup.rotation.x = 0;
-                }
+                headGroup.rotation.y = fpYaw * yawFollow;
+                headGroup.rotation.x = fpPitch * pitchFollow;
 
                 eyeProxy.position.copy(fpCamera.position);
             }
@@ -1332,13 +1751,13 @@
                 help.className = 'io-help';
                 help.innerHTML = editMode === 'avatar'
                     ? '<b>AVATAR EXPORT</b><br>' +
-                      'Produces <code>window.AVATAR_MODEL_DATA = {...}</code>.<br>' +
-                      'Save it to <code>assets/avatarModel.js</code>. ' +
-                      'This is what other players see in multiplayer.'
+                    'Produces <code>window.AVATAR_MODEL_DATA = {...}</code>.<br>' +
+                    'Save it to <code>assets/avatarModel.js</code>. ' +
+                    'This is what other players see in multiplayer.'
                     : '<b>FP RIG EXPORT</b><br>' +
-                      'Produces <code>window.PLAYER_MODEL_DATA = {...}</code>.<br>' +
-                      'Save it to <code>assets/model/playerModel.js</code>. ' +
-                      'This drives your first-person hands and camera.';
+                    'Produces <code>window.PLAYER_MODEL_DATA = {...}</code>.<br>' +
+                    'Save it to <code>assets/model/playerModel.js</code>. ' +
+                    'This drives your first-person hands and camera.';
                 wrap.appendChild(help);
 
                 const ta = document.createElement('textarea');
@@ -1761,14 +2180,18 @@ window.PLAYER_MODEL_DATA = {
         torsoW: ${CFG.body.torsoW}, torsoH: ${CFG.body.torsoH},
         torsoD: ${CFG.body.torsoD}, torsoY: ${CFG.body.torsoY},
         eyeX: ${CFG.body.eyeX}, eyeY: ${CFG.body.eyeY}, eyeZ: ${CFG.body.eyeZ},
+                shoulderLX: ${CFG.body.shoulderLX}, shoulderLY: ${CFG.body.shoulderLY}, shoulderLZ: ${CFG.body.shoulderLZ},
+        shoulderRX: ${CFG.body.shoulderRX}, shoulderRY: ${CFG.body.shoulderRY}, shoulderRZ: ${CFG.body.shoulderRZ},
+        armUpperLen: ${CFG.body.armUpperLen}, armForeLen: ${CFG.body.armForeLen},
+        armSegW: ${CFG.body.armSegW},
+        elbowOut: ${CFG.body.elbowOut}, elbowDown: ${CFG.body.elbowDown},
+        elbowBack: ${CFG.body.elbowBack},
     },
     hands: {
         L: { x: ${CFG.hands.L.x}, y: ${CFG.hands.L.y}, z: ${CFG.hands.L.z},
              rx: ${CFG.hands.L.rx}, ry: ${CFG.hands.L.ry}, rz: ${CFG.hands.L.rz} },
         R: { x: ${CFG.hands.R.x}, y: ${CFG.hands.R.y}, z: ${CFG.hands.R.z},
              rx: ${CFG.hands.R.rx}, ry: ${CFG.hands.R.ry}, rz: ${CFG.hands.R.rz} },
-        sleeveW: ${CFG.hands.sleeveW}, sleeveH: ${CFG.hands.sleeveH},
-        sleeveL: ${CFG.hands.sleeveL},
         palmW: ${CFG.hands.palmW}, palmH: ${CFG.hands.palmH},
         palmD: ${CFG.hands.palmD},
         thumbW: ${CFG.hands.thumbW}, thumbH: ${CFG.hands.thumbH},

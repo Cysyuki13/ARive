@@ -10,6 +10,7 @@
    ========================================================================= */
 (function () {
     'use strict';
+    const Minimap = window.Minimap;
 
     /* =========================================================================
        1. HELPERS
@@ -33,7 +34,7 @@
        2. WORLD CONSTANTS  — 0.10 m voxels
        ========================================================================= */
     const VOXEL = 0.10;
-    const SX = 768, SY = 96, SZ = 768;   // ← 3× bigger in X and Z (9× area)
+    const SX = 1536, SY = 96, SZ = 1536;         // 226 MB — 4× the area
 
     const CHUNK = 32;
     const CHUNKS_X = SX / CHUNK;              // 8
@@ -43,11 +44,34 @@
     const WORLD_H = SY * VOXEL;               // 9.6 m
     const WORLD_D = SZ * VOXEL;               // 25.6 m
 
+    /* ---- Edge-of-world atmospheric fade ---- */
+    const EDGE_MARGIN = 8;      // metres from the edge where the fade starts
+    const EDGE_FOG_NEAR_MIN = 1.5;    // fog near-plane at the very edge
+    const EDGE_FOG_FAR_MIN = 8;      // fog far-plane at the very edge
+
     const GRAVITY = 22;
     const EPS = 1e-4;
 
     const UV_SCALE = 0.4;   // texture tile = 2.5 m → at 0.1 m voxel, ~4 texels/voxel
     const CHARGE_RADIUS = 1.5;   // metres — change this one number
+
+    /* ============================================================
+   SANDBOX BOUNDS
+   ------------------------------------------------------------
+   The sandbox is a bounded flat playfield centred on the map.
+   Only SANDBOX_HALF_CHUNKS chunks in each direction are filled
+   and meshed — everything outside is empty.  Raise the constant
+   for a bigger sandbox; 8 = 16×16 chunks = 51.2 m × 51.2 m.
+   ============================================================ */
+    const SANDBOX_HALF_CHUNKS = 8;
+    const SANDBOX_CX0 = (CHUNKS_X >> 1) - SANDBOX_HALF_CHUNKS;
+    const SANDBOX_CX1 = (CHUNKS_X >> 1) + SANDBOX_HALF_CHUNKS;
+    const SANDBOX_CZ0 = (CHUNKS_Z >> 1) - SANDBOX_HALF_CHUNKS;
+    const SANDBOX_CZ1 = (CHUNKS_Z >> 1) + SANDBOX_HALF_CHUNKS;
+    const SANDBOX_MIN_X = SANDBOX_CX0 * CHUNK * VOXEL;
+    const SANDBOX_MAX_X = SANDBOX_CX1 * CHUNK * VOXEL;
+    const SANDBOX_MIN_Z = SANDBOX_CZ0 * CHUNK * VOXEL;
+    const SANDBOX_MAX_Z = SANDBOX_CZ1 * CHUNK * VOXEL;
 
 
     /* ============================================================
@@ -80,6 +104,9 @@
     const settings = Object.assign(
         {
             sensitivity: 1.0,   // multiplier on the base mouse sensitivity
+            viewChunks: 6,
+            masterVolume: 1.0,  // 0..1 — everything
+            seVolume: 1.0,      // 0..1 — sound effects on top of master
         },
         (() => {
             try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; }
@@ -439,22 +466,47 @@
        hand rest positions (authored relative to the eye) still line up
        with where the camera used to be. */
     const fpRoot = new THREE.Group();
+    fpRoot.rotation.order = 'YXZ';
     fpRoot.position.set(FP_MODEL.body.eyeX,
         FP_MODEL.body.eyeY,
         FP_MODEL.body.eyeZ);
     playerBody.add(fpRoot);
 
+    /* ============================================================
+   ARM RIG
+   ------------------------------------------------------------
+   Each side now has three parts:
+     · hand      — the palm + thumb (visible on the grip)
+     · forearm   — the sleeve between elbow and wrist
+     · upperArm  — the sleeve between shoulder and elbow
+
+   The HAND is positioned directly (by weapon pose data, or by
+   the idle FP hand animation).  The two arm bones are placed
+   procedurally each frame so they visually span shoulder →
+   hand.  We do not solve IK — the elbow is a heuristic point
+   below and outside the shoulder→hand line, which is enough
+   for a first-person silhouette.
+   ============================================================ */
+
+    const SHOULDER_POS = {
+        L: new THREE.Vector3(
+            FP_MODEL.body.shoulderLX ?? -0.18,
+            FP_MODEL.body.shoulderLY ?? -0.06,
+            FP_MODEL.body.shoulderLZ ?? 0.04),
+        R: new THREE.Vector3(
+            FP_MODEL.body.shoulderRX ?? 0.18,
+            FP_MODEL.body.shoulderRY ?? -0.06,
+            FP_MODEL.body.shoulderRZ ?? 0.04),
+    };
+    const UPPER_ARM_BASE_LEN = FP_MODEL.body.armUpperLen ?? 0.26;
+    const FOREARM_BASE_LEN = FP_MODEL.body.armForeLen ?? 0.28;
+    const ARM_SEG_W = FP_MODEL.body.armSegW ?? 0.115;
+    const ELBOW_OUT = FP_MODEL.body.elbowOut ?? 0.075;
+    const ELBOW_DOWN = FP_MODEL.body.elbowDown ?? 0.09;
+    const ELBOW_BACK = FP_MODEL.body.elbowBack ?? 0.09;
+
     function buildHand(side) {
         const group = new THREE.Group();
-
-        const sleeve = new THREE.Mesh(
-            new THREE.BoxGeometry(FP_MODEL.hands.sleeveW,
-                FP_MODEL.hands.sleeveH,
-                FP_MODEL.hands.sleeveL),
-            SLEEVE_MAT
-        );
-        sleeve.position.set(0, 0, FP_MODEL.hands.sleeveL * 0.5);
-        group.add(sleeve);
 
         const palm = new THREE.Mesh(
             new THREE.BoxGeometry(FP_MODEL.hands.palmW,
@@ -479,25 +531,77 @@
         return group;
     }
 
+    function buildArmBones() {
+        const upper = new THREE.Mesh(
+            new THREE.BoxGeometry(ARM_SEG_W, UPPER_ARM_BASE_LEN, ARM_SEG_W),
+            SLEEVE_MAT
+        );
+        const fore = new THREE.Mesh(
+            new THREE.BoxGeometry(ARM_SEG_W, FOREARM_BASE_LEN, ARM_SEG_W),
+            SLEEVE_MAT
+        );
+        fpRoot.add(upper);
+        fpRoot.add(fore);
+        return { upper, fore };
+    }
+
     const handL = buildHand(-1);
     const handR = buildHand(+1);
     fpRoot.add(handL);
     fpRoot.add(handR);
 
-    // Rest pose (camera space). Animation offsets from these.
+    const armBonesL = buildArmBones(-1);
+    const armBonesR = buildArmBones(+1);
+
     const HAND_REST = {
         L: FP_MODEL.hands.L,
         R: FP_MODEL.hands.R
     };
-    handL.position.set(HAND_REST.L.x, HAND_REST.L.y, HAND_REST.L.z);
-    handL.rotation.set(HAND_REST.L.rx, HAND_REST.L.ry, HAND_REST.L.rz);
 
-    handR.position.set(HAND_REST.R.x, HAND_REST.R.y, HAND_REST.R.z);
-    handR.rotation.set(HAND_REST.R.rx, HAND_REST.R.ry, HAND_REST.R.rz);
+    // Scratch objects for arm placement
+    const _armMid = new THREE.Vector3();
+    const _armElbow = new THREE.Vector3();
+    const _armDir = new THREE.Vector3();
+    const _armUp = new THREE.Vector3(0, 1, 0);
+
+    function updateArmBones(side, hand) {
+        const bones = side < 0 ? armBonesL : armBonesR;
+        const shoulder = side < 0 ? SHOULDER_POS.L : SHOULDER_POS.R;
+
+        /* Elbow: below and outside the shoulder→hand midpoint.
+           Tuning these 3 offsets lets you make the arms look
+           bent-left, bent-out, or tight to the body. */
+        _armMid.copy(shoulder).add(hand.position).multiplyScalar(0.5);
+        _armElbow.set(
+            _armMid.x + side * ELBOW_OUT,
+            _armMid.y - ELBOW_DOWN,
+            _armMid.z + ELBOW_BACK
+        );
+
+        /* Upper arm: from shoulder toward elbow */
+        _armDir.copy(_armElbow).sub(shoulder);
+        const upLen = _armDir.length();
+        bones.upper.position.copy(shoulder).add(_armElbow).multiplyScalar(0.5);
+        bones.upper.quaternion.setFromUnitVectors(_armUp, _armDir.normalize());
+        bones.upper.scale.set(1, upLen / UPPER_ARM_BASE_LEN, 1);
+
+        /* Forearm: from elbow toward hand */
+        _armDir.copy(hand.position).sub(_armElbow);
+        const foreLen = _armDir.length();
+        bones.fore.position.copy(_armElbow).add(hand.position).multiplyScalar(0.5);
+        bones.fore.quaternion.setFromUnitVectors(_armUp, _armDir.normalize());
+        bones.fore.scale.set(1, foreLen / FOREARM_BASE_LEN, 1);
+    }
 
     // Sway spring state — mouse-look kicks the hands, they settle back.
     let swayYaw = 0, swayPitch = 0;
     let swayYawVel = 0, swayPitchVel = 0;
+
+    /* Signal for weapons.js: when a weapon is active it takes over the
+       hand positions.  The idle hand-anim block below still runs, but
+       its writes are ignored while this flag is set. */
+    let weaponDrivesHands = false;
+    function setWeaponDrivesHands(v) { weaponDrivesHands = v; }
 
     const noiseTex = makeNoiseTexture();
     const chunkMat = new THREE.MeshLambertMaterial({
@@ -923,6 +1027,155 @@
         expGeo.setDrawRange(0, n);
     }
 
+    /* =========================================================================
+   BLOOD SPATTER  —  short-lived point cloud
+   ========================================================================= */
+    const MAX_BLOOD = 400;
+    const bloodGeo = new THREE.BufferGeometry();
+    const bloodPos = new Float32Array(MAX_BLOOD * 3);
+    const bloodCol = new Float32Array(MAX_BLOOD * 3);
+    for (let i = 0; i < MAX_BLOOD; i++) bloodPos[i * 3 + 1] = -9999;
+    bloodGeo.setAttribute('position', new THREE.BufferAttribute(bloodPos, 3));
+    bloodGeo.setAttribute('color', new THREE.BufferAttribute(bloodCol, 3));
+    const bloodPoints = new THREE.Points(bloodGeo, new THREE.PointsMaterial({
+        size: 0.11, sizeAttenuation: true,
+        vertexColors: true, transparent: true, opacity: 0.9,
+        depthWrite: false, fog: true
+    }));
+    bloodPoints.frustumCulled = false;
+    scene.add(bloodPoints);
+
+    const bloodParts = [];
+
+    function spawnBloodBurst(wx, wy, wz, count, tint) {
+        count = count || 10;
+        const r = (tint && tint.r !== undefined) ? tint.r : 0.72;
+        const g = (tint && tint.g !== undefined) ? tint.g : 0.06;
+        const b = (tint && tint.b !== undefined) ? tint.b : 0.06;
+        for (let i = 0; i < count; i++) {
+            if (bloodParts.length >= MAX_BLOOD) bloodParts.shift();
+            const a = Math.random() * Math.PI * 2;
+            const el = Math.random() * Math.PI * 0.6 - 0.2;
+            const spd = 1.5 + Math.random() * 3.5;
+            const cosEl = Math.cos(el);
+            bloodParts.push({
+                x: wx, y: wy, z: wz,
+                vx: Math.cos(a) * cosEl * spd,
+                vy: Math.sin(el) * spd + 1.2,
+                vz: Math.sin(a) * cosEl * spd,
+                life: 0.7 + Math.random() * 0.6,
+                maxLife: 1.3,
+                r, g, b
+            });
+        }
+    }
+
+    function updateBloodParticles(dt) {
+        for (let i = bloodParts.length - 1; i >= 0; i--) {
+            const p = bloodParts[i];
+            p.life -= dt;
+            if (p.life <= 0) { bloodParts.splice(i, 1); continue; }
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            p.z += p.vz * dt;
+            p.vy -= GRAVITY * 0.6 * dt;
+            const drag = Math.pow(0.55, dt);
+            p.vx *= drag;
+            p.vz *= drag;
+            const gx = Math.floor(p.x / VOXEL);
+            const gy = Math.floor(p.y / VOXEL);
+            const gz = Math.floor(p.z / VOXEL);
+            if (getV(gx, gy, gz) !== 0) p.life = 0;   // splat on solid
+        }
+
+        let n = 0;
+        for (const p of bloodParts) {
+            if (n >= MAX_BLOOD) break;
+            const f = clamp(p.life / p.maxLife, 0, 1);
+            bloodPos[n * 3] = p.x;
+            bloodPos[n * 3 + 1] = p.y;
+            bloodPos[n * 3 + 2] = p.z;
+            bloodCol[n * 3] = p.r * f;
+            bloodCol[n * 3 + 1] = p.g * f;
+            bloodCol[n * 3 + 2] = p.b * f;
+            n++;
+        }
+        for (let j = n; j < MAX_BLOOD; j++) bloodPos[j * 3 + 1] = -9999;
+        bloodGeo.attributes.position.needsUpdate = true;
+        bloodGeo.attributes.color.needsUpdate = true;
+        bloodGeo.setDrawRange(0, n);
+    }
+
+    /* =========================================================================
+       DETACHED LIMBS  —  physics chunks left behind by dismemberment
+       ========================================================================= */
+    const detachedLimbs = [];
+    const MAX_LIMBS = 60;
+    const _limbQ = new THREE.Quaternion();
+    const _limbAxis = new THREE.Vector3();
+
+    function detachLimbPiece(mesh, worldQuat, vel, angVel) {
+        if (detachedLimbs.length >= MAX_LIMBS) {
+            const old = detachedLimbs.shift();
+            scene.remove(old.mesh);
+            old.mesh.traverse(o => {
+                if (o.geometry) o.geometry.dispose();
+                if (o.material) o.material.dispose();
+            });
+        }
+        scene.add(mesh);
+        detachedLimbs.push({
+            mesh,
+            vel: vel.clone(),
+            angVel: angVel.clone(),
+            quat: worldQuat.clone(),
+            life: 8.0,
+            rests: false
+        });
+    }
+
+    function updateDetachedLimbs(dt) {
+        for (let i = detachedLimbs.length - 1; i >= 0; i--) {
+            const d = detachedLimbs[i];
+            d.life -= dt;
+            if (d.life <= 0) {
+                scene.remove(d.mesh);
+                d.mesh.traverse(o => {
+                    if (o.geometry) o.geometry.dispose();
+                    if (o.material) o.material.dispose();
+                });
+                detachedLimbs.splice(i, 1);
+                continue;
+            }
+            if (d.rests) continue;
+
+            d.vel.y -= GRAVITY * dt;
+            d.mesh.position.x += d.vel.x * dt;
+            d.mesh.position.y += d.vel.y * dt;
+            d.mesh.position.z += d.vel.z * dt;
+
+            const w = d.angVel.length();
+            if (w > 1e-4) {
+                _limbAxis.copy(d.angVel).multiplyScalar(1 / w);
+                _limbQ.setFromAxisAngle(_limbAxis, w * dt);
+                d.quat.premultiply(_limbQ);
+                d.mesh.quaternion.copy(d.quat);
+            }
+
+            const gx = Math.floor(d.mesh.position.x / VOXEL);
+            const gy = Math.floor(d.mesh.position.y / VOXEL);
+            const gz = Math.floor(d.mesh.position.z / VOXEL);
+            if (getV(gx, gy, gz) !== 0) {
+                d.mesh.position.y = (gy + 1) * VOXEL + 0.03;
+                d.vel.set(0, 0, 0);
+                d.angVel.set(0, 0, 0);
+                d.rests = true;
+                d.life = Math.min(d.life, 6.0);
+            }
+            if (d.mesh.position.y < -3) d.life = 0;
+        }
+    }
+
     function ignite(x, y, z) {
         const b = getV(x, y, z);
         if (!b || !BLOCKS[b].flammable) return;
@@ -974,8 +1227,10 @@
     }
 
     function explodeAt(vx, vy, vz, radiusMeters, silent) {
+        if (window.Sfx) Sfx.play('explosion');
         const rv = radiusMeters / VOXEL;
         spawnExplosionBurst(vx, vy, vz, radiusMeters);
+
         carveSphere(vx, vy, vz, rv, { ignite: true, debrisChance: 0.10 });
         for (let i = 0; i < 10; i++) {
             const a = Math.random() * Math.PI * 2;
@@ -1062,6 +1317,36 @@
 
     const PLOT_EDGE_PAD = 3;     // gap between a structure and its block's wall
     const PLOT_PLOT_PAD = 4;     // gap between two structures in the same block
+
+    /* =========================================================================
+   CHUNK STREAMING
+   -------------------------------------------------------------------------
+   Only chunks near the player are ever filled with voxels + meshed.
+   LOAD_RADIUS    = how many chunks (in chunk units) around the player
+                    are kept filled + visible.
+   UNLOAD_RADIUS  = chunks beyond this get their meshes freed but their
+                    VOXELS are preserved, so player edits persist when
+                    walking back.  Keep this > LOAD_RADIUS to avoid thrash.
+   ========================================================================= */
+    let LOAD_RADIUS = 6;
+    let UNLOAD_RADIUS = 9;
+
+    /* Apply the persisted view-chunks setting immediately, so the first
+       world-gen uses the player's preferred radius. */
+    (function applyViewChunksSetting() {
+        const v = settings.viewChunks;
+        if (typeof v === 'number') {
+            LOAD_RADIUS = clamp(Math.round(v), 3, 12);
+            UNLOAD_RADIUS = LOAD_RADIUS + 3;
+        }
+    })();
+
+    const MAX_CHUNK_GENS_PER_FRAME = 3;
+
+    let cityLayout = null;                       // the seed-independent layout
+    const generatedChunks = new Set();           // "cx,cz" — voxels exist
+    const meshedChunks = new Set();           // "cx,cz" — meshes in scene
+    let lastStreamedCx = -99999, lastStreamedCz = -99999;
 
     /* ---- Ground fill ---- */
     function fillGroundVoxels() {
@@ -1230,7 +1515,9 @@
     }
 
     /* ---- Procedural building (used when no structures are loaded) ---- */
-    function buildBuilding(x0, z0, w, d, y0, height, rnd) {
+    function buildBuildingBlocks(x0, z0, w, d, y0, height, seed) {
+        const rnd = mulberry32(seed);
+        const blocks = [];
         const walls = [2, 3, 5, 11];
         const wallMat = walls[(rnd() * walls.length) | 0];
         const WT = 3;
@@ -1243,23 +1530,33 @@
                     const eX = x < x0 + WT || x >= x0 + w - WT;
                     const eZ = z < z0 + WT || z >= z0 + d - WT;
                     if (!eX && !eZ) {
-                        if (relY % 16 === 0) setVRaw(x, y, z, 2);
+                        if (relY % 16 === 0) blocks.push([x, y, z, 2]);
                         continue;
                     }
                     const band = relY % 16;
                     const inBand = band >= 4 && band <= 11 && relY > 6;
                     const isWindow = inBand && (((x + z) % 7) < 4) && rnd() < 0.75;
-                    setVRaw(x, y, z, isWindow ? 4 : wallMat);
+                    blocks.push([x, y, z, isWindow ? 4 : wallMat]);
                 }
             }
         }
         for (let x = x0; x < x0 + w; x++)
             for (let z = z0; z < z0 + d; z++)
-                setVRaw(x, y1, z, wallMat);
+                blocks.push([x, y1, z, wallMat]);
 
+        // Carve holes — emitted as id-0 entries so the caller can erase.
+        const emitCarve = (cx, cy, cz, r) => {
+            const R = Math.ceil(r), r2 = r * r;
+            for (let dy = -R; dy <= R; dy++)
+                for (let dz = -R; dz <= R; dz++)
+                    for (let dx = -R; dx <= R; dx++) {
+                        if (dx * dx + dy * dy + dz * dz > r2) continue;
+                        blocks.push([Math.round(cx) + dx, Math.round(cy) + dy, Math.round(cz) + dz, 0]);
+                    }
+        };
         const holes = 1 + ((rnd() * 6) | 0);
         for (let i = 0; i < holes; i++) {
-            carveSphereRaw(
+            emitCarve(
                 x0 + 3 + rnd() * Math.max(1, w - 6),
                 y0 + 3 + rnd() * Math.max(1, y1 - y0 - 3),
                 z0 + 3 + rnd() * Math.max(1, d - 6),
@@ -1267,8 +1564,9 @@
             );
         }
         if (rnd() < 0.4) {
-            carveSphereRaw(x0 + w * 0.5, y0 + 4, z0 + rnd() * d, 5 + rnd() * 5);
+            emitCarve(x0 + w * 0.5, y0 + 4, z0 + rnd() * d, 5 + rnd() * 5);
         }
+        return blocks;
     }
 
     /* ---- Stamp one editor-authored structure into the voxel grid ----
@@ -1330,14 +1628,22 @@
 
                 const pick = pool[(Math.random() * pool.length) | 0];
 
-                /* Centre of the voxel the marker sits in. */
+                /* Facing: editor-supplied `dir` (radians around Y),
+                   rotated by the structure's own yaw.  Local +Z is
+                   forward, so dir = 0 faces world +Z. */
+                const hasDir = (typeof fb.dir === 'number');
+                const baseYaw = hasDir ? fb.dir : Math.random() * Math.PI * 2;
+                const yaw = baseYaw + (rotY || 0);
+
+                /* Spawn on the TOP of the marker voxel so the model's
+                   AABB sits entirely in the free space above the floor. */
                 const worldPos = new THREE.Vector3(
                     (wx + 0.5) * VOXEL,
-                    (wy + 0.5) * VOXEL,
+                    (wy + 1.0) * VOXEL + 0.02,
                     (wz + 0.5) * VOXEL
                 );
 
-                spawnPickup({
+                const spawned = spawnPickup({
                     name: pick.name,
                     iconImage: pick.iconImage,
                     iconImageRotated: pick.iconImageRotated,
@@ -1347,50 +1653,165 @@
                     meta: pick.meta,
                     furnitureKey: pick.key,
                     size: pick.size
-                }, worldPos);
+                }, worldPos, null, yaw);
+
+                if (spawned && hasDir) {
+                    spawned.vx = spawned.vy = spawned.vz = 0;
+                    spawned.avx = spawned.avy = spawned.avz = 0;
+                }
             }
         }
     }
 
-    /* ---- The main city generator ---- */
-    function generateCity(seed) {
+    /* Lazily produce the absolute-coordinate block list for a plot, once. */
+    function plotBlocks(p) {
+        if (p._blocks) return p._blocks;
+
+        if (p.procedural) {
+            p._blocks = buildBuildingBlocks(
+                p.x, p.z, p.w, p.d, GROUND_Y, p.procedural.h, p.procedural.seed
+            );
+        } else if (p.struct) {
+            const arr = [];
+            for (const [x, y, z, id] of p.struct.blocks) {
+                arr.push([p.x + x, GROUND_Y + y, p.z + z, id]);
+            }
+            p._blocks = arr;
+        } else {
+            p._blocks = [];
+        }
+        return p._blocks;
+    }
+
+    /* Write ONLY the plot's blocks that fall inside the given chunk column.
+       Neighbouring chunks pick up the rest when they are generated. */
+    function writePlotBlocksInChunk(p, cx0, cx1, cz0, cz1) {
+        const blocks = plotBlocks(p);
+        for (let i = 0; i < blocks.length; i++) {
+            const b = blocks[i];
+            if (b[0] < cx0 || b[0] >= cx1) continue;
+            if (b[2] < cz0 || b[2] >= cz1) continue;
+            setVRaw(b[0], b[1], b[2], b[3]);
+        }
+    }
+
+    /* Furniture spawns once per marker, the first time the CHUNK COLUMN
+       containing that specific marker is generated.  Tracking is per-index
+       (a Set) so a plot straddling several chunks spawns each of its
+       markers exactly once, in the correct chunk.
+
+       By the time this runs, generateChunkColumn has already written the
+       plot's blocks into this chunk — so any floor voxel below the marker
+       is guaranteed to exist, and the item lands on it instead of falling
+       through empty space. */
+    function spawnPlotFurnitureInChunk(p, cx0, cx1, cz0, cz1) {
+        if (!p._furnitureSpawned) p._furnitureSpawned = new Set();
+        if (!Array.isArray(p.struct.furniture) || !p.struct.furniture.length) return;
+        if (!window.ARIVE_FURNITURE || !window.ARIVE_FURNITURE.length) return;
+
+        const bySize = { small: [], medium: [], large: [] };
+        for (const f of window.ARIVE_FURNITURE) {
+            if (bySize[f.size]) bySize[f.size].push(f);
+        }
+
+        const markers = p.struct.furniture;
+        for (let i = 0; i < markers.length; i++) {
+            if (p._furnitureSpawned.has(i)) continue;
+
+            const fb = markers[i];
+            if (!fb || !fb.size) { p._furnitureSpawned.add(i); continue; }
+
+            const wx = p.x + fb.x;
+            const wz = p.z + fb.z;
+
+            /* Not this chunk?  Leave it unmarked — a later chunk column
+               that overlaps the plot will pick it up. */
+            if (wx < cx0 || wx >= cx1) continue;
+            if (wz < cz0 || wz >= cz1) continue;
+
+            const wy = GROUND_Y + fb.y;
+            if (wx < 0 || wy < 0 || wz < 0 ||
+                wx >= SX || wy >= SY || wz >= SZ) {
+                p._furnitureSpawned.add(i);
+                continue;
+            }
+
+            const pool = bySize[fb.size];
+            if (!pool || !pool.length) { p._furnitureSpawned.add(i); continue; }
+
+            const pick = pool[(Math.random() * pool.length) | 0];
+
+            /* Spawn at the TOP of the marker voxel, not its centre.  That
+               puts the item's whole AABB in free space above the floor —
+               no penetration, no sideways shove from resolveVoxelPenetration.
+               Gravity then drops it the last 10 cm onto the floor. */
+            const spawnY = (wy + 1.0) * VOXEL + 0.02;
+
+            /* ---- Facing direction -------------------------------------
+               A furniture marker may carry `dir` — the yaw (radians
+               around Y) the editor assigned to the piece.  Local +Z
+               is the model's forward, so `dir = 0` faces world +Z.
+               Markers without a `dir` (older saves, procedural scatter)
+               get a random yaw so the world doesn't look stamped. */
+            const hasDir = (typeof fb.dir === 'number');
+            const yaw = hasDir ? fb.dir : Math.random() * Math.PI * 2;
+
+            const spawned = spawnPickup({
+                name: pick.name,
+                iconImage: pick.iconImage,
+                iconImageRotated: pick.iconImageRotated,
+                w: pick.w, h: pick.h,
+                color: pick.color, meta: pick.meta,
+                furnitureKey: pick.key, size: pick.size
+            }, new THREE.Vector3(
+                (wx + 0.5) * VOXEL,
+                spawnY,
+                (wz + 0.5) * VOXEL
+            ), null, yaw);
+
+            /* A piece with an explicit facing should keep it.  Kill the
+               random tumble so the settle spring locks in the right yaw
+               instead of spinning the piece to a random orientation.
+               The equilibrium quat only re-aligns a face to world-up —
+               it never touches yaw — so the intended facing survives. */
+            if (spawned && hasDir) {
+                spawned.vx = spawned.vy = spawned.vz = 0;
+                spawned.avx = spawned.avy = spawned.avz = 0;
+            }
+
+            p._furnitureSpawned.add(i);
+        }
+    }
+
+    /* -------------------------------------------------------------------------
+       generateCityLayout — LAYOUT ONLY.  No voxels written.
+       Runs once at boot.  Produces roads, blocks and plot placements.
+       Deterministic from `seed`, so all clients can build the same layout
+       without syncing anything.
+       ------------------------------------------------------------------------- */
+    function generateCityLayout(seed) {
         const rnd = mulberry32(seed);
 
-        quietGeneration = true;   // suppress markDirty spam — boot() rebuilds all chunks anyway
-
-        // 1. Ground.
-        fillGroundVoxels();
-
-        // 2. Irregular road positions.
         const roadXs = generateRoadAxis(rnd, 4, 6, SX);
         const roadZs = generateRoadAxis(rnd, 4, 6, SZ);
-
-        // 3. Carve full-length road bands.
-        for (const rx of roadXs) carveRoadV(rx);
-        for (const rz of roadZs) carveRoadH(rz);
-
-        // 4. Extract the empty blocks between roads.
         const blocks = enumerateBlocks(roadXs, roadZs);
 
-        // 5. Structure pool from the editor (or procedural fallback).
         const pool = (window.ARIVE_STRUCTURES || []).filter(s =>
             s && Array.isArray(s.blocks) && Array.isArray(s.size) &&
             s.size[0] >= 4 && s.size[2] >= 4
         );
 
-        console.log('[ARive] generateCity  map ' + SX + '×' + SZ +
-            '  ·  ' + roadXs.length + '×' + roadZs.length + ' roads  ·  ' +
-            blocks.length + ' blocks  ·  ' + pool.length + ' structure types');
+        console.log('[ARive] Layout · ' + SX + '×' + SZ +
+            ' · roads ' + roadXs.length + '×' + roadZs.length +
+            ' · blocks ' + blocks.length +
+            ' · struct types ' + pool.length);
 
-        // 6. Place structures.
         const plots = [];
         if (pool.length > 0) {
             for (const block of blocks) {
-                const bp = placeStructuresInBlock(rnd, block, pool);
-                for (const p of bp) plots.push(p);
+                for (const p of placeStructuresInBlock(rnd, block, pool)) plots.push(p);
             }
         } else {
-            // No structures loaded — use the old procedural building generator.
             for (const block of blocks) {
                 if (block.w < 24 || block.d < 24) continue;
                 if (rnd() > 0.75) continue;
@@ -1398,33 +1819,229 @@
                 const D = 12 + ((rnd() * Math.min(24, block.d - 8)) | 0);
                 const H = 20 + ((rnd() * 60) | 0);
                 const pad = PLOT_EDGE_PAD;
-                const px = block.x + pad +
-                    ((rnd() * Math.max(1, block.w - W - pad * 2)) | 0);
-                const pz = block.z + pad +
-                    ((rnd() * Math.max(1, block.d - D - pad * 2)) | 0);
-                plots.push({ x: px, z: pz, w: W, d: D, procedural: { h: H } });
+                const px = block.x + pad + ((rnd() * Math.max(1, block.w - W - pad * 2)) | 0);
+                const pz = block.z + pad + ((rnd() * Math.max(1, block.d - D - pad * 2)) | 0);
+                plots.push({
+                    x: px, z: pz, w: W, d: D,
+                    procedural: { h: H, seed: (rnd() * 1e9) | 0 }
+                });
             }
         }
 
-        // 7. Stamp everything into the voxel grid.
-        for (const p of plots) {
-            if (p.procedural) {
-                buildBuilding(p.x, p.z, p.w, p.d, GROUND_Y, p.procedural.h, rnd);
-            } else {
-                stampStructure(p.struct, p.x, GROUND_Y, p.z, 0);
-            }
-        }
-
-        // 8. Road clutter.
-        scatterRoadProps(rnd);
-
-        // 9. Record a spawn hint — first road intersection so the player
-        //    never spawns inside a structure.
         const sx = roadXs[0] ?? (SX >> 1);
         const sz = roadZs[0] ?? (SZ >> 1);
         window.__ariveBigStructureSpot = { x: sx, z: sz };
 
-        quietGeneration = false;
+        return { seed, roadXs, roadZs, blocks, plots };
+    }
+
+    /* -------------------------------------------------------------------------
+       scatterPropsInChunk — deterministic per-chunk prop scatter.
+       Uses a chunk-seeded RNG, so a chunk always looks the same regardless of
+       when it is generated.
+       ------------------------------------------------------------------------- */
+    function scatterPropsInChunk(cx, cz) {
+        const seed = (cityLayout.seed ^
+            Math.imul(cx, 0x9E3779B1) ^
+            Math.imul(cz, 0x85EBCA6B)) >>> 0;
+        const rnd = mulberry32(seed);
+
+        const x0 = cx * CHUNK, x1 = x0 + CHUNK;
+        const z0 = cz * CHUNK, z1 = z0 + CHUNK;
+
+        // Rubble on asphalt (~1.2 % of road cells)
+        for (let x = x0; x < x1; x++) {
+            for (let z = z0; z < z1; z++) {
+                if (getV(x, GROUND_Y - 1, z) !== 1) continue;
+                if (rnd() < 0.012) setVRaw(x, GROUND_Y, z, 10);
+            }
+        }
+        // Occasional barrel stack
+        for (let x = x0 + 1; x < x1 - 1; x++) {
+            for (let z = z0 + 1; z < z1 - 1; z++) {
+                if (getV(x, GROUND_Y - 1, z) !== 1) continue;
+                if (getV(x, GROUND_Y, z) !== 0) continue;
+                if (rnd() < 0.0008) {
+                    for (let k = 0; k < 5; k++) setVRaw(x, GROUND_Y + k, z, 13);
+                }
+            }
+        }
+    }
+
+    /* =========================================================================
+   STREAMING CORE
+   ========================================================================= */
+
+    /* Fill one chunk column (X,Z) — 3 stacked Y-chunks.
+       Idempotent: voxels are only written once; mesh is only built once
+       (unless later invalidated by a neighbour). */
+    function generateChunkColumn(cx, cz) {
+        const key = cx + ',' + cz;
+
+        if (!generatedChunks.has(key)) {
+            const x0 = cx * CHUNK, x1 = x0 + CHUNK;
+            const z0 = cz * CHUNK, z1 = z0 + CHUNK;
+
+            // 1. Ground
+            for (let x = x0; x < x1; x++) {
+                for (let z = z0; z < z1; z++) {
+                    for (let y = 0; y < GROUND_Y - 1; y++) setVRaw(x, y, z, 8);
+                    setVRaw(x, GROUND_Y - 1, z, 9);
+                }
+            }
+
+            // 2. Roads (only the part of each road band that intersects this column)
+            for (const rx of cityLayout.roadXs) {
+                const lo = Math.max(x0, rx - ROAD_HALF);
+                const hi = Math.min(x1 - 1, rx + ROAD_HALF);
+                for (let x = lo; x <= hi; x++)
+                    for (let z = z0; z < z1; z++)
+                        setVRaw(x, GROUND_Y - 1, z, 1);
+            }
+            for (const rz of cityLayout.roadZs) {
+                const lo = Math.max(z0, rz - ROAD_HALF);
+                const hi = Math.min(z1 - 1, rz + ROAD_HALF);
+                for (let z = lo; z <= hi; z++)
+                    for (let x = x0; x < x1; x++)
+                        setVRaw(x, GROUND_Y - 1, z, 1);
+            }
+
+            // 3a. Structures that overlap this column — place blocks.
+            for (const p of cityLayout.plots) {
+                if (p.x >= x1 || p.x + p.w <= x0) continue;
+                if (p.z >= z1 || p.z + p.d <= z0) continue;
+                writePlotBlocksInChunk(p, x0, x1, z0, z1);
+            }
+
+            // 3b. Furniture — spawn ONLY the markers whose own X/Z falls
+            //     inside this chunk column.  By this point the floor blocks
+            //     below every such marker are guaranteed to be present.
+            for (const p of cityLayout.plots) {
+                if (!p.struct) continue;
+                if (p.x >= x1 || p.x + p.w <= x0) continue;
+                if (p.z >= z1 || p.z + p.d <= z0) continue;
+                spawnPlotFurnitureInChunk(p, x0, x1, z0, z1);
+            }
+
+            // 4. Road clutter
+            scatterPropsInChunk(cx, cz);
+
+            generatedChunks.add(key);
+
+            if (Minimap && Minimap.markExplored) Minimap.markExplored(cx, cz);
+        }
+
+        if (!meshedChunks.has(key)) {
+            for (let cy = 0; cy < CHUNKS_Y; cy++) rebuildChunk(cx, cy, cz);
+            meshedChunks.add(key);
+            remeshNeighborColumns(cx, cz);
+        }
+    }
+
+    function remeshNeighborColumns(cx, cz) {
+        const nbrs = [[cx - 1, cz], [cx + 1, cz], [cx, cz - 1], [cx, cz + 1]];
+        for (const [nx, nz] of nbrs) {
+            if (nx < 0 || nz < 0 || nx >= CHUNKS_X || nz >= CHUNKS_Z) continue;
+            if (!meshedChunks.has(nx + ',' + nz)) continue;
+            for (let cy = 0; cy < CHUNKS_Y; cy++) rebuildChunk(nx, cy, nz);
+        }
+    }
+
+    /* Stream the ring of chunks around the player.  `force = true` fills
+       everything synchronously (used by MP join); otherwise a small budget
+       is processed per frame to avoid hitching. */
+    function streamChunks(px, pz, force) {
+        if (!cityLayout || currentMapType !== 'city') return;
+
+        const pcx = Math.floor(px / (CHUNK * VOXEL));
+        const pcz = Math.floor(pz / (CHUNK * VOXEL));
+        const R = LOAD_RADIUS, R2 = R * R;
+
+        const want = [];
+        for (let dx = -R; dx <= R; dx++) {
+            for (let dz = -R; dz <= R; dz++) {
+                const d2 = dx * dx + dz * dz;
+                if (d2 > R2) continue;
+                const cx = pcx + dx, cz = pcz + dz;
+                if (cx < 0 || cz < 0 || cx >= CHUNKS_X || cz >= CHUNKS_Z) continue;
+                const key = cx + ',' + cz;
+                if (meshedChunks.has(key) && generatedChunks.has(key)) continue;
+                want.push({ cx, cz, d2 });
+            }
+        }
+        if (!want.length) return;
+        want.sort((a, b) => a.d2 - b.d2);
+
+        const budget = force ? want.length : MAX_CHUNK_GENS_PER_FRAME;
+        for (let i = 0; i < budget && i < want.length; i++) {
+            generateChunkColumn(want[i].cx, want[i].cz);
+        }
+    }
+
+    /* Free meshes outside UNLOAD_RADIUS.  Voxels are kept — player edits
+       in the abandoned region survive a trip away and back. */
+    function unloadFarChunks(px, pz) {
+        if (!cityLayout || currentMapType !== 'city') return;
+
+        const pcx = Math.floor(px / (CHUNK * VOXEL));
+        const pcz = Math.floor(pz / (CHUNK * VOXEL));
+        const R = UNLOAD_RADIUS, R2 = R * R;
+
+        const toUnload = [];
+        for (const key of meshedChunks) {
+            const [cx, cz] = key.split(',').map(Number);
+            const dx = cx - pcx, dz = cz - pcz;
+            if (dx * dx + dz * dz > R2) toUnload.push(key);
+        }
+        for (const key of toUnload) {
+            const [cx, cz] = key.split(',').map(Number);
+            for (let cy = 0; cy < CHUNKS_Y; cy++) {
+                const mk = cx + ',' + cy + ',' + cz;
+                const entry = chunkMeshes.get(mk);
+                if (!entry) continue;
+                if (entry.opaque) { scene.remove(entry.opaque); entry.opaque.geometry.dispose(); }
+                if (entry.glass) { scene.remove(entry.glass); entry.glass.geometry.dispose(); }
+                chunkMeshes.delete(mk);
+            }
+            meshedChunks.delete(key);
+        }
+    }
+
+    /* Synchronous ring fill — used at boot and MP join. */
+    function fillInitialRing(px, pz, radius) {
+        const pcx = Math.floor(px / (CHUNK * VOXEL));
+        const pcz = Math.floor(pz / (CHUNK * VOXEL));
+        const R = radius, R2 = R * R;
+        const list = [];
+        for (let dx = -R; dx <= R; dx++) {
+            for (let dz = -R; dz <= R; dz++) {
+                const d2 = dx * dx + dz * dz;
+                if (d2 > R2) continue;
+                const cx = pcx + dx, cz = pcz + dz;
+                if (cx < 0 || cz < 0 || cx >= CHUNKS_X || cz >= CHUNKS_Z) continue;
+                list.push({ cx, cz, d2 });
+            }
+        }
+        list.sort((a, b) => a.d2 - b.d2);
+        for (const { cx, cz } of list) generateChunkColumn(cx, cz);
+    }
+
+    /* Called from animate() — cheap when caught up. */
+    function updateChunkStreaming() {
+        if (!cityLayout || currentMapType !== 'city') return;
+        if (!player.alive) return;
+
+        const px = player.pos.x, pz = player.pos.z;
+        const pcx = Math.floor(px / (CHUNK * VOXEL));
+        const pcz = Math.floor(pz / (CHUNK * VOXEL));
+
+        streamChunks(px, pz, false);
+
+        if (pcx !== lastStreamedCx || pcz !== lastStreamedCz) {
+            lastStreamedCx = pcx;
+            lastStreamedCz = pcz;
+            unloadFarChunks(px, pz);
+        }
     }
 
     /* =========================================================================
@@ -1453,6 +2070,32 @@
 
         smoothY: 0
     };
+
+    /* ============================================================
+   FOOTSTEP / LAND / JUMP SFX
+   ------------------------------------------------------------
+   · Footsteps fire on ground contact at a fixed stride distance
+     so the cadence matches the walk / sprint speed.
+   · Surface is inferred from the block the player is standing on.
+   ============================================================ */
+    let _stepAccum = 0;
+    const STEP_DISTANCE = 2.0;              // metres between footfalls
+
+    function surfaceAtPlayer() {
+        const vx = Math.floor(player.pos.x / VOXEL);
+        const vy = Math.floor((player.pos.y - 0.05) / VOXEL);
+        const vz = Math.floor(player.pos.z / VOXEL);
+        const b = getV(vx, vy, vz);
+        if (!b) return 'grass';
+        /* wood family */
+        if (b === 6 || b === 14 || b === 25 || b === 29) return 'wood';
+        /* water placeholder — none of the current blocks are water, so
+           this branch is here for future additions */
+        /* soft family */
+        if (b === 8 || b === 9 || b === 12 || b === 33 || b === 34) return 'grass';
+        /* everything else (asphalt, concrete, brick, stone, metal, glass…) */
+        return 'stone';
+    }
 
     /* Max height (in metres) the player can auto-step over.
        0.10 m = 1 voxel, so 0.30 m = 3 voxels.  Anything taller
@@ -1504,6 +2147,7 @@
 
         for (let i = 0; i < pickups.length; i++) {
             const p = pickups[i];
+            if (!p.mesh.visible) continue;
             if (!p.isFurniture) continue;
             if (!p.locked) continue;          // only settled furniture is solid
             if (p.carriedBy) continue;        // never block on the carried piece
@@ -1553,32 +2197,12 @@
             }
         },
         {
-            key: 'rifle', name: 'RIFLE', w: 4, h: 1, color: '#46505c',
-            meta: {
-                model: [
-                    { p: [0.00, 0.25, 0.00], s: [0.80, 0.06, 0.05], c: 0x30353a },
-                    { p: [-0.35, 0.22, 0.00], s: [0.18, 0.18, 0.08], c: 0x4a3820 },
-                    { p: [0.05, 0.14, 0.00], s: [0.10, 0.14, 0.07], c: 0x4a3820 },
-                    { p: [0.28, 0.31, 0.00], s: [0.14, 0.05, 0.05], c: 0x505860 }
-                ], mass: 2.2
-            }
-        },
-        {
             key: 'charge', name: 'CHARGE', w: 2, h: 1, color: '#8a2a1a',
             meta: {
                 model: [
                     { p: [0, 0.12, 0], s: [0.20, 0.24, 0.20], c: 0xa04028 },
                     { p: [0, 0.27, 0], s: [0.06, 0.07, 0.06], c: 0x404040 }
                 ], mass: 1.8
-            }
-        },
-        {
-            key: 'flare', name: 'FLARE', w: 1, h: 1, color: '#a0601a',
-            meta: {
-                model: [
-                    { p: [0, 0.18, 0], s: [0.05, 0.36, 0.05], c: 0xd0d0c0 },
-                    { p: [0, 0.38, 0], s: [0.06, 0.06, 0.06], c: 0xd04020 }
-                ], mass: 0.7
             }
         },
         {
@@ -1655,6 +2279,97 @@
             }
         }
     ];
+
+    /* =========================================================================
+   AMMO ITEM DEFINITIONS
+   -------------------------------------------------------------------------
+   Three ammo types, one stack limit per slot (200 rounds).  These are
+   real inventory items — dropped as world pickups by enemy kills — not
+   a hidden reserve counter.  Adding or removing rounds = pushing into
+   the stack via inventory.addItem(item) with `count`.
+
+   The `isAmmo` / `ammoType` / `maxStack` fields are what the inventory
+   uses to find an existing stack of the same type and merge into it.
+   ========================================================================= */
+    const AMMO_MAX_STACK = 200;
+
+    const AMMO_DEFS = [
+        {
+            key: 'ammo_9mm',
+            name: '9MM',
+            w: 1, h: 1,
+            color: '#b09040',
+            isAmmo: true,
+            ammoType: '9mm',
+            maxStack: AMMO_MAX_STACK,
+            meta: {
+                mass: 0.35,
+                isAmmo: true,
+                ammoType: '9mm',
+                model: [
+                    { p: [0, 0.05, 0], s: [0.22, 0.10, 0.15], c: 0x8a7030 },
+                    { p: [0, 0.11, 0], s: [0.22, 0.02, 0.15], c: 0x605020 },
+                    { p: [-0.06, 0.13, 0], s: [0.03, 0.03, 0.03], c: 0xd0a040 },
+                    { p: [0.00, 0.13, 0], s: [0.03, 0.03, 0.03], c: 0xd0a040 },
+                    { p: [0.06, 0.13, 0], s: [0.03, 0.03, 0.03], c: 0xd0a040 },
+                ]
+            }
+        },
+        {
+            key: 'ammo_556',
+            name: '5.56',
+            w: 1, h: 1,
+            color: '#a0803a',
+            isAmmo: true,
+            ammoType: '5.56',
+            maxStack: AMMO_MAX_STACK,
+            meta: {
+                mass: 0.45,
+                isAmmo: true,
+                ammoType: '5.56',
+                model: [
+                    { p: [0, 0.06, 0], s: [0.24, 0.12, 0.16], c: 0x7a6830 },
+                    { p: [0, 0.13, 0], s: [0.24, 0.02, 0.16], c: 0x504018 },
+                    { p: [-0.07, 0.15, 0], s: [0.03, 0.04, 0.03], c: 0xc09030 },
+                    { p: [0.00, 0.15, 0], s: [0.03, 0.04, 0.03], c: 0xc09030 },
+                    { p: [0.07, 0.15, 0], s: [0.03, 0.04, 0.03], c: 0xc09030 },
+                ]
+            }
+        },
+        {
+            key: 'ammo_shell',
+            name: 'SHELL',
+            w: 1, h: 1,
+            color: '#b04030',
+            isAmmo: true,
+            ammoType: 'shell',
+            maxStack: AMMO_MAX_STACK,
+            meta: {
+                mass: 0.55,
+                isAmmo: true,
+                ammoType: 'shell',
+                model: [
+                    { p: [0, 0.06, 0], s: [0.24, 0.12, 0.14], c: 0x8a2a20 },
+                    { p: [0, 0.13, 0], s: [0.24, 0.02, 0.14], c: 0x5a1812 },
+                    { p: [-0.07, 0.15, 0], s: [0.04, 0.05, 0.04], c: 0xd0a040 },
+                    { p: [0.00, 0.15, 0], s: [0.04, 0.05, 0.04], c: 0xd0a040 },
+                    { p: [0.07, 0.15, 0], s: [0.04, 0.05, 0.04], c: 0xd0a040 },
+                ]
+            }
+        }
+    ];
+
+    /* Merge into whatever ITEM_DEFS ends up being (fallback array, or the
+       user's ITEM_DEFS_DATA).  Skip the merge if an entry with the same
+       key already exists — a user can override our defaults by supplying
+       their own `ammo_9mm` etc. in ITEM_DEFS_DATA. */
+    for (const a of AMMO_DEFS) {
+        if (!ITEM_DEFS.some(d => d.key === a.key)) ITEM_DEFS.push(a);
+    }
+
+    /* Convenience lookup for the pickup spawn code. */
+    const AMMO_BY_TYPE = Object.create(null);
+    for (const a of AMMO_DEFS) AMMO_BY_TYPE[a.ammoType] = a;
 
     function buildItemMesh(model) {
         const g = new THREE.Group();
@@ -2000,83 +2715,101 @@
         }
     }
 
-    /* -----------------------------------------------------------------
-       Item icons + inventory — must run AFTER furniture is loaded, so
-       it is deferred into boot() instead of running at parse time.
-       ----------------------------------------------------------------- */
-    let inventory = null;
+    /* --------------------------------------------------------------
+           INVENTORY SLOT
+    
+           `inventory` is read by the per-frame animate() loop, by every
+           input handler, and by the pickup / carry / drop logic.  Any of
+           those can run before initItemsAndInventory() has finished
+           building the real GridInventory — or even if init threw.
+    
+           A tiny stub is installed up front so nothing downstream ever
+           touches a null.  initItemsAndInventory() swaps the real one in.
+           -------------------------------------------------------------- */
+    const STUB_INVENTORY = {
+        isOpen: false,
+        open() { },
+        close() { },
+        toggle() { },
+        addItem() { return false; },
+        addToIncoming() { },
+    };
+
+    let inventory = STUB_INVENTORY;
     let itemsInitialized = false;
 
     async function initItemsAndInventory() {
         if (itemsInitialized) return;
         itemsInitialized = true;
 
-        await loadFurnitureFromFolder();
+        try {
+            await loadFurnitureFromFolder();
 
-        if (window.ARIVE_FURNITURE && Array.isArray(window.ARIVE_FURNITURE)) {
-            for (const f of window.ARIVE_FURNITURE) {
-                /* The thumbnail renderer + inventory.addItem both read
-                   `def.model` at the top level, while the furniture
-                   registry keeps it under `meta`.  Mirror it across so
-                   both call-sites see it, whichever shape the source
-                   used. */
-                if (!f.meta) f.meta = {};
-                if (!f.model && Array.isArray(f.meta.model)) f.model = f.meta.model;
-                if (!f.meta.model && Array.isArray(f.model)) f.meta.model = f.model;
-                ITEM_DEFS.push(f);
-            }
-            console.log('[ARive] merged ' + window.ARIVE_FURNITURE.length +
-                ' furniture item(s) into ITEM_DEFS');
-        }
-
-        for (const def of ITEM_DEFS) {
-            def.iconImage = renderItemThumbnail(def, def.w, def.h);
-            if (def.w !== def.h) {
-                def.iconImageRotated = renderItemThumbnail(def, def.h, def.w);
-            }
-        }
-
-        inventory = new GridInventory({
-            cols: 10,
-            rows: 6,
-            onOpen: () => {
-                mouseDown = false;
-                throwCharging = false;
-                if (typeof heldPickup !== 'undefined' && heldPickup) releasePickup(0);
-                document.exitPointerLock();
-            },
-            onClose: () => {
-                if (gameRunning && player.alive) {
-                    const p = canvas.requestPointerLock();
-                    if (p && typeof p.catch === 'function') p.catch(() => { });
+            if (window.ARIVE_FURNITURE && Array.isArray(window.ARIVE_FURNITURE)) {
+                for (const f of window.ARIVE_FURNITURE) {
+                    if (!f.meta) f.meta = {};
+                    if (!f.model && Array.isArray(f.meta.model)) f.model = f.meta.model;
+                    if (!f.meta.model && Array.isArray(f.model)) f.meta.model = f.model;
+                    ITEM_DEFS.push(f);
                 }
-            },
-            onDropOutside: (item) => {
-                dropItemInWorld(item);
+                console.log('[ARive] merged ' + window.ARIVE_FURNITURE.length +
+                    ' furniture item(s) into ITEM_DEFS');
             }
-        });
 
-        for (const def of ITEM_DEFS) {
-            /* Only ARIVE_FURNITURE entries carry a `size` of
-               'small' / 'medium' / 'large'.  Regular ITEM_DEFS — rifle,
-               sledge, medkit, bandage, … — have no size.  We must NOT tag
-               those with `furnitureKey`, or every dropped item would be
-               mis-classified as furniture and snap into carry mode. */
-            const isFurnitureItem = (def.size === 'small' ||
-                def.size === 'medium' ||
-                def.size === 'large');
+            for (const def of ITEM_DEFS) {
+                def.iconImage = renderItemThumbnail(def, def.w, def.h);
+                if (def.w !== def.h) {
+                    def.iconImageRotated = renderItemThumbnail(def, def.h, def.w);
+                }
+            }
 
-            inventory.addItem({
-                name: def.name,
-                iconImage: def.iconImage,
-                iconImageRotated: def.iconImageRotated,
-                w: def.w,
-                h: def.h,
-                color: def.color,
-                meta: { model: def.model },
-                size: isFurnitureItem ? def.size : undefined,
-                furnitureKey: isFurnitureItem ? def.key : undefined
+            inventory = new GridInventory({
+                cols: 10,
+                rows: 6,
+                onOpen: () => {
+                    mouseDown = false;
+                    throwCharging = false;
+                    if (typeof heldPickup !== 'undefined' && heldPickup) releasePickup(0);
+                    document.exitPointerLock();
+                },
+                onClose: () => {
+                    if (gameRunning && player.alive) {
+                        requestPointerLockSafely();
+                    }
+                },
+                onDropOutside: (item) => {
+                    dropItemInWorld(item);
+                }
             });
+
+            for (const def of ITEM_DEFS) {
+                /* Ammo is world loot — the player starts with none.
+                   The icon is still rendered above so a dropped round
+                   has a thumbnail ready the moment it hits the ground. */
+                if (def.isAmmo) continue;
+
+                const isFurnitureItem = (def.size === 'small' ||
+                    def.size === 'medium' ||
+                    def.size === 'large');
+
+                inventory.addItem({
+                    name: def.name,
+                    iconImage: def.iconImage,
+                    iconImageRotated: def.iconImageRotated,
+                    w: def.w,
+                    h: def.h,
+                    color: def.color,
+                    meta: { model: def.model },
+                    size: isFurnitureItem ? def.size : undefined,
+                    furnitureKey: isFurnitureItem ? def.key : undefined
+                });
+            }
+
+        } catch (e) {
+            console.error('[ARive] item / inventory init FAILED — the game ' +
+                'will keep running with a stub inventory.  See the error below:');
+            console.error(e);
+            inventory = STUB_INVENTORY;   // put the safe one back
         }
     }
 
@@ -2672,12 +3405,23 @@
        Spawn / drop
        ============================================================ */
 
-    function spawnPickup(item, worldPos, remotePid) {
+    function spawnPickup(item, worldPos, remotePid, initialYaw) {
         const model = item.meta && item.meta.model;
         if (!model) return null;
         const mesh = buildItemMesh(model);
         mesh.position.copy(worldPos);
-        mesh.rotation.y = Math.random() * Math.PI * 2;
+
+        /* Facing yaw.
+           ------------------------------------------------------------
+           When `initialYaw` is provided (editor-placed furniture with an
+           explicit `dir`), the piece spawns facing that direction.
+           Otherwise it gets a random yaw so loose debris on the ground
+           looks natural.  Local +Z is the model's forward, so
+           initialYaw = 0 faces world +Z. */
+        mesh.rotation.y = (typeof initialYaw === 'number')
+            ? initialYaw
+            : Math.random() * Math.PI * 2;
+
         scene.add(mesh);
 
         const aabb = computeModelAABB(model);
@@ -2693,10 +3437,21 @@
                 w: item.w, h: item.h,
                 color: item.color,
                 meta: item.meta,
-                /* NEW: preserve the furniture tags so a stowed piece
-                   still knows what it is when it comes back out. */
+                /* Preserve the furniture tags so a stowed piece still
+                   knows what it is when it comes back out. */
                 size: item.size,
-                furnitureKey: item.furnitureKey
+                furnitureKey: item.furnitureKey,
+
+                /* ---- Ammo stacking fields ----------------------------
+                   When this pickup is collected, `def` is passed straight
+                   to inventory.addItem().  The inventory uses these three
+                   fields to find an existing stack of the same ammoType
+                   and top it up (capped at `maxStack`), rather than
+                   creating a new slot. */
+                count: item.count,
+                maxStack: item.maxStack,
+                isAmmo: !!item.isAmmo,
+                ammoType: item.ammoType
             },
             mesh: mesh,
             aabb: aabb,
@@ -2860,6 +3615,7 @@
 
         for (const p of pickups) {
             if (p === heldPickup) continue;
+            if (!p.mesh.visible) continue;
 
             const minX = p.mesh.position.x + p.rotMin.x - PICKUP_PAD;
             const minY = p.mesh.position.y + p.rotMin.y - PICKUP_PAD;
@@ -2897,9 +3653,12 @@
         const result = attemptInventoryAdd(p.def);
         if (result === 'none') return;
 
+        if (window.Sfx) Sfx.play('ui_confirm');
+
         /* Item is now either in the grid or in the incoming slot —
            remove the world entity. */
         scene.remove(p.mesh);
+
         p.mesh.traverse(o => {
             if (o.geometry) o.geometry.dispose();
             if (o.material) o.material.dispose();
@@ -2918,12 +3677,44 @@
         }
     }
 
+    /* ============================================================
+   PICKUP VIEW CULLING
+   ------------------------------------------------------------
+   Furniture is spawned once when its chunk column is generated
+   and stays in the `pickups` array forever — but it should only
+   RENDER (and only collide / be targetable) while its chunk is
+   within the streaming radius of the player.  We cull by world
+   distance, with a 1-chunk hysteresis buffer so items don't pop
+   on the boundary.
+   ============================================================ */
+    function pickupCullRadiusM() {
+        return (LOAD_RADIUS + 1) * CHUNK * VOXEL;
+    }
+
+    function refreshPickupVisibility() {
+        const px = player.pos.x, pz = player.pos.z;
+        const R = pickupCullRadiusM();
+        const R2 = R * R;
+        for (let i = 0; i < pickups.length; i++) {
+            const p = pickups[i];
+            if (p === heldPickup || (furnMode && p === furnMode.p)) {
+                p.mesh.visible = true;
+                continue;
+            }
+            const dx = p.mesh.position.x - px;
+            const dz = p.mesh.position.z - pz;
+            p.mesh.visible = (dx * dx + dz * dz) <= R2;
+        }
+    }
+
 
     /* ============================================================
            Per‑frame update for world‑dropped pickups (with mass/weight fix)
            Fixes: items shaking on floor, player kicks sending items flying, item‑vs‑item realistic collision
            ============================================================ */
     function updatePickups(dt) {
+        refreshPickupVisibility();
+
         /* ---------- Furniture carry: drive the piece every frame ---------- */
         if (furnMode) updateFurnitureMode(dt);
 
@@ -2973,14 +3764,18 @@
             updateHeldToolModel();
             if (currentPickupTarget) {
                 const isHand = TOOLS[selectedTool].id === 'hand';
+                const d = currentPickupTarget.def;
+
+                /* Ammo pickups show a stacked count next to the name. */
+                let label = d.name;
+                if (d.isAmmo && d.count) label += '  ×' + d.count;
+
                 if (currentPickupTarget.isFurniture) {
                     pickupPromptEl.textContent =
-                        'HOLD [E]  1s  TO LIFT   ·   ' +
-                        currentPickupTarget.def.name;
+                        'HOLD [E]  1s  TO LIFT   ·   ' + label;
                 } else {
                     pickupPromptEl.textContent =
-                        (isHand ? '[LMB]  HOLD  ' : '[E]  PICK UP  ') +
-                        currentPickupTarget.def.name;
+                        (isHand ? '[LMB]  HOLD  ' : '[E]  PICK UP  ') + label;
                 }
                 pickupPromptEl.style.opacity = '1';
             } else {
@@ -3030,6 +3825,7 @@
            ============================================================ */
         for (let i = pickups.length - 1; i >= 0; i--) {
             const p = pickups[i];
+            if (!p.mesh.visible && p !== heldPickup && !(furnMode && p === furnMode.p)) continue;
 
             /* Item currently parented to a remote player's arm — skip. */
             if (p.carriedBy && p !== heldPickup) continue;
@@ -3311,11 +4107,13 @@
         for (let iter = 0; iter < 2; iter++) {
             for (let i = 0; i < N; i++) {
                 const a = pickups[i];
+                if (!a.mesh.visible) continue;
                 if (a === heldPickup) continue;
                 if (a.carriedBy) continue;              // held / carried by a peer
                 if (furnMode && a === furnMode.p) continue;
                 for (let j = i + 1; j < N; j++) {
                     const b = pickups[j];
+                    if (!b.mesh.visible) continue;
                     if (b === heldPickup) continue;
                     if (b.carriedBy) continue;          // held / carried by a peer
                     if (furnMode && b === furnMode.p) continue;
@@ -3427,6 +4225,15 @@
     let reacquiringLock = false;
 
     document.addEventListener('keydown', (e) => {
+        // Full-screen map owns input while it is open.
+        if (Minimap && Minimap.isOpen()) {
+            if (e.code === 'KeyM') {
+                e.preventDefault();
+                Minimap.close();
+            }
+            return;
+        }
+
         keys[e.code] = true;
         if (e.code === 'Space') e.preventDefault();
 
@@ -3438,7 +4245,10 @@
 
         if (e.code === 'Tab') {
             e.preventDefault();
-            if (gameRunning && player.alive && !devMenuActive) inventory.toggle();
+            if (gameRunning && player.alive && !devMenuActive) {
+                inventory.toggle();
+                if (window.Sfx) Sfx.play('ui_click');
+            }
             return;
         }
 
@@ -3483,12 +4293,43 @@
             return;
         }
 
+        if (e.code === 'KeyM') {
+            e.preventDefault();
+            if (Minimap.isOpen()) {
+                Minimap.close();
+                if (window.Sfx) Sfx.play('ui_back');
+            } else if (gameRunning && player.alive &&
+                !inventory.isOpen && !devMenuActive) {
+                Minimap.toggle();
+                if (window.Sfx) Sfx.play('ui_click');
+            }
+            return;
+        }
+
         if (gameRunning && !inventory.isOpen && e.code.startsWith('Digit')) {
             const n = parseInt(e.code.slice(5), 10);
-            if (n >= 1 && n <= TOOLS.length) {
-                selectedTool = n - 1;
+            if (n === 1 || n === 2) {
+                /* Weapon slot — takes priority over tools. */
+                if (window.Weapons) {
+                    window.Weapons.selectSlot(n - 1);
+                    if (heldPickup) releasePickup(0);
+                    if (window.Sfx) Sfx.play('ui_click');
+                }
+            } else if (n >= 3 && n - 3 < TOOLS.length) {
+                selectedTool = n - 3;
+                if (window.Weapons) window.Weapons.selectSlot(-1);
                 if (heldPickup && TOOLS[selectedTool].id !== 'hand') releasePickup(0);
                 renderHotbar();
+                if (window.Sfx) Sfx.play('ui_click');
+            }
+        }
+
+        /* Reload — only meaningful when a weapon slot is active. */
+        if (e.code === 'KeyR' && !e.repeat) {
+            if (window.Weapons && window.Weapons.isActive()) {
+                e.preventDefault();
+                window.Weapons.onReloadKey();
+                return;
             }
         }
     });
@@ -3510,7 +4351,9 @@
 
     document.addEventListener('mousemove', (e) => {
         if (!pointerLocked) return;
-        const s = 0.0020 * settings.sensitivity;
+        const scopeMul = (window.Weapons && window.Weapons.getSensitivityMul)
+            ? window.Weapons.getSensitivityMul() : 1;
+        const s = 0.0020 * settings.sensitivity * scopeMul;
 
         /* Mouse only writes the *intent*.  The camera clamp and body
            follow are applied in updatePlayer, where we have a dt. */
@@ -3528,6 +4371,7 @@
     let hadLock = false;
     let altHeld = false;
     let suppressUnlockPause = false;
+    let _suppressPauseTimer = 0;
 
     document.addEventListener('pointerlockchange', () => {
         const nowLocked = (document.pointerLockElement === canvas);
@@ -3536,11 +4380,13 @@
             hadLock = true;
         } else {
             pointerLocked = false;
+            if (suppressUnlockPause) return;
 
             // Alt-hold releases the cursor without pausing the game.
             if (suppressUnlockPause) return;
 
-            if (hadLock && gameRunning && !inventory.isOpen && !devMenuActive) {
+            if (hadLock && gameRunning && !inventory.isOpen && !devMenuActive
+                && !Minimap.isOpen()) {
                 gameRunning = false;
                 showOverlay(true);
             }
@@ -3560,14 +4406,58 @@
             document.exitPointerLock();
         }
     }
+
     function restorePointerFromAlt() {
         if (!altHeld) return;
         altHeld = false;
         suppressUnlockPause = false;
-        if (gameRunning && player.alive && !inventory.isOpen && !devMenuActive) {
+        requestPointerLockSafely();
+    }
+
+    /* =========================================================================
+   POINTER LOCK — robust re-acquisition
+   -------------------------------------------------------------------------
+   Chrome refuses requestPointerLock() for roughly one second after ANY
+   pointer-lock exit (and especially after an ESC-triggered unlock).  It
+   also rejects the promise silently from the caller's perspective, so
+   simply calling requestPointerLock() and swallowing the catch leaves
+   the cursor free after:
+
+       · exiting the full-screen map with M
+       · exiting the full-screen map with ESC
+       · closing the pause menu with the ENTER button
+
+   This helper fires the request immediately AND schedules a handful of
+   retries over the next ~1.8 s.  Every attempt re-checks the "should
+   we really be locked right now?" preconditions, so a retry that lands
+   while the player is in a menu / inventory / map quietly does nothing.
+   ========================================================================= */
+    function requestPointerLockSafely() {
+        const shouldLock = () => {
+            if (!gameRunning) return false;
+            if (document.pointerLockElement === canvas) return false;
+            if (inventory && inventory.isOpen) return false;
+            if (devMenuActive) return false;
+            if (Minimap && Minimap.isOpen()) return false;
+            if (altHeld) return false;
+            return true;
+        };
+
+        const tryLock = () => {
+            if (!shouldLock()) return;
             const p = canvas.requestPointerLock();
             if (p && typeof p.catch === 'function') p.catch(() => { });
-        }
+        };
+
+        /* First attempt fires immediately. */
+        tryLock();
+
+        /* Denser probe schedule.  Chrome's ESC cooldown is ~1.25 s; the
+           rejected calls at 0–1000 ms cost nothing, and the call that
+           lands the instant the cooldown lifts is the one at ~1100 ms. */
+        [50, 150, 350, 700, 1000, 1100, 1250, 1500, 1800].forEach(function (delay) {
+            setTimeout(tryLock, delay);
+        });
     }
 
     // If the user Alt-Tabs away, keys can get stuck. Clear everything.
@@ -3581,31 +4471,36 @@
 
         /* --- Furniture carry mode captures the mouse --- */
         if (furnMode) {
-            if (e.button === 0) {          // LMB — place & anchor
-                e.preventDefault();
-                placeFurniture();
-            } else if (e.button === 2) {   // RMB — stow in inventory
-                e.preventDefault();
-                storeFurniture();
-            }
+            if (e.button === 0) { e.preventDefault(); placeFurniture(); }
+            else if (e.button === 2) { e.preventDefault(); storeFurniture(); }
             return;
         }
 
-        /* If we aren't pointer-locked yet, this click is meant to
-           acquire the lock — not to interact with the world.
-    
-           Browsers (Chrome especially) refuse a requestPointerLock()
-           that fires immediately after the user pressed ESC to exit
-           lock.  The ENTER button on the pause menu therefore starts
-           the game in a "running but unlocked" state, and the very
-           next click was previously being swallowed as a tool use.
-           Here we grab the lock instead and bail out. */
+        /* --- Pointer-lock acquisition ALWAYS wins over weapon input.
+               Chrome refuses a fresh requestPointerLock() for ~1.25 s after
+               any exit (ESC, menu close, map close).  Without this guard,
+               the "click to look" click fires the gun instead of grabbing
+               the lock. --- */
         if (!pointerLocked) {
             if (!altHeld && !devMenuActive && !inventory.isOpen) {
                 const p = canvas.requestPointerLock();
                 if (p && typeof p.catch === 'function') p.catch(() => { });
             }
             return;
+        }
+
+        /* --- Weapons claim LMB / RMB while a weapon slot is active --- */
+        if (window.Weapons && window.Weapons.isActive()) {
+            if (e.button === 0) {
+                e.preventDefault();
+                window.Weapons.onTriggerDown();
+                return;
+            }
+            if (e.button === 2) {
+                e.preventDefault();
+                window.Weapons.onScopeDown();
+                return;
+            }
         }
 
         /* Right-click while holding a pickup → start charging a throw. */
@@ -3631,10 +4526,12 @@
     });
 
     canvas.addEventListener('mouseup', (e) => {
-        /* Swallow the release that belongs to a re-lock click. */
-        if (reacquiringLock) {
-            reacquiringLock = false;
-            return;
+        if (reacquiringLock) { reacquiringLock = false; return; }
+
+        /* Weapon releases. */
+        if (window.Weapons && window.Weapons.isActive()) {
+            if (e.button === 0) { window.Weapons.onTriggerUp(); return; }
+            if (e.button === 2) { window.Weapons.onScopeUp(); return; }
         }
 
         /* Right-click release → throw with the charged force. */
@@ -3666,6 +4563,8 @@
             rotateFurnitureBy(e.deltaY > 0 ? FURN_ROT_STEP : -FURN_ROT_STEP);
             return;
         }
+        /* Weapons don't respond to the wheel. */
+        if (window.Weapons && window.Weapons.isActive()) return;
         selectedTool = (selectedTool + (e.deltaY > 0 ? 1 : -1) + TOOLS.length) % TOOLS.length;
         if (heldPickup && TOOLS[selectedTool].id !== 'hand') releasePickup(0);
         renderHotbar();
@@ -3705,14 +4604,14 @@
     /* =========================================================================
        15. TOOLS
        ========================================================================= */
+    /* Rifles and flares moved out of the tool hotbar — see weapons.js.
+       Tools now live on keys 3–7. */
     const TOOLS = [
+        { id: 'hand', name: 'HAND', icon: '✋', color: '#c8b88a', count: Infinity, cd: 0.15 },
         { id: 'sledge', name: 'SLEDGE', icon: '⚒', color: '#c8a04a', count: Infinity, cd: 0.42 },
         { id: 'charge', name: 'CHARGE', icon: '◉', color: '#d04030', count: 12, cd: 0.8 },
-        { id: 'rifle', name: 'RIFLE', icon: '▬', color: '#8090a0', count: 120, cd: 0.12 },
-        { id: 'flare', name: 'FLARE', icon: '✶', color: '#e08030', count: 8, cd: 0.45 },
         { id: 'medkit', name: 'MEDKIT', icon: '+', color: '#d05060', count: 3, cd: 1.1 },
-        { id: 'ration', name: 'RATION', icon: '◆', color: '#80a050', count: 5, cd: 1.0 },
-        { id: 'hand', name: 'HAND', icon: '✋', color: '#c8b88a', count: Infinity, cd: 0.15 }
+        { id: 'ration', name: 'RATION', icon: '◆', color: '#80a050', count: 5, cd: 1.0 }
     ];
 
     /* ============================================================
@@ -3802,7 +4701,8 @@
        player isn't carrying a picked-up item). */
     function updateHeldToolModel() {
         const selId = TOOLS[selectedTool].id;
-        const showTool = !heldPickup;
+        const weaponActive = !!(window.Weapons && window.Weapons.isActive());
+        const showTool = !heldPickup && !weaponActive;
         for (const id in toolHolders) {
             toolHolders[id].visible = showTool && id === selId;
         }
@@ -3876,6 +4776,7 @@
                 carveSphere(cx, cy, cz, 2.8, { ignite: false, debrisChance: 0.20 });
                 shakeCamera(0.08);  // ← reduced from 0.16
                 net.sendCarve(cx, cy, cz, 2.8, false);
+                if (window.Sfx) Sfx.play('voxel_break');
             }
 
             hitEnemiesMelee(2.4, 40);
@@ -3906,23 +4807,6 @@
                 window.ARiveMP.onLocalProjectileSpawn) {
                 window.ARiveMP.onLocalProjectileSpawn(proj);
             }
-        }
-
-        else if (t.id === 'rifle') {
-            if (t.count <= 0) { toolCooldown = 0.15; return; }
-            t.count--; fireRifle();
-            toolCooldown = t.cd; renderHotbar();
-        }
-        else if (t.id === 'flare') {
-            if (t.count <= 0) { toolCooldown = 0.15; return; }
-            t.count--;
-            const hit = raycastVoxel(camera.position, dir, 16);
-            if (hit) {
-                const cx = hit.x + hit.nx, cy = hit.y + hit.ny, cz = hit.z + hit.nz;
-                carveSphere(cx, cy, cz, 2.0, { ignite: true, debrisChance: 0 });
-                net.sendCarve(cx, cy, cz, 2.0, true);
-            }
-            toolCooldown = t.cd; renderHotbar();
         }
         else if (t.id === 'medkit') {
             if (t.count <= 0 || player.health >= 100) { toolCooldown = 0.15; return; }
@@ -4001,53 +4885,19 @@
             }
 
             if (!p.isRemote) {
-                for (const e of enemies) {
-                    if (!e.alive) continue;
-                    const dx = p.pos.x - e.pos.x,
-                        dy = p.pos.y - (e.pos.y + 0.85),
-                        dz = p.pos.z - e.pos.z;
-                    if (dx * dx + dy * dy + dz * dz < 0.45) {
-                        explodeAt(vx, vy, vz, CHARGE_RADIUS);
-                        scene.remove(p.mesh);
-                        projectiles.splice(i, 1);
-                        break;
-                    }
+                /* Part-aware hit — a grenade that lands on the leg
+                   registers on the leg before detonating. */
+                const hitAny = hitEnemyRay(
+                    p.pos.x, p.pos.y, p.pos.z, 100,
+                    p.vel.x, p.vel.y, p.vel.z);
+                if (hitAny) {
+                    explodeAt(vx, vy, vz, CHARGE_RADIUS);
+                    scene.remove(p.mesh);
+                    projectiles.splice(i, 1);
+                    continue;
                 }
             }
         }
-    }
-
-    function fireRifle() {
-        const dir = getLookDir();
-        const hit = raycastVoxel(camera.position, dir, 90);
-        let closestEnemy = null;
-        let closestT = hit ? hit.t : 90;
-        for (const e of enemies) {
-            if (!e.alive) continue;
-            const t = rayAABB(camera.position, dir, e.pos.x, e.pos.y + 0.85, e.pos.z, 0.4, 0.9, 0.4);
-            if (t !== null && t < closestT) { closestT = t; closestEnemy = e; }
-        }
-        if (closestEnemy) {
-            hurtEnemy(closestEnemy, 45);
-            shakeCamera(0.05);
-            return;
-        }
-        if (hit) {
-            const cx = hit.x + hit.nx, cy = hit.y + hit.ny, cz = hit.z + hit.nz;
-            carveSphere(cx, cy, cz, 2.0, { ignite: Math.random() < 0.12, debrisChance: 0.25 });
-            shakeCamera(0.035);
-            net.sendCarve(cx, cy, cz, 2.0, false);
-        }
-    }
-
-    function rayAABB(orig, dir, cx, cy, cz, hw, hh, hd) {
-        const t1 = (cx - hw - orig.x) / dir.x, t2 = (cx + hw - orig.x) / dir.x;
-        const t3 = (cy - hh - orig.y) / dir.y, t4 = (cy + hh - orig.y) / dir.y;
-        const t5 = (cz - hd - orig.z) / dir.z, t6 = (cz + hd - orig.z) / dir.z;
-        const tmin = Math.max(Math.min(t1, t2), Math.min(t3, t4), Math.min(t5, t6));
-        const tmax = Math.min(Math.max(t1, t2), Math.max(t3, t4), Math.max(t5, t6));
-        if (tmax < 0 || tmin > tmax) return null;
-        return tmin;
     }
 
     function hitEnemiesMelee(range, dmg) {
@@ -4064,14 +4914,146 @@
     }
 
     /* =========================================================================
-       16. ENEMIES
-       ========================================================================= */
+   16. ENEMIES  —  articulated rigs with per-part damage
+   ---------------------------------------------------------------------
+   Each enemy is a small hierarchy:
+
+       root
+         ├─ torso pivot ── torso mesh ── head pivot
+         │                              ├─ armL pivot ── arm mesh
+         │                              └─ armR pivot ── arm mesh
+         ├─ legL pivot ── leg mesh
+         └─ legR pivot ── leg mesh
+
+   Every part has its own HP pool.  When a LIMB (arm / leg) hits zero
+   the mesh detaches from the rig and becomes a physics chunk on the
+   ground.  Head / torso destruction is an instant kill.
+
+   Both legs broken ⇒ CRAWL mode: slower, lower, shorter reach,
+   distinct animation.
+
+   Direct bullet hits route through  hitEnemyRay(x,y,z,dmg,dx,dy,dz)
+   which picks the closest connected part to the impact point.
+   Melee / explosions route through  hurtEnemy(e, dmg)  which picks a
+   random connected part weighted by body area.
+   ========================================================================= */
     const enemies = [];
     const MAX_ENEMIES = 16;
     let enemySpawnTimer = 4, wave = 1, waveTimer = 0;
 
+    const ENEMY_PART_HP = {
+        head: 28, torso: 55,
+        armL: 18, armR: 18,
+        legL: 22, legR: 22,
+    };
+    const ENEMY_PART_IS_LIMB = {
+        head: false, torso: false,
+        armL: true, armR: true,
+        legL: true, legR: true,
+    };
+    const ENEMY_PART_IS_LEG = {
+        head: false, torso: false,
+        armL: false, armR: false,
+        legL: true, legR: true,
+    };
+
+    function buildEnemyRig(type) {
+        const isAlien = type === 'alien';
+        const bC = isAlien ? 0x504070 : 0x3a4a30;
+        const hC = isAlien ? 0x6a5a8a : 0x7a9060;
+        const lC = isAlien ? 0x403060 : 0x2e3d26;
+        const eC = isAlien ? 0x88ff88 : 0xcc2222;
+
+        /* Per-enemy materials — used to flash the body red when hit. */
+        const bM = new THREE.MeshLambertMaterial({ color: bC, fog: true });
+        const hM = new THREE.MeshLambertMaterial({ color: hC, fog: true });
+        const lM = new THREE.MeshLambertMaterial({ color: lC, fog: true });
+        const eM = new THREE.MeshBasicMaterial({ color: eC, fog: true });
+
+        const root = new THREE.Group();
+
+        const torso = new THREE.Group();
+        torso.position.set(0, 0.55, 0);
+        root.add(torso);
+
+        const torsoMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(0.55, 0.80, 0.38), bM);
+        torsoMesh.position.y = 0.40;
+        torso.add(torsoMesh);
+
+        const headPivot = new THREE.Group();
+        headPivot.position.y = 0.85;
+        torso.add(headPivot);
+        const headMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(0.46, 0.46, 0.46), hM);
+        headPivot.add(headMesh);
+        const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.02), eM);
+        eyeL.position.set(-0.11, 0.03, -0.24);
+        headPivot.add(eyeL);
+        const eyeR = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.02), eM);
+        eyeR.position.set(0.11, 0.03, -0.24);
+        headPivot.add(eyeR);
+
+        function buildArm(side) {
+            const pivot = new THREE.Group();
+            pivot.position.set(side * 0.36, 0.78, 0);
+            const mesh = new THREE.Mesh(
+                new THREE.BoxGeometry(0.14, 0.60, 0.14), lM);
+            mesh.position.y = -0.30;
+            pivot.add(mesh);
+            return { pivot, mesh };
+        }
+        const armL = buildArm(-1);
+        const armR = buildArm(+1);
+        torso.add(armL.pivot);
+        torso.add(armR.pivot);
+
+        function buildLeg(side) {
+            const pivot = new THREE.Group();
+            pivot.position.set(side * 0.15, 0.55, 0);
+            const mesh = new THREE.Mesh(
+                new THREE.BoxGeometry(0.16, 0.55, 0.16), lM);
+            mesh.position.y = -0.28;
+            pivot.add(mesh);
+            return { pivot, mesh };
+        }
+        const legL = buildLeg(-1);
+        const legR = buildLeg(+1);
+        root.add(legL.pivot);
+        root.add(legR.pivot);
+
+        return {
+            root, torso, torsoMesh,
+            headPivot, headMesh,
+            armLPivot: armL.pivot, armLMesh: armL.mesh,
+            armRPivot: armR.pivot, armRMesh: armR.mesh,
+            legLPivot: legL.pivot, legLMesh: legL.mesh,
+            legRPivot: legR.pivot, legRMesh: legR.mesh,
+            mats: {
+                body: { mat: bM, base: bC },
+                head: { mat: hM, base: hC },
+                limb: { mat: lM, base: lC },
+            },
+        };
+    }
+
+    function getEnemyPartMesh(e, key) {
+        const r = e.rig;
+        if (!r) return null;
+        switch (key) {
+            case 'head': return r.headMesh;
+            case 'torso': return r.torsoMesh;
+            case 'armL': return r.armLMesh;
+            case 'armR': return r.armRMesh;
+            case 'legL': return r.legLMesh;
+            case 'legR': return r.legRMesh;
+            default: return null;
+        }
+    }
+
     function spawnEnemy(type, atPos) {
         if (enemies.length >= MAX_ENEMIES) return;
+
         let sx, sy, sz;
         if (atPos) {
             sx = atPos.x; sy = atPos.y; sz = atPos.z;
@@ -4086,63 +5068,398 @@
             sz = clamp(sz, 1.5, WORLD_D - 1.5);
             sy = WORLD_H - 1;
             const vx = Math.floor(sx / VOXEL), vz = Math.floor(sz / VOXEL);
-            for (let y = SY - 1; y > 0; y--) if (getV(vx, y, vz) !== 0) { sy = (y + 1) * VOXEL + 0.05; break; }
+            for (let y = SY - 1; y > 0; y--)
+                if (getV(vx, y, vz) !== 0) { sy = (y + 1) * VOXEL + 0.05; break; }
         }
 
-        const g = new THREE.Group();
         const isAlien = type === 'alien';
-        const bC = isAlien ? 0x504070 : 0x3a4a30;
-        const hC = isAlien ? 0x6a5a8a : 0x7a9060;
-        const eC = isAlien ? 0x88ff88 : 0xcc2222;
-        const bM = new THREE.MeshLambertMaterial({ color: bC, fog: true });
-        const hM = new THREE.MeshLambertMaterial({ color: hC, fog: true });
-        const eM = new THREE.MeshBasicMaterial({ color: eC, fog: true });
-        const body = new THREE.Mesh(new THREE.BoxGeometry(0.55, 1.0, 0.38), bM); body.position.y = 0.8; g.add(body);
-        const head = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.46, 0.46), hM); head.position.y = 1.55; g.add(head);
-        const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.02), eM); eyeL.position.set(-0.11, 1.58, -0.24); g.add(eyeL);
-        const eyeR = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.02), eM); eyeR.position.set(0.11, 1.58, -0.24); g.add(eyeR);
-        g.position.set(sx, sy, sz); scene.add(g);
+        const rig = buildEnemyRig(type);
+        rig.root.position.set(sx, sy, sz);
+        scene.add(rig.root);
+
+        const totalHp = isAlien ? 55 : 85;
+        const parts = {};
+        for (const key in ENEMY_PART_HP) {
+            const base = ENEMY_PART_HP[key];
+            parts[key] = {
+                key,
+                hp: base,
+                maxHp: base,
+                connected: true,
+                isLimb: ENEMY_PART_IS_LIMB[key],
+                isLeg: ENEMY_PART_IS_LEG[key],
+            };
+        }
 
         enemies.push({
-            mesh: g, pos: new THREE.Vector3(sx, sy, sz), vel: new THREE.Vector3(),
-            yaw: 0, type, hp: isAlien ? 55 : 85, maxHp: isAlien ? 55 : 85,
+            mesh: rig.root,
+            rig,
+            pos: new THREE.Vector3(sx, sy, sz),
+            vel: new THREE.Vector3(),
+            yaw: 0, type,
+            hp: totalHp, maxHp: totalHp,
             speed: isAlien ? 3.5 : 1.9,
             attackTimer: 0, attackDamage: isAlien ? 14 : 10,
-            onGround: false, alive: true, stuckTimer: 0,
-            lastX: sx, lastZ: sz
+            onGround: false, alive: true,
+            stuckTimer: 0, lastX: sx, lastZ: sz,
+            parts,
+            walkPhase: Math.random() * Math.PI * 2,
+            attackPhase: 0,
+            hitPhase: 0,
+            hitFlash: 0,
+            crawlMode: false,
+            crawlBlend: 0,
         });
     }
+
+    /* ---------------- Part damage + limb detach ---------------- */
+
+    function damageEnemyPart(e, partKey, dmg, hitWorldPos, hitDir) {
+        const p = e.parts[partKey];
+        if (!p || !p.connected) return;
+
+        p.hp -= dmg;
+
+        spawnBloodBurst(hitWorldPos.x, hitWorldPos.y, hitWorldPos.z,
+            p.isLimb ? 8 : 12);
+
+        e.hitPhase = 1.0;
+        e.hitFlash = 1.0;
+
+        /* Head / torso damage bleeds fully into the enemy's HP pool;
+           limb damage bleeds only partially — you can maim without killing. */
+        if (p.key === 'head' || p.key === 'torso') e.hp -= dmg;
+        else e.hp -= dmg * 0.35;
+
+        if (p.hp <= 0 && p.isLimb && p.connected) {
+            breakEnemyLimb(e, p.key, hitDir);
+        }
+        if (p.key === 'head' || p.key === 'torso') {
+            if (p.hp <= 0) { killEnemy(e); return; }
+        }
+        if (e.hp <= 0) { killEnemy(e); return; }
+    }
+
+    function breakEnemyLimb(e, partKey, hitDir) {
+        const p = e.parts[partKey];
+        if (!p || !p.connected) return;
+        p.connected = false;
+
+        const r = e.rig;
+        let mesh = null, pivot = null;
+        switch (partKey) {
+            case 'armL': mesh = r.armLMesh; pivot = r.armLPivot; break;
+            case 'armR': mesh = r.armRMesh; pivot = r.armRPivot; break;
+            case 'legL': mesh = r.legLMesh; pivot = r.legLPivot; break;
+            case 'legR': mesh = r.legRMesh; pivot = r.legRPivot; break;
+        }
+        if (!mesh || !pivot) return;
+
+        mesh.updateMatrixWorld(true);
+        const worldPos = new THREE.Vector3();
+        const worldQuat = new THREE.Quaternion();
+        const worldScale = new THREE.Vector3();
+        mesh.matrixWorld.decompose(worldPos, worldQuat, worldScale);
+
+        pivot.remove(mesh);
+        mesh.position.copy(worldPos);
+        mesh.quaternion.copy(worldQuat);
+        mesh.scale.copy(worldScale);
+
+        const dir = (hitDir && hitDir.lengthSq() > 0)
+            ? hitDir.clone().normalize()
+            : new THREE.Vector3(0, 0, 0);
+        const vel = new THREE.Vector3(
+            dir.x * 2.5 + (Math.random() - 0.5) * 2,
+            1.6 + Math.random() * 1.5,
+            dir.z * 2.5 + (Math.random() - 0.5) * 2
+        );
+        const angVel = new THREE.Vector3(
+            (Math.random() - 0.5) * 8,
+            (Math.random() - 0.5) * 6,
+            (Math.random() - 0.5) * 8
+        );
+        detachLimbPiece(mesh, worldQuat, vel, angVel);
+
+        spawnBloodBurst(worldPos.x, worldPos.y, worldPos.z, 16);
+
+        pivot.visible = false;
+
+        if (p.isLeg && !e.parts.legL.connected && !e.parts.legR.connected) {
+            e.crawlMode = true;
+        }
+    }
+
+    /* ---------------- Kill + loot ---------------- */
+
+    function killEnemy(e) {
+        if (!e.alive) return;
+        e.alive = false;
+
+        spawnBloodBurst(e.pos.x, e.pos.y + 0.8, e.pos.z, 26);
+
+        scene.remove(e.mesh);
+        e.mesh.traverse(o => {
+            if (o.geometry) o.geometry.dispose();
+            if (o.material) o.material.dispose();
+        });
+
+        scrap += 2 + ((Math.random() * 3) | 0);
+        if (Math.random() < 0.15) TOOLS[2].count = Math.min(TOOLS[2].count + 1, 20);
+        if (Math.random() < 0.10) TOOLS[3].count = Math.min(TOOLS[3].count + 1, 10);
+        if (Math.random() < 0.10) TOOLS[4].count = Math.min(TOOLS[4].count + 1, 10);
+
+        /* ---- Ammo drop ----------------------------------------------
+           55 % chance to drop a physical ammo pickup.  The pickup is a
+           normal world item, so the player has to walk over and collect
+           it — the same E/LMB pickup loop handles it.  The item is
+           tagged isAmmo + ammoType + count + maxStack, so when it lands
+           in the inventory it stacks with any existing rounds of the
+           same type (up to 200 per slot). */
+        if (Math.random() < 0.55) {
+            const types = ['9mm', '5.56', 'shell'];
+            const type = types[(Math.random() * types.length) | 0];
+            const ammoDef = AMMO_BY_TYPE[type];
+
+            if (ammoDef) {
+                const amount = 8 + ((Math.random() * 16) | 0);
+
+                /* Slight horizontal scatter so two kills in the same
+                   spot don't stack the pickups on top of each other. */
+                const dropPos = new THREE.Vector3(
+                    e.pos.x + (Math.random() - 0.5) * 0.4,
+                    e.pos.y + 0.55,
+                    e.pos.z + (Math.random() - 0.5) * 0.4
+                );
+
+                spawnPickup({
+                    name: ammoDef.name,
+                    iconImage: ammoDef.iconImage,
+                    iconImageRotated: ammoDef.iconImageRotated,
+                    w: ammoDef.w,
+                    h: ammoDef.h,
+                    color: ammoDef.color,
+                    meta: ammoDef.meta,
+                    /* Stacking payload */
+                    count: amount,
+                    maxStack: ammoDef.maxStack,
+                    isAmmo: true,
+                    ammoType: ammoDef.ammoType
+                }, dropPos);
+            }
+        }
+
+        renderHotbar();
+    }
+
+    /* Melee / explosion: pick a random connected part weighted by
+       body area, then route through damageEnemyPart. */
+    function hurtEnemy(e, dmg) {
+        const pool = [];
+        for (const key in e.parts) {
+            if (!e.parts[key].connected) continue;
+            const weight = key === 'torso' ? 4
+                : key === 'head' ? 1 : 2;
+            for (let i = 0; i < weight; i++) pool.push(key);
+        }
+        if (!pool.length) {
+            e.hp -= dmg;
+            if (e.hp <= 0) killEnemy(e);
+            return;
+        }
+        const key = pool[(Math.random() * pool.length) | 0];
+        const yOff = key === 'head' ? 1.4
+            : key === 'torso' ? 0.9
+                : key === 'legL' || key === 'legR' ? 0.35
+                    : 1.15;
+        const hitPos = new THREE.Vector3(
+            e.pos.x + (Math.random() - 0.5) * 0.35,
+            e.pos.y + yOff,
+            e.pos.z + (Math.random() - 0.5) * 0.35
+        );
+        damageEnemyPart(e, key, dmg, hitPos, null);
+    }
+
+    /* ---------------- Direct bullet-hit entry point ---------------- */
+
+    /* Given a world-space impact point, find the nearest enemy and the
+       nearest connected part on that enemy, then apply damage there.
+       Returns true if any enemy was hit.  weapons.js should call this
+       with its bullet impact coordinates. */
+    function hitEnemyRay(hitX, hitY, hitZ, damage, dirX, dirY, dirZ) {
+        const hitV = new THREE.Vector3(hitX, hitY, hitZ);
+        const _v = new THREE.Vector3();
+        let bestE = null, bestPart = null, bestD2 = Infinity;
+
+        for (const e of enemies) {
+            if (!e.alive) continue;
+            const dx = hitX - e.pos.x;
+            const dy = hitY - e.pos.y;
+            const dz = hitZ - e.pos.z;
+            if (dy < -0.3 || dy > 1.85) continue;
+            const dxz2 = dx * dx + dz * dz;
+            if (dxz2 > 1.3) continue;
+
+            for (const key in e.parts) {
+                const p = e.parts[key];
+                if (!p.connected) continue;
+                const m = getEnemyPartMesh(e, key);
+                if (!m) continue;
+                m.getWorldPosition(_v);
+                const d2 = _v.distanceToSquared(hitV);
+                const radius = key === 'torso' ? 0.38 : 0.24;
+                if (d2 > radius * radius) continue;
+                if (d2 < bestD2) {
+                    bestD2 = d2;
+                    bestE = e;
+                    bestPart = key;
+                }
+            }
+        }
+
+        if (!bestE) return false;
+        const dir = new THREE.Vector3(dirX || 0, dirY || 0, dirZ || 0);
+        if (dir.lengthSq() > 0) dir.normalize();
+        damageEnemyPart(bestE, bestPart, damage, hitV, dir);
+        return true;
+    }
+
+    /* ---------------- Animation ---------------- */
+
+    const _enemyTintBase = new THREE.Color();
+    const _enemyTintHit = new THREE.Color(0xff2020);
+    const _enemyTintMix = new THREE.Color();
+
+    function tintEnemyMaterials(e, amount) {
+        const a = clamp(amount, 0, 1) * 0.7;
+        for (const key in e.rig.mats) {
+            const m = e.rig.mats[key];
+            _enemyTintBase.setHex(m.base);
+            _enemyTintMix.copy(_enemyTintBase).lerp(_enemyTintHit, a);
+            m.mat.color.copy(_enemyTintMix);
+        }
+    }
+
+    function updateEnemyAnimation(e, dt) {
+        const r = e.rig;
+        if (!r) return;
+
+        const spd2 = e.vel.x * e.vel.x + e.vel.z * e.vel.z;
+        const moving = spd2 > 0.4 && e.onGround;
+
+        /* --- Walk cycle --- */
+        if (moving) {
+            const strideRate = Math.sqrt(spd2) * (e.crawlMode ? 2.4 : 2.2);
+            e.walkPhase += dt * strideRate;
+        } else {
+            e.walkPhase += dt * 1.4;
+        }
+        const swing = Math.sin(e.walkPhase);
+
+        /* --- Attack blend (0..1 over 0.35 s) --- */
+        let attackReach = 0;
+        if (e.attackPhase > 0) {
+            e.attackPhase += dt / 0.35;
+            if (e.attackPhase >= 1) e.attackPhase = 0;
+            else attackReach = Math.sin(e.attackPhase * Math.PI);
+        }
+
+        /* --- Hit flinch decay --- */
+        if (e.hitPhase > 0) e.hitPhase = Math.max(0, e.hitPhase - dt * 3.2);
+        if (e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt * 4.0);
+        tintEnemyMaterials(e, e.hitFlash);
+
+        /* --- Crawl blend --- */
+        const crawlTarget = e.crawlMode ? 1 : 0;
+        e.crawlBlend += (crawlTarget - e.crawlBlend) * Math.min(1, dt * 6);
+
+        /* --- Legs --- */
+        const legAmp = 0.75 * (1 - e.crawlBlend);
+        if (e.parts.legL.connected) r.legLPivot.rotation.x = swing * legAmp;
+        if (e.parts.legR.connected) r.legRPivot.rotation.x = -swing * legAmp;
+
+        /* --- Arms --- */
+        const crawlArm = -1.3 * e.crawlBlend;
+        const attackArm = -1.7 * attackReach;
+        if (e.parts.armL.connected) {
+            r.armLPivot.rotation.x =
+                (-swing * 0.7) * (1 - e.crawlBlend) + crawlArm + attackArm;
+        }
+        if (e.parts.armR.connected) {
+            r.armRPivot.rotation.x =
+                (swing * 0.7) * (1 - e.crawlBlend) + crawlArm + attackArm;
+        }
+
+        /* --- Torso position + lean --- */
+        const bob = Math.abs(swing) * 0.05 * (1 - e.crawlBlend);
+        r.torso.position.y = 0.55 - bob - 0.40 * e.crawlBlend;
+
+        const walkLean = (moving ? -0.12 : 0) * (1 - e.crawlBlend);
+        const crawlLean = 1.15 * e.crawlBlend;
+        const attackLean = 0.30 * attackReach;
+        r.torso.rotation.x = walkLean + crawlLean + attackLean;
+
+        if (e.hitPhase > 0) {
+            r.torso.rotation.z = Math.sin(e.hitPhase * 22) * 0.18 * e.hitPhase;
+        } else {
+            r.torso.rotation.z = 0;
+        }
+
+        /* --- Head look + flinch --- */
+        r.headPivot.rotation.x = -attackReach * 0.35;
+        if (e.hitPhase > 0) {
+            r.headPivot.rotation.x += Math.sin(e.hitPhase * 34) * 0.20 * e.hitPhase;
+        }
+    }
+
+    /* ---------------- Per-frame enemy update ---------------- */
 
     function updateEnemies(dt) {
         for (let i = enemies.length - 1; i >= 0; i--) {
             const e = enemies[i];
             if (!e.alive) { enemies.splice(i, 1); continue; }
+
             const dx = player.pos.x - e.pos.x;
             const dz = player.pos.z - e.pos.z;
             const dist = Math.hypot(dx, dz);
             if (dist > 60) continue;
 
+            /* --- Stuck detection --- */
             e.stuckTimer += dt;
             if (e.stuckTimer > 1.4) {
                 const moved = Math.hypot(e.pos.x - e.lastX, e.pos.z - e.lastZ);
                 if (moved < 0.25 && e.onGround) e.vel.y = 6.5;
                 e.lastX = e.pos.x; e.lastZ = e.pos.z; e.stuckTimer = 0;
             }
-            if (dist > 1.5) {
+
+            /* --- Chase / attack — crawlers are slower, shorter reach --- */
+            const reach = e.crawlMode ? 1.0 : 1.5;
+            const speedMul = e.crawlMode ? 0.35 : 1.0;
+
+            if (dist > reach) {
                 const nx = dx / dist, nz = dz / dist;
-                e.vel.x = nx * e.speed; e.vel.z = nz * e.speed;
+                e.vel.x = nx * e.speed * speedMul;
+                e.vel.z = nz * e.speed * speedMul;
                 e.yaw = Math.atan2(dx, dz) + Math.PI;
             } else {
                 e.vel.x = 0; e.vel.z = 0;
                 e.yaw = Math.atan2(dx, dz) + Math.PI;
-                if (e.attackTimer <= 0) { damagePlayer(e.attackDamage); e.attackTimer = 1.0; }
+                if (e.attackTimer <= 0) {
+                    damagePlayer(e.attackDamage);
+                    e.attackTimer = 1.0;
+                    e.attackPhase = 0.001;
+                }
             }
             e.attackTimer -= dt;
+
+            /* --- Physics — collision height shrinks when crawling --- */
             e.vel.y -= GRAVITY * dt;
+
+            const colH = 1.6 - e.crawlBlend * 1.0;   // 1.6 standing → 0.6 crawling
 
             const dy = e.vel.y * dt;
             e.pos.y += dy;
-            if (collidesAABB(e.pos, 0.28, 1.6)) {
+            if (collidesAABB(e.pos, 0.28, colH)) {
                 e.pos.y -= dy;
                 if (dy < 0) e.onGround = true;
                 e.vel.y = 0;
@@ -4151,8 +5468,8 @@
             const ddx = e.vel.x * dt;
             if (ddx !== 0) {
                 e.pos.x += ddx;
-                if (collidesAABB(e.pos, 0.28, 1.6)) {
-                    if (!(e.onGround && tryStepUp(e.pos, 0.28, 1.6, STEP_HEIGHT))) {
+                if (collidesAABB(e.pos, 0.28, colH)) {
+                    if (!(e.onGround && tryStepUp(e.pos, 0.28, colH, STEP_HEIGHT))) {
                         e.pos.x -= ddx;
                         if (e.onGround) e.vel.y = 6.2;
                     }
@@ -4161,18 +5478,26 @@
             const ddz = e.vel.z * dt;
             if (ddz !== 0) {
                 e.pos.z += ddz;
-                if (collidesAABB(e.pos, 0.28, 1.6)) {
-                    if (!(e.onGround && tryStepUp(e.pos, 0.28, 1.6, STEP_HEIGHT))) {
+                if (collidesAABB(e.pos, 0.28, colH)) {
+                    if (!(e.onGround && tryStepUp(e.pos, 0.28, colH, STEP_HEIGHT))) {
                         e.pos.z -= ddz;
                         if (e.onGround) e.vel.y = 6.2;
                     }
                 }
             }
 
-            e.pos.x = clamp(e.pos.x, 0.4, WORLD_W - 0.4);
-            e.pos.z = clamp(e.pos.z, 0.4, WORLD_D - 0.4);
+            if (currentMapType === 'sandbox') {
+                e.pos.x = clamp(e.pos.x, SANDBOX_MIN_X + 0.4, SANDBOX_MAX_X - 0.4);
+                e.pos.z = clamp(e.pos.z, SANDBOX_MIN_Z + 0.4, SANDBOX_MAX_Z - 0.4);
+            } else {
+                e.pos.x = clamp(e.pos.x, 0.4, WORLD_W - 0.4);
+                e.pos.z = clamp(e.pos.z, 0.4, WORLD_D - 0.4);
+            }
+
             if (e.pos.y < -4) e.pos.y = WORLD_H - 1;
 
+            /* --- Pose the rig, then commit the transform --- */
+            updateEnemyAnimation(e, dt);
             e.mesh.position.copy(e.pos);
             e.mesh.rotation.y = e.yaw;
         }
@@ -4186,21 +5511,6 @@
             for (let i = 0; i < count; i++)
                 spawnEnemy(Math.random() < 0.4 && wave > 1 ? 'alien' : 'zombie');
             enemySpawnTimer = Math.max(4, 11 - wave * 0.5);
-        }
-    }
-
-    function hurtEnemy(e, dmg) {
-        e.hp -= dmg;
-        if (e.hp <= 0) {
-            e.alive = false;
-            scene.remove(e.mesh);
-            e.mesh.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
-            scrap += 2 + ((Math.random() * 3) | 0);
-            if (Math.random() < 0.15) TOOLS[1].count = Math.min(TOOLS[1].count + 1, 20);
-            if (Math.random() < 0.15) TOOLS[2].count = Math.min(TOOLS[2].count + 15, 200);
-            if (Math.random() < 0.10) TOOLS[4].count = Math.min(TOOLS[4].count + 1, 10);
-            if (Math.random() < 0.10) TOOLS[5].count = Math.min(TOOLS[5].count + 1, 10);
-            renderHotbar();
         }
     }
 
@@ -4269,9 +5579,15 @@
         if (keys['Space'] && player.onGround && player.crouchT < 0.1) {
             player.vel.y = player.jump;
             player.onGround = false;
+            if (window.Sfx) Sfx.play('jump');
         }
         player.vel.y -= GRAVITY * dt;
         if (player.vel.y < -55) player.vel.y = -55;
+
+        /* Capture last-frame ground state and this-frame fall speed so
+           we can play a 'land' sample on the contact frame. */
+        const _wasOnGround = player.onGround;
+        const _fallVel = player.vel.y;
 
         const dy = player.vel.y * dt;
         player.pos.y += dy;
@@ -4280,6 +5596,12 @@
             if (dy < 0) player.onGround = true;
             player.vel.y = 0;
         } else player.onGround = false;
+
+        /* Landed this frame with real downward speed? */
+        if (!_wasOnGround && player.onGround &&
+            _fallVel < -3 && window.Sfx) {
+            Sfx.play('land');
+        }
 
         const hw = player.halfW, hh = player.height;
 
@@ -4304,8 +5626,14 @@
             }
         }
 
-        player.pos.x = clamp(player.pos.x, 0.4, WORLD_W - 0.4);
-        player.pos.z = clamp(player.pos.z, 0.4, WORLD_D - 0.4);
+        if (currentMapType === 'sandbox') {
+            player.pos.x = clamp(player.pos.x, SANDBOX_MIN_X + 0.4, SANDBOX_MAX_X - 0.4);
+            player.pos.z = clamp(player.pos.z, SANDBOX_MIN_Z + 0.4, SANDBOX_MAX_Z - 0.4);
+        } else {
+            player.pos.x = clamp(player.pos.x, 0.4, WORLD_W - 0.4);
+            player.pos.z = clamp(player.pos.z, 0.4, WORLD_D - 0.4);
+        }
+
         if (player.pos.y < -5) {
             const spawnVx = 90, spawnVz = 90;
             player.pos.set(spawnVx * VOXEL, 4, spawnVz * VOXEL);
@@ -4314,9 +5642,25 @@
             damagePlayer(15);
         }
 
-        /* Walk phase advances whenever a movement key is held, even in the
-           air — so a jump doesn't freeze the leg-swing mid-stride.  Only a
-           truly idle player (no keys) falls back to the slow idle rate. */
+        /* ---- Footsteps --------------------------------------------------
+   Advance a distance accumulator by real horizontal speed (not
+   input magnitude) so sliding into a wall doesn't rattle off
+   steps.  Crouch-walking gets a longer stride, which also
+   matches the slower cadence. */
+        const _horizSpd = Math.hypot(player.vel.x, player.vel.z);
+        if (player.onGround && _horizSpd > 0.6 && player.crouchT < 0.9) {
+            _stepAccum += _horizSpd * dt;
+            const _stride = STEP_DISTANCE * (sprinting ? 1.15 : 1.0);
+            if (_stepAccum >= _stride) {
+                _stepAccum = 0;
+                if (window.Sfx) {
+                    Sfx.play('footstep', { variant: surfaceAtPlayer() });
+                }
+            }
+        } else {
+            _stepAccum = 0;
+        }
+
         if (mf || mr) player.bob += dt * (sprinting ? 13 : 9);
         else player.bob += dt * 1.4;
 
@@ -4386,11 +5730,55 @@
         const eyeWorldX = player.pos.x + eyeOX * cosY + eyeOZ * sinY;
         const eyeWorldZ = player.pos.z - eyeOX * sinY + eyeOZ * cosY;
 
-        camera.position.set(
-            eyeWorldX + sx,
-            player.smoothY + player.eye + Math.sin(player.bob) * bobA + sy,
-            eyeWorldZ
-        );
+        /* Normal FP camera position — with shake / bob. */
+        let camX = eyeWorldX + sx;
+        let camY = player.smoothY + player.eye + Math.cos(player.bob) * bobA + sy;
+        let camZ = eyeWorldZ;
+
+        /* ---- ADS camera anchoring -------------------------------------
+           While a weapon is scoped the player must literally look
+           THROUGH the optic, not past it.  The sight sits 2 cm in
+           front of fpRoot along its local -Z.  At scopeT = 1 fpRoot's
+           world rotation equals the camera's (verified in the earlier
+           follow-factor blend), so we can compute the sight's world
+           position directly from the camera's own pitch/yaw plus the
+           body's baseYaw.
+
+           fpRoot is a child of playerBody, so its local Y is squashed
+           by the crouch scale — that's the bodyScaleY factor below.
+           The blend slides the camera from the standing FP eye to the
+           sight as scopeT rises; shake (sx / sy) and walk-bob fade
+           out naturally because the ADS anchor doesn't include them. */
+        const scopeT = (window.Weapons && window.Weapons.getScopeT)
+            ? window.Weapons.getScopeT() : 0;
+
+        if (scopeT > 0) {
+            const cosB = Math.cos(player.baseYaw);
+            const sinB = Math.sin(player.baseYaw);
+            const bodyScaleY = 1 - (1 - CROUCH_MUL) * player.crouchT;
+
+            const fpRootWX = player.pos.x + eyeOX * cosB + eyeOZ * sinB;
+            const fpRootWY = player.smoothY + FP_MODEL.body.eyeY * bodyScaleY;
+            const fpRootWZ = player.pos.z - eyeOX * sinB + eyeOZ * cosB;
+
+            /* 0.02 m forward of fpRoot, rotated by (yaw then pitch)
+               in YXZ order — the same composition the camera uses. */
+            const cp = Math.cos(player.pitch);
+            const sp = Math.sin(player.pitch);
+            const sightOffX = -0.02 * cp * sinY;
+            const sightOffY = 0.02 * sp;
+            const sightOffZ = -0.02 * cp * cosY;
+
+            const adsX = fpRootWX + sightOffX;
+            const adsY = fpRootWY + sightOffY;
+            const adsZ = fpRootWZ + sightOffZ;
+
+            camX += (adsX - camX) * scopeT;
+            camY += (adsY - camY) * scopeT;
+            camZ += (adsZ - camZ) * scopeT;
+        }
+
+        camera.position.set(camX, camY, camZ);
         camera.rotation.set(player.pitch, player.yaw, 0);
         player._sprinting = sprinting;
 
@@ -4499,34 +5887,41 @@
         const cosHalf = Math.cos(player.bob * 0.5);
         const breath = Math.sin(player.bob * 0.35) * A.breath;
         const sprintLean = sprinting && moving ? A.sprintLean : 0;
-        // ---- LEFT HAND ----
-        const phL = player.bob + cfgL.phaseOff;
-        const sinL = Math.sin(phL);
-        const cosL = Math.cos(phL);
-        handL.position.set(
-            HAND_REST.L.x + cosHalf * bobA * cfgL.bobX * scaleL * bobScale + swayYaw * 0.9,
-            HAND_REST.L.y + sinL * bobA * cfgL.bobY * scaleL * bobScale + swayPitch * 0.4 + breath,
-            HAND_REST.L.z + cosL * bobA * cfgL.bobZ * scaleL * bobScale + sprintLean
-        );
-        handL.rotation.set(
-            HAND_REST.L.rx + swayPitch * 1.2 + sinL * cfgL.pitch * scaleL * bobScale,
-            HAND_REST.L.ry + swayYaw * 0.8 + cosL * cfgL.yaw * scaleL * bobScale,
-            HAND_REST.L.rz + swayYaw * 1.0 + sinL * cfgL.roll * scaleL * bobScale
-        );
-        // ---- RIGHT HAND ----
-        const phR = player.bob + cfgR.phaseOff;
-        const sinR = Math.sin(phR);
-        const cosR = Math.cos(phR);
-        handR.position.set(
-            HAND_REST.R.x + cosHalf * bobA * cfgR.bobX * scaleR * bobScale + swayYaw * 0.9,
-            HAND_REST.R.y + sinR * bobA * cfgR.bobY * scaleR * bobScale + swayPitch * 0.4 + breath,
-            HAND_REST.R.z + cosR * bobA * cfgR.bobZ * scaleR * bobScale + sprintLean
-        );
-        handR.rotation.set(
-            HAND_REST.R.rx + swayPitch * 1.2 + sinR * cfgR.pitch * scaleR * bobScale,
-            HAND_REST.R.ry + swayYaw * 0.8 + cosR * cfgR.yaw * scaleR * bobScale,
-            HAND_REST.R.rz + swayYaw * 1.0 + sinR * cfgR.roll * scaleR * bobScale
-        );
+
+        if (!weaponDrivesHands) {
+            /* ---- LEFT HAND ---- */
+            const phL = player.bob + cfgL.phaseOff;
+            const sinL = Math.sin(phL);
+
+            handL.position.set(
+                HAND_REST.L.x + cosHalf * bobA * cfgL.bobX * bobScale + swayYaw * 0.9,
+                HAND_REST.L.y + sinL * bobA * cfgL.bobY * bobScale + swayPitch * 0.4 + breath,
+                HAND_REST.L.z + sprintLean
+            );
+            handL.rotation.set(
+                HAND_REST.L.rx + swayPitch * 1.2,
+                HAND_REST.L.ry + swayYaw * 0.8,
+                HAND_REST.L.rz + swayYaw * 1.0
+            );
+
+            /* ---- RIGHT HAND ---- */
+            const phR = player.bob + cfgR.phaseOff;
+            const sinR = Math.sin(phR);
+
+            handR.position.set(
+                HAND_REST.R.x + cosHalf * bobA * cfgR.bobX * bobScale + swayYaw * 0.9,
+                HAND_REST.R.y + sinR * bobA * cfgR.bobY * bobScale + swayPitch * 0.4 + breath,
+                HAND_REST.R.z + sprintLean
+            );
+            handR.rotation.set(
+                HAND_REST.R.rx + swayPitch * 1.2,
+                HAND_REST.R.ry + swayYaw * 0.8,
+                HAND_REST.R.rz + swayYaw * 1.0
+            );
+        }
+
+        updateArmBones(-1, handL);
+        updateArmBones(+1, handR);
 
         /* ---------- body-locked arms: lean toward the look direction ----------
    fpRoot lives on playerBody, so by itself it only knows about
@@ -4536,11 +5931,31 @@
      · yaw   → sway with the camera's offset from the body (left/right)
      · pitch → tilt with the camera pitch (up/down)
    Both gains come from FP_MODEL.anim with in-code fallbacks, so this
-   stays working even if the model asset is old and doesn't set them. */
-        const yawFollow = (typeof FP_MODEL.anim.yawFollow === 'number')
+   stays working even if the model asset is old and doesn't set them.
+
+   ---- ADS SCOPE ALIGNMENT ----
+   While a weapon is scoped, the eye must look exactly down the
+   barrel.  The weapon rig is parented inside fpRoot; if its follow
+   factors stayed at their hip-fire values, the weapon would only
+   track a fraction of the camera's yaw/pitch and the sight would
+   lag behind the aim.  Blending the factors toward 1 as the scope
+   blends in makes fpRoot's rotation equal the camera's (yaw offset
+   + pitch) at scopeT = 1.  With fpRoot's euler order set to YXZ —
+   the same order the camera uses — the weapon's local -Z then
+   coincides exactly with the camera's forward vector. */
+        fpRoot.rotation.order = 'YXZ';   // same composition order as the camera
+
+        const scopeT = (window.Weapons && window.Weapons.getScopeT)
+            ? window.Weapons.getScopeT() : 0;
+
+        const yawFollowBase = (typeof FP_MODEL.anim.yawFollow === 'number')
             ? FP_MODEL.anim.yawFollow : 0.35;
-        const pitchFollow = (typeof FP_MODEL.anim.pitchFollow === 'number')
+        const pitchFollowBase = (typeof FP_MODEL.anim.pitchFollow === 'number')
             ? FP_MODEL.anim.pitchFollow : 0.50;
+
+        /* scopeT = 0 → hip-fire lag;  scopeT = 1 → fully aligned to camera */
+        const yawFollow = yawFollowBase + (1 - yawFollowBase) * scopeT;
+        const pitchFollow = pitchFollowBase + (1 - pitchFollowBase) * scopeT;
 
         const lookYawOffset = player.yaw - player.baseYaw;   // camera off body
         fpRoot.rotation.y = lookYawOffset * yawFollow;
@@ -4565,17 +5980,90 @@
         }
     }
 
+    /* ============================================================
+   World-edge atmosphere
+   ------------------------------------------------------------
+   As the player approaches the boundary of the (finite) voxel
+   world, the sky darkens toward black and the fog closes in.
+   Fully at the edge, you can only see a few metres ahead — the
+   boundary reads as "void", not "invisible wall".
+
+   Reverses itself the moment you walk back inward.
+   ============================================================ */
+    const _edgeSky = new THREE.Color();
+    const EDGE_BASE_SKY = new THREE.Color(SKY);
+    const EDGE_BASE_FOG_NEAR = scene.fog.near;
+    const EDGE_BASE_FOG_FAR = scene.fog.far;
+    let edgeFxT = 0;   // 0 = no effect, 1 = fully at the edge
+
+    function updateWorldEdgeFx(dt) {
+        if (!player.alive) return;
+
+        let minX, maxX, minZ, maxZ;
+        if (currentMapType === 'sandbox') {
+            minX = SANDBOX_MIN_X; maxX = SANDBOX_MAX_X;
+            minZ = SANDBOX_MIN_Z; maxZ = SANDBOX_MAX_Z;
+        } else {
+            minX = 0; maxX = WORLD_W;
+            minZ = 0; maxZ = WORLD_D;
+        }
+
+        const dx = Math.min(player.pos.x - minX, maxX - player.pos.x);
+        const dz = Math.min(player.pos.z - minZ, maxZ - player.pos.z);
+        const d = Math.min(dx, dz);
+
+        /* Linear ramp, then squared so the effect stays subtle until
+           you're genuinely close. */
+        let target = 1 - clamp(d / EDGE_MARGIN, 0, 1);
+        target = target * target;
+
+        /* Smooth so it doesn't pop when you cross the margin. */
+        edgeFxT += (target - edgeFxT) * Math.min(1, dt * 4);
+        if (edgeFxT < 1e-4) edgeFxT = 0;
+
+        const k = 1 - edgeFxT;
+
+        /* Sky + fog colour → black */
+        _edgeSky.setRGB(
+            EDGE_BASE_SKY.r * k,
+            EDGE_BASE_SKY.g * k,
+            EDGE_BASE_SKY.b * k
+        );
+        scene.background.copy(_edgeSky);
+        scene.fog.color.copy(_edgeSky);
+
+        /* Fog closes in */
+        scene.fog.near = EDGE_BASE_FOG_NEAR +
+            (EDGE_FOG_NEAR_MIN - EDGE_BASE_FOG_NEAR) * edgeFxT;
+        scene.fog.far = EDGE_BASE_FOG_FAR +
+            (EDGE_FOG_FAR_MIN - EDGE_BASE_FOG_FAR) * edgeFxT;
+
+        /* Optional HUD warning once you're meaningfully close. */
+        if (edgeFxT > 0.15) {
+            edgeWarnEl.style.opacity =
+                clamp((edgeFxT - 0.15) / 0.5, 0, 1).toFixed(2);
+        } else {
+            edgeWarnEl.style.opacity = '0';
+        }
+    }
+
     function damagePlayer(amount, continuous) {
         if (!player.alive) return;
         if (!continuous && player.invuln > 0) return;
         player.health -= amount;
-        if (!continuous) { player.invuln = 0.32; hitFlash = 0.5; }
+        if (!continuous) {
+            player.invuln = 0.32;
+            hitFlash = 0.5;
+            if (window.Sfx) Sfx.play('hurt');
+        }
         if (player.health <= 0) { player.health = 0; die(); }
     }
 
     function die() {
         player.alive = false; gameRunning = false;
+        if (window.Sfx) Sfx.play('death');
         if (inventory.isOpen) inventory.close();
+        Minimap.close();
         if (heldPickup) releasePickup(0);
         document.exitPointerLock();
         document.getElementById('deathMsg').textContent =
@@ -4616,7 +6104,7 @@
         for (let i = 0; i < TOOLS.length; i++) {
             const slot = document.createElement('div');
             slot.className = 'slot';
-            const key = document.createElement('span'); key.className = 'keynum'; key.textContent = i + 1;
+            const key = document.createElement('span'); key.className = 'keynum'; key.textContent = i + 3;
             const icon = document.createElement('div'); icon.className = 'icon';
             const cnt = document.createElement('span'); cnt.className = 'cnt';
             const nm = document.createElement('span'); nm.className = 'tname'; nm.textContent = TOOLS[i].name;
@@ -4671,6 +6159,61 @@
             ? 1 + window.ARiveMP.remotePlayers.size
             : 1;
         peersEl.textContent = 'SURVIVORS ' + mpCount;
+    }
+
+    const edgeWarnEl = (function () {
+        let el = document.getElementById('edgeWarn');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'edgeWarn';
+            el.textContent = '◈  VOID AHEAD — TURN BACK  ◈';
+            el.style.cssText =
+                'position:fixed;left:50%;top:22%;transform:translateX(-50%);' +
+                'font:bold 20px "Courier New",monospace;letter-spacing:6px;' +
+                'color:#e8c86a;text-shadow:2px 2px 0 #000,0 0 22px rgba(232,200,106,.6);' +
+                'pointer-events:none;opacity:0;transition:opacity .2s;' +
+                'z-index:8;white-space:nowrap;';
+            document.body.appendChild(el);
+        }
+        return el;
+    })();
+
+    /* ---- "CLICK TO LOOK" prompt ----
+   Shown when the game is running but the pointer isn't locked — most
+   commonly during Chrome's post-ESC cooldown, and briefly after ENTER
+   from the pause menu.  Hides itself as soon as lock lands. */
+    const lockHintEl = (function () {
+        let el = document.getElementById('lockHint');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'lockHint';
+            el.textContent = '◈  CLICK TO LOOK  ◈';
+            el.style.cssText =
+                'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);' +
+                'font:bold 18px "Courier New",monospace;letter-spacing:5px;' +
+                'color:#e8c86a;text-shadow:2px 2px 0 #000,0 0 18px rgba(232,200,106,.55);' +
+                'pointer-events:none;opacity:0;transition:opacity .15s;' +
+                'z-index:9;white-space:nowrap;';
+            document.body.appendChild(el);
+        }
+        return el;
+    })();
+
+    /* Debounce counter — the hint only appears once the pointer has been
+       unlocked for ~250 ms while a game is running, so the brief window
+       between startGame() and the lock landing doesn't flash it. */
+    let lockHintTimer = 0;
+    function updatePointerLockHint(dt) {
+        const wantLock = gameRunning && player.alive
+            && !pointerLocked
+            && !inventory.isOpen
+            && !devMenuActive
+            && !(Minimap && Minimap.isOpen());
+
+        if (wantLock) lockHintTimer += dt;
+        else lockHintTimer = 0;
+
+        lockHintEl.style.opacity = lockHintTimer > 0.25 ? '1' : '0';
     }
 
     const flashEl = (function () {
@@ -4767,9 +6310,9 @@
         document.getElementById('deathScreen').classList.add('hidden');
         hudEl.classList.remove('hidden');
         gameRunning = true;
-        const p = canvas.requestPointerLock();
-        if (p && typeof p.catch === 'function') p.catch(() => { });
+        requestPointerLockSafely();
     }
+
     document.getElementById('playBtn').addEventListener('click', startGame);
     document.getElementById('respawnBtn').addEventListener('click', respawn);
 
@@ -4777,16 +6320,89 @@
     const settingsScreen = document.getElementById('settingsScreen');
     const setSensitivitySlider = document.getElementById('setSensitivity');
     const setSensitivityVal = document.getElementById('setSensitivityVal');
+    const setViewChunksSlider = document.getElementById('setViewChunks');
+    const setViewChunksVal = document.getElementById('setViewChunksVal');
+    const setMasterVolumeSlider = document.getElementById('setMasterVolume');
+    const setMasterVolumeVal = document.getElementById('setMasterVolumeVal');
+    const setSeVolumeSlider = document.getElementById('setSeVolume');
+    const setSeVolumeVal = document.getElementById('setSeVolumeVal');
+
+    /* Single point of truth for pushing the settings into the two audio
+       modules.  Called at boot, whenever a slider moves, and after a
+       reset — so both modules are always in sync with `settings`. */
+    function applyAudioVolumes() {
+        const m = settings.masterVolume;
+        const s = settings.seVolume;
+
+        /* sfx.js — master on its own bus, SE on top of it. */
+        if (window.Sfx) {
+            Sfx.setVolume('master', m);
+            Sfx.setSeVolume(s);
+        }
+        /* weapons.js — one bus; fold master × SE so weapons match the
+           loudness of every other SE in the mix. */
+        if (window.Weapons && window.Weapons.setSoundVolume) {
+            window.Weapons.setSoundVolume(m * s);
+        }
+    }
 
     function refreshSettingsUI() {
         setSensitivitySlider.value = settings.sensitivity;
         setSensitivityVal.textContent = 'x' + settings.sensitivity.toFixed(1);
+
+        const vc = typeof settings.viewChunks === 'number' ? settings.viewChunks : 6;
+        setViewChunksSlider.value = vc;
+        setViewChunksVal.textContent = vc;
+
+        const mv = typeof settings.masterVolume === 'number' ? settings.masterVolume : 1;
+        const sv = typeof settings.seVolume === 'number' ? settings.seVolume : 1;
+        setMasterVolumeSlider.value = mv;
+        setMasterVolumeVal.textContent = Math.round(mv * 100) + '%';
+        setSeVolumeSlider.value = sv;
+        setSeVolumeVal.textContent = Math.round(sv * 100) + '%';
     }
 
     setSensitivitySlider.addEventListener('input', () => {
         settings.sensitivity = parseFloat(setSensitivitySlider.value);
         setSensitivityVal.textContent = 'x' + settings.sensitivity.toFixed(1);
         saveSettings();
+    });
+
+    setViewChunksSlider.addEventListener('input', () => {
+        const v = clamp(parseInt(setViewChunksSlider.value, 10) || 6, 3, 12);
+        settings.viewChunks = v;
+        setViewChunksVal.textContent = v;
+        saveSettings();
+
+        /* Apply live — no reload needed. */
+        LOAD_RADIUS = v;
+        UNLOAD_RADIUS = v + 3;
+
+        /* Force the streaming system to re-evaluate on the next frame:
+           reset the last-streamed-chunk cache and free anything now
+           beyond UNLOAD_RADIUS. */
+        lastStreamedCx = -99999;
+        lastStreamedCz = -99999;
+        if (player && player.alive) {
+            unloadFarChunks(player.pos.x, player.pos.z);
+        }
+
+        /* Immediately hide/show pickups based on the new radius too. */
+        refreshPickupVisibility();
+    });
+
+    setMasterVolumeSlider.addEventListener('input', () => {
+        settings.masterVolume = parseFloat(setMasterVolumeSlider.value);
+        setMasterVolumeVal.textContent = Math.round(settings.masterVolume * 100) + '%';
+        saveSettings();
+        applyAudioVolumes();
+    });
+
+    setSeVolumeSlider.addEventListener('input', () => {
+        settings.seVolume = parseFloat(setSeVolumeSlider.value);
+        setSeVolumeVal.textContent = Math.round(settings.seVolume * 100) + '%';
+        saveSettings();
+        applyAudioVolumes();
     });
 
     document.getElementById('settingsBtn').addEventListener('click', () => {
@@ -4802,6 +6418,8 @@
 
     // Apply saved values on boot.
     refreshSettingsUI();
+    applyAudioVolumes();
+
 
     /* ============================================================
    LOCAL STRUCTURE BRIDGE
@@ -4991,11 +6609,11 @@
     overlayEl.addEventListener('click', (e) => {
         if (e.target === overlayEl) startGame();
     });
+
     canvas.addEventListener('click', () => {
-        if (altHeld) return;   // don't re-grab lock while Alt is held
+        if (altHeld) return;
         if (gameRunning && !pointerLocked && !devMenuActive && !inventory.isOpen) {
-            const p = canvas.requestPointerLock();
-            if (p && typeof p.catch === 'function') p.catch(() => { });
+            requestPointerLockSafely();
         }
     });
 
@@ -5023,16 +6641,40 @@
         if (currentMapType === 'sandbox') {
             return { x: WORLD_W * 0.5, z: WORLD_D * 0.5 };
         }
-        // generateCity() records a road intersection here so the player
-        // never spawns inside a structure.
-        if (window.__ariveBigStructureSpot) {
-            const s = window.__ariveBigStructureSpot;
-            return { x: s.x * VOXEL, z: s.z * VOXEL };
+
+        /* Pick the road intersection closest to the centre of the world.
+           Road intersections are guaranteed building-free (roads are
+           carved after blocks are laid out), so this is both "middle of
+           the map" and safe to spawn on. */
+        if (cityLayout && cityLayout.roadXs && cityLayout.roadZs &&
+            cityLayout.roadXs.length && cityLayout.roadZs.length) {
+            const cX = SX * 0.5, cZ = SZ * 0.5;
+            let bestX = cityLayout.roadXs[0];
+            let bestZ = cityLayout.roadZs[0];
+            let bestD = Infinity;
+            for (const rx of cityLayout.roadXs) {
+                for (const rz of cityLayout.roadZs) {
+                    const d = (rx - cX) * (rx - cX) + (rz - cZ) * (rz - cZ);
+                    if (d < bestD) { bestD = d; bestX = rx; bestZ = rz; }
+                }
+            }
+            return { x: bestX * VOXEL, z: bestZ * VOXEL };
         }
+
         return { x: WORLD_W * 0.5, z: WORLD_D * 0.5 };
     }
 
     function clearWorld() {
+        // Reset streaming state
+        generatedChunks.clear();
+        meshedChunks.clear();
+        lastStreamedCx = -99999;
+        lastStreamedCz = -99999;
+        cityLayout = null;
+
+        if (Minimap && Minimap.reset) Minimap.reset();
+        if (window.Weapons) window.Weapons.reset();
+
         voxels.fill(0);
         chunkCounts.fill(0);
 
@@ -5072,6 +6714,21 @@
         for (let i = 0; i < MAX_FIRE; i++) firePos[i * 3 + 1] = -9999;
         fireGeo.attributes.position.needsUpdate = true;
 
+        /* Blood + detached limb pools */
+        bloodParts.length = 0;
+        bloodGeo.setDrawRange(0, 0);
+        for (let i = 0; i < MAX_BLOOD; i++) bloodPos[i * 3 + 1] = -9999;
+        bloodGeo.attributes.position.needsUpdate = true;
+
+        for (const d of detachedLimbs) {
+            scene.remove(d.mesh);
+            d.mesh.traverse(o => {
+                if (o.geometry) o.geometry.dispose();
+                if (o.material) o.material.dispose();
+            });
+        }
+        detachedLimbs.length = 0;
+
         wave = 1; waveTimer = 0; enemySpawnTimer = 4;
         if (window.ARiveMP && window.ARiveMP.onWorldReset) {
             try { window.ARiveMP.onWorldReset(); } catch (e) { }
@@ -5081,28 +6738,34 @@
     function generateSandbox(seed) {
         const rnd = mulberry32(seed);
 
-        for (let x = 0; x < SX; x++) {
-            for (let z = 0; z < SZ; z++) {
+        const x0 = SANDBOX_CX0 * CHUNK, x1 = SANDBOX_CX1 * CHUNK;
+        const z0 = SANDBOX_CZ0 * CHUNK, z1 = SANDBOX_CZ1 * CHUNK;
+
+        /* ---- Ground (bounded to sandbox area) ---- */
+        for (let x = x0; x < x1; x++) {
+            for (let z = z0; z < z1; z++) {
                 for (let y = 0; y < GROUND_Y; y++) {
                     setVRaw(x, y, z, y === GROUND_Y - 1 ? 9 : 8);
                 }
             }
         }
 
-        for (let x = 0; x < SX; x++) {
+        /* ---- Boundary wall along the sandbox edge ---- */
+        for (let x = x0; x < x1; x++) {
             for (let y = 0; y < GROUND_Y + 5; y++) {
-                setVRaw(x, y, 0, 2);
-                setVRaw(x, y, SZ - 1, 2);
+                setVRaw(x, y, z0, 2);
+                setVRaw(x, y, z1 - 1, 2);
             }
         }
-        for (let z = 0; z < SZ; z++) {
+        for (let z = z0; z < z1; z++) {
             for (let y = 0; y < GROUND_Y + 5; y++) {
-                setVRaw(0, y, z, 2);
-                setVRaw(SX - 1, y, z, 2);
+                setVRaw(x0, y, z, 2);
+                setVRaw(x1 - 1, y, z, 2);
             }
         }
 
-        const cx = SX >> 1, cz = SZ >> 1;
+        /* ---- Material pillars around the centre ---- */
+        const cx = (x0 + x1) >> 1, cz = (z0 + z1) >> 1;
         const mats = [2, 3, 5, 11, 7, 15, 6];
         for (let i = 0; i < mats.length; i++) {
             const a = (i / mats.length) * Math.PI * 2;
@@ -5115,9 +6778,10 @@
             }
         }
 
+        /* ---- Barrel clusters ---- */
         for (let i = 0; i < 16; i++) {
-            const x = 20 + ((rnd() * (SX - 40)) | 0);
-            const z = 20 + ((rnd() * (SZ - 40)) | 0);
+            const x = x0 + 20 + ((rnd() * (x1 - x0 - 40)) | 0);
+            const z = z0 + 20 + ((rnd() * (z1 - z0 - 40)) | 0);
             for (let k = 0; k < 3; k++) setVRaw(x, GROUND_Y + k, z, 13);
         }
     }
@@ -5281,7 +6945,10 @@
         lastTime = now;
 
         try {
-            if (gameRunning && player.alive && !inventory.isOpen && !devMenuActive) {
+            updateChunkStreaming();
+
+            if (gameRunning && player.alive && !inventory.isOpen &&
+                !devMenuActive && !Minimap.isOpen()) {
                 updatePlayer(dt);
                 updateStats(dt);
                 updateEnemies(dt);
@@ -5314,12 +6981,20 @@
             playerBody.visible = fpVisible;
 
             updateFire(dt);
-            updateExplosionParts(dt);   // ← NEW
+            updateExplosionParts(dt);
             processExplosions();
             updateDebris(dt);
+            updateBloodParticles(dt);
+            updateDetachedLimbs(dt);
             updatePickups(dt);
             flushRebuilds();
+
             updateHud(dt);
+            updateWorldEdgeFx(dt);
+            updatePointerLockHint(dt);
+            if (window.Weapons) window.Weapons.update(dt);
+            Minimap.update();
+
 
             if (hitFlash > 0) { hitFlash -= dt; flashEl.style.opacity = clamp(hitFlash * 2, 0, 1); }
 
@@ -5344,19 +7019,25 @@
         resizeRenderer();
         clearWorld();
 
-        await initItemsAndInventory();           // ← furniture folder + icons + bag
-        mergeLocalStructures();                  // localStorage → ARIVE_STRUCTURES
-        await loadStructuresFromFolder();        // fetch every structure .json in index.js
+        await initItemsAndInventory();
+        mergeLocalStructures();
+        await loadStructuresFromFolder();
+
+        /* Weapons now load from assets/model/weaponModel/*.json the
+           same way structures load from structureModel/.  Awaited here
+           so weapons.js init() sees a populated WEAPON_MODEL_DATA. */
+        if (typeof window.loadWeaponsFromFolder === 'function') {
+            await window.loadWeaponsFromFolder();
+        }
 
         const seed = (forceSeed !== undefined && forceSeed !== null)
-            ? forceSeed
-            : ((Math.random() * 1e9) | 0);
+            ? forceSeed : ((Math.random() * 1e9) | 0);
         currentSeed = seed;
 
         if (currentMapType === 'sandbox') {
             generateSandbox(seed);
         } else {
-            generateCity(seed);   // structure placement is handled inside
+            cityLayout = generateCityLayout(seed);
         }
 
         if (hotbarSlots.length === 0) {
@@ -5373,49 +7054,97 @@
         document.getElementById('mapSubtitle').textContent = info.sub;
         document.getElementById('mapNote').textContent = info.note;
 
-        const allChunks = [];
-        for (let cx = 0; cx < CHUNKS_X; cx++)
-            for (let cy = 0; cy < CHUNKS_Y; cy++)
-                for (let cz = 0; cz < CHUNKS_Z; cz++)
-                    allChunks.push([cx, cy, cz]);
+        const sp = getSpawnPoint();
 
-        let i = 0;
-        function step() {
-            const batchSize = 6;   // ← was 1; scaled up for the 3× map
-            for (let k = 0; k < batchSize && i < allChunks.length; k++, i++) {
-                rebuildChunk(allChunks[i][0], allChunks[i][1], allChunks[i][2]);
-            }
+        if (currentMapType === 'city') {
+            // Generate the spawn column first so placePlayerOnGround() works.
+            const spawnCx = Math.floor(sp.x / (CHUNK * VOXEL));
+            const spawnCz = Math.floor(sp.z / (CHUNK * VOXEL));
+            generateChunkColumn(spawnCx, spawnCz);
+        }
 
-            progressEl.style.width = Math.round((i / allChunks.length) * 100) + '%';
+        placePlayerOnGround(sp.x, sp.z);
+        camera.position.set(player.pos.x, player.pos.y + player.eye, player.pos.z);
 
-            if (i < allChunks.length) {
-                requestAnimationFrame(step);
-            } else {
-                const sp = getSpawnPoint();
-                placePlayerOnGround(sp.x, sp.z);
-                camera.position.set(player.pos.x, player.pos.y + player.eye, player.pos.z);
+        /* ============================================================
+           BATCHED WORLD MESHING
+           ------------------------------------------------------------
+           Both maps use the same frame-budgeted loop so the progress
+           bar actually shows.  The list of chunks to build differs:
+             · city    — a ring of LOAD_RADIUS around the spawn point
+             · sandbox — every chunk inside the bounded sandbox area
+           ============================================================ */
+        const list = [];
 
-                // Generation queued a pile of markDirty() calls that boot() already
-                // satisfied by rebuilding every chunk.  Drop them so the first frame
-                // doesn't redundantly re-mesh them.
-                rebuildQueue.length = 0;
-                dirtyChunks.clear();
-
-                loadingEl.classList.add('hidden');
-                if (window.__ariveAutoStart) {
-                    window.__ariveAutoStart = false;
-                    startGame();
-                } else {
-                    showOverlay(true);
+        if (currentMapType === 'city') {
+            const pcx = Math.floor(sp.x / (CHUNK * VOXEL));
+            const pcz = Math.floor(sp.z / (CHUNK * VOXEL));
+            const R = LOAD_RADIUS, R2 = R * R;
+            for (let dx = -R; dx <= R; dx++) {
+                for (let dz = -R; dz <= R; dz++) {
+                    const d2 = dx * dx + dz * dz;
+                    if (d2 > R2) continue;
+                    const cx = pcx + dx, cz = pcz + dz;
+                    if (cx < 0 || cz < 0 || cx >= CHUNKS_X || cz >= CHUNKS_Z) continue;
+                    list.push({ cx, cz, d2 });
                 }
-
-                if (!loopStarted) {
-                    loopStarted = true;
-                    requestAnimationFrame(animate);
+            }
+            list.sort((a, b) => a.d2 - b.d2);
+        } else {
+            /* Sandbox — every chunk inside the bounded area. */
+            for (let cx = SANDBOX_CX0; cx < SANDBOX_CX1; cx++) {
+                for (let cz = SANDBOX_CZ0; cz < SANDBOX_CZ1; cz++) {
+                    list.push({ cx, cz, d2: 0 });
                 }
             }
         }
-        requestAnimationFrame(step);
+
+        let i = 0;
+        (function step() {
+            const batch = currentMapType === 'sandbox' ? 8 : 4;
+            for (let k = 0; k < batch && i < list.length; k++, i++) {
+                const { cx, cz } = list[i];
+
+                if (currentMapType === 'city') {
+                    generateChunkColumn(cx, cz);   // writes voxels + meshes
+                } else {
+                    /* Sandbox voxels are already written by generateSandbox().
+                       Just mesh this chunk column and mark it. */
+                    for (let cy = 0; cy < CHUNKS_Y; cy++) rebuildChunk(cx, cy, cz);
+                    meshedChunks.add(cx + ',' + cz);
+                    generatedChunks.add(cx + ',' + cz);
+                    if (Minimap && Minimap.markExplored) Minimap.markExplored(cx, cz);
+                }
+            }
+            progressEl.style.width = Math.round((i / list.length) * 100) + '%';
+            if (i < list.length) requestAnimationFrame(step);
+            else finishBoot();
+        })();
+
+        function finishBoot() {
+            lastStreamedCx = Math.floor(player.pos.x / (CHUNK * VOXEL));
+            lastStreamedCz = Math.floor(player.pos.z / (CHUNK * VOXEL));
+
+            rebuildQueue.length = 0;
+            dirtyChunks.clear();
+
+            if (window.Weapons) window.Weapons.init();
+            applyAudioVolumes();
+            Minimap.buildTerrainCache();
+
+            loadingEl.classList.add('hidden');
+            if (window.__ariveAutoStart) {
+                window.__ariveAutoStart = false;
+                startGame();
+            } else {
+                showOverlay(true);
+            }
+
+            if (!loopStarted) {
+                loopStarted = true;
+                requestAnimationFrame(animate);
+            }
+        }
     }
 
     window.addEventListener('load', () => setTimeout(() => {
@@ -5628,10 +7357,35 @@
         VOXEL: VOXEL,
         SX: SX, SY: SY, SZ: SZ,
         WORLD_W: WORLD_W, WORLD_D: WORLD_D,
+
+        fpRoot: fpRoot,
+        handL: handL,
+        handR: handR,
+        setWeaponDrivesHands: setWeaponDrivesHands,
+        updateArmBones: updateArmBones,
+
+        CHUNK: CHUNK,
+        canvas: canvas,
+
+        /* ---- weapons.js needs ---- */
+        handR: handR,
+        getLookDir: getLookDir,
+        raycastVoxel: raycastVoxel,
+        carveSphere: carveSphere,
+        hurtEnemy: hurtEnemy,
+        shakeCamera: shakeCamera,
+        updateHeldToolModel: updateHeldToolModel,
+        net: net,
+        /* --------------------------------------- */
+
+        getCityLayout: function () { return cityLayout; },
+        getGameRunning: function () { return gameRunning; },
+        getInventory: function () { return inventory; },
+        getDevMenuActive: function () { return devMenuActive; },
+
         getV: getV,
         setVRaw: setVRaw,
         markDirty: markDirty,
-        carveSphere: carveSphere,
         explodeAt: explodeAt,
         spawnPickup: spawnPickup,
         spawnRemoteProjectile: spawnRemoteProjectile,
@@ -5646,28 +7400,37 @@
             clearWorld();
 
             quietGeneration = true;
-            if (currentMapType === 'sandbox') generateSandbox(seed);
-            else generateCity(seed);
-            quietGeneration = false;
-            rebuildQueue.length = 0;
-            dirtyChunks.clear();
+            if (currentMapType === 'sandbox') {
+                generateSandbox(seed);
+                for (let cx = 0; cx < CHUNKS_X; cx++)
+                    for (let cy = 0; cy < CHUNKS_Y; cy++)
+                        for (let cz = 0; cz < CHUNKS_Z; cz++)
+                            rebuildChunk(cx, cy, cz);
+            } else {
+                cityLayout = generateCityLayout(seed);
+            }
 
-            for (let cx = 0; cx < CHUNKS_X; cx++)
-                for (let cy = 0; cy < CHUNKS_Y; cy++)
-                    for (let cz = 0; cz < CHUNKS_Z; cz++)
-                        rebuildChunk(cx, cy, cz);
             const sp = getSpawnPoint();
+
+            if (currentMapType === 'city') {
+                // Spawn column must exist before placePlayerOnGround
+                const spawnCx = Math.floor(sp.x / (CHUNK * VOXEL));
+                const spawnCz = Math.floor(sp.z / (CHUNK * VOXEL));
+                generateChunkColumn(spawnCx, spawnCz);
+            }
+
             placePlayerOnGround(sp.x, sp.z);
 
-            /* Build the hotbar if it hasn't been built yet — the join
-               path goes through here instead of boot(), so we must
-               mirror boot()'s "first-time DOM setup" step or every
-               later renderHotbar() call will crash on an empty
-               hotbarSlots array. */
-            if (hotbarSlots.length === 0) {
-                buildHotbarDom();
-                renderHotbar();
+            if (currentMapType === 'city') {
+                // Small synchronous ring — MP join cannot wait frames.
+                fillInitialRing(sp.x, sp.z, 4);
+                lastStreamedCx = Math.floor(sp.x / (CHUNK * VOXEL));
+                lastStreamedCz = Math.floor(sp.z / (CHUNK * VOXEL));
             }
+
+            if (hotbarSlots.length === 0) { buildHotbarDom(); renderHotbar(); }
+
+            Minimap.buildTerrainCache()
         },
         applyBlockBatch: function (blocks) { applyBlockBatch(blocks, true); },
 
@@ -5732,6 +7495,19 @@
             mapSelectEl.classList.remove('hidden');
         },
 
+        suppressNextPause: function () {
+            suppressUnlockPause = true;
+            clearTimeout(_suppressPauseTimer);
+            _suppressPauseTimer = setTimeout(function () {
+                suppressUnlockPause = false;
+            }, 1500);
+        },
+
+        /* NEW — expose the retry-aware pointer-lock helper so map.js and
+           other modules can re-lock without duplicating the Chrome
+           cooldown workaround. */
+        requestPointerLock: requestPointerLockSafely,
+
         // Update the small top-left HUD badge (empty string hides it).
         setMpBadge: function (text) {
             var el = document.getElementById('mpBadge');
@@ -5744,5 +7520,4 @@
             }
         }
     };
-
 })();

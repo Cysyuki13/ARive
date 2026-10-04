@@ -1,0 +1,1732 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="utf-8">
+    <title>ARive — 武器編輯器</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            height: 100%;
+            background: #0b0e13;
+            color: #c8b88a;
+            font: 12px "Courier New", monospace;
+            overflow: hidden;
+        }
+
+        #wrap {
+            display: grid;
+            grid-template-columns: 360px 1fr 320px;
+            height: 100vh;
+        }
+
+        .col {
+            overflow-y: auto;
+            padding: 12px 14px;
+            background: #10141b;
+            border-right: 1px solid #232b36;
+        }
+
+        .col:last-child {
+            border-right: none;
+            border-left: 1px solid #232b36;
+        }
+
+        h1 {
+            font-size: 15px;
+            letter-spacing: 3px;
+            color: #e8c86a;
+            margin: 0 0 10px;
+        }
+
+        h2 {
+            font-size: 11px;
+            letter-spacing: 2px;
+            color: #e8c86a;
+            margin: 14px 0 6px;
+            border-bottom: 1px solid #2b333f;
+            padding-bottom: 3px;
+        }
+
+        h3 {
+            font-size: 10px;
+            letter-spacing: 1.5px;
+            color: #8fb8d0;
+            margin: 10px 0 4px;
+        }
+
+        label {
+            display: block;
+            font-size: 10px;
+            color: #8a7a64;
+            margin-top: 6px;
+        }
+
+        input,
+        select,
+        textarea,
+        button {
+            width: 100%;
+            background: #181d26;
+            color: #e8c86a;
+            border: 1px solid #2b333f;
+            padding: 4px 6px;
+            font: 11px "Courier New", monospace;
+        }
+
+        button {
+            cursor: pointer;
+            letter-spacing: 1px;
+        }
+
+        button:hover {
+            background: #20262f;
+        }
+
+        button.active {
+            background: #e8c86a;
+            color: #0b0e13;
+            border-color: #f6e2a6;
+            font-weight: bold;
+        }
+
+        .row {
+            display: flex;
+            gap: 6px;
+        }
+
+        .row>* {
+            flex: 1;
+        }
+
+        .row.tight {
+            gap: 3px;
+        }
+
+        .posetabs {
+            display: flex;
+            gap: 3px;
+            margin-bottom: 6px;
+        }
+
+        .posetabs button {
+            flex: 1;
+            padding: 5px 0;
+            font-size: 10px;
+        }
+
+        .grp {
+            background: #0b0e13;
+            border: 1px solid #232b36;
+            padding: 6px 8px 8px;
+            margin-bottom: 6px;
+        }
+
+        /* ---- slider rows (slider + number + axis label) ---- */
+        .vec-row {
+            display: grid;
+            grid-template-columns: 20px 1fr 62px;
+            gap: 4px;
+            align-items: center;
+            margin-top: 3px;
+        }
+
+        .vec-row>span:first-child {
+            font-size: 9px;
+            color: #6a7a8a;
+            text-align: center;
+        }
+
+        .vec-row input[type="range"] {
+            width: 100%;
+            height: 3px;
+            background: #1a2028;
+            appearance: none;
+            -webkit-appearance: none;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .vec-row input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 11px;
+            height: 11px;
+            background: #6ac8e8;
+            border: 1px solid #0a0d12;
+            cursor: grab;
+        }
+
+        .vec-row input[type="range"]::-moz-range-thumb {
+            width: 11px;
+            height: 11px;
+            background: #6ac8e8;
+            border: 1px solid #0a0d12;
+            cursor: grab;
+        }
+
+        .vec-row input[type="range"]:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
+
+        .vec-row input[type="number"] {
+            padding: 3px;
+            font-size: 10px;
+            text-align: right;
+        }
+
+        .vec-row input[type="number"]:disabled {
+            opacity: 0.35;
+        }
+
+        #viewport {
+            position: relative;
+            background: #05070a;
+        }
+
+        #viewport canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        #hud {
+            position: absolute;
+            top: 10px;
+            left: 12px;
+            font-size: 10px;
+            color: #8a7a64;
+            letter-spacing: 1px;
+            pointer-events: none;
+            line-height: 1.5;
+        }
+
+        #camPresets {
+            position: absolute;
+            top: 10px;
+            right: 12px;
+            display: flex;
+            gap: 4px;
+        }
+
+        #camPresets button {
+            width: auto;
+            padding: 4px 10px;
+            font-size: 10px;
+            background: rgba(20, 28, 38, 0.85);
+            border-color: #2a3a4a;
+        }
+
+        #readout {
+            position: absolute;
+            bottom: 10px;
+            left: 12px;
+            font-size: 10px;
+            color: #8fb8d0;
+            letter-spacing: 1px;
+            background: rgba(10, 14, 20, 0.75);
+            border: 1px solid #232b36;
+            padding: 6px 10px;
+            line-height: 1.5;
+            pointer-events: none;
+        }
+
+        /* ---- view tabs (HANDS+GUN / GUN ONLY) ---- */
+        #viewTabs {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 4px;
+            z-index: 3;
+        }
+
+        #viewTabs button {
+            width: auto;
+            padding: 6px 18px;
+            font-size: 10px;
+            letter-spacing: 2px;
+            background: rgba(20, 28, 38, 0.85);
+            border-color: #2a3a4a;
+        }
+
+        #viewTabs button.active {
+            background: #e8c86a;
+            color: #0b0e13;
+            border-color: #f6e2a6;
+        }
+
+        /* ---- parts panel ---- */
+        .part {
+            background: #0b0e13;
+            border: 1px solid #232b36;
+            padding: 6px;
+            margin-bottom: 6px;
+        }
+
+        .part.sel {
+            border-color: #e8c86a;
+        }
+
+        .part .hd {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #c8b88a;
+            margin-bottom: 4px;
+        }
+
+        .part .sec {
+            font-size: 9px;
+            color: #6ac8e8;
+            letter-spacing: 2px;
+            margin: 8px 0 3px;
+            border-bottom: 1px dashed #232b36;
+            padding-bottom: 2px;
+        }
+
+        .mini {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 4px;
+        }
+
+        .mini label {
+            margin: 0;
+            font-size: 9px;
+        }
+
+        .mini input {
+            padding: 3px;
+            font-size: 11px;
+        }
+
+        #status {
+            font-size: 10px;
+            color: #7ad07a;
+            height: 14px;
+            margin-top: 6px;
+        }
+
+        .chk {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 10px;
+            color: #8a7a64;
+            margin-top: 4px;
+        }
+
+        .chk input {
+            width: auto;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="wrap">
+
+        <!-- ==================== LEFT: stats + pose ==================== -->
+        <div class="col">
+            <h1>◈ 武器編輯器</h1>
+
+            <h2>基本資訊</h2>
+            <label>識別碼</label> <input id="wKey">
+            <label>名稱</label> <input id="wName">
+            <label>圖示</label> <input id="wIcon">
+            <label>顏色</label> <input id="wColor">
+
+            <h2>彈藥 / 傷害</h2>
+            <div class="row">
+                <div><label>彈藥類型</label>
+                    <select id="wAmmo">
+                        <option>9mm</option>
+                    </select>
+                </div>
+                <div><label>彈匣</label><input id="wMag" type="number" step="1"></div>
+            </div>
+            <div class="row">
+                <div><label>射速</label><input id="wRate" type="number" step="0.01"></div>
+                <div><label>裝填</label><input id="wRel" type="number" step="0.05"></div>
+            </div>
+            <div class="row">
+                <div><label>傷害</label><input id="wDmg" type="number" step="1"></div>
+                <div><label>全自動？</label>
+                    <select id="wAuto">
+                        <option value="0">半自動</option>
+                        <option value="1">全自動</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row">
+                <div><label>散佈</label><input id="wSpread" type="number" step="0.001"></div>
+                <div><label>後座力</label><input id="wRecoil" type="number" step="0.005"></div>
+            </div>
+
+            <h2>子彈</h2>
+            <div class="row">
+                <div><label>速度</label><input id="wBSpeed" type="number" step="5"></div>
+                <div><label>大小</label><input id="wBSize" type="number" step="0.002"></div>
+            </div>
+            <label>顏色</label> <input id="wBColor">
+
+            <h2>瞄準鏡</h2>
+            <div class="row">
+                <div><label>視野角</label><input id="wScopeFov" type="number"></div>
+                <div><label>靈敏度 ×</label><input id="wScopeSens" type="number" step="0.05"></div>
+            </div>
+
+            <h2>姿態預覽</h2>
+            <div class="posetabs">
+                <button data-view="hip">腰射</button>
+                <button data-view="ads">瞄準</button>
+                <button data-view="blend">混合</button>
+            </div>
+            <label>混合比 <span id="blendVal">0.00</span></label>
+            <input type="range" id="blend" min="0" max="1" step="0.01" value="0">
+
+            <!-- ---- HIP POSE ---- -->
+            <div class="grp">
+                <h3>腰射姿態（fpRoot 座標系）</h3>
+                <label>位置 (x, y, z)</label>
+                <div class="vec-row"><span>X</span><input id="hipP0" type="number" step="0.005"></div>
+                <div class="vec-row"><span>Y</span><input id="hipP1" type="number" step="0.005"></div>
+                <div class="vec-row"><span>Z</span><input id="hipP2" type="number" step="0.005"></div>
+                <label>旋轉 (弧度)</label>
+                <div class="vec-row"><span>X</span><input id="hipR0" type="number" step="0.01"></div>
+                <div class="vec-row"><span>Y</span><input id="hipR1" type="number" step="0.01"></div>
+                <div class="vec-row"><span>Z</span><input id="hipR2" type="number" step="0.01"></div>
+            </div>
+
+            <!-- ---- ADS POSE ---- -->
+            <div class="grp">
+                <h3>瞄準姿態</h3>
+                <div class="chk">
+                    <input type="checkbox" id="adsAuto">
+                    <label for="adsAuto" style="margin:0">自動（依準心）</label>
+                </div>
+                <label>位置</label>
+                <div class="vec-row"><span>X</span><input id="adsP0" type="number" step="0.005"></div>
+                <div class="vec-row"><span>Y</span><input id="adsP1" type="number" step="0.005"></div>
+                <div class="vec-row"><span>Z</span><input id="adsP2" type="number" step="0.005"></div>
+                <label>旋轉</label>
+                <div class="vec-row"><span>X</span><input id="adsR0" type="number" step="0.01"></div>
+                <div class="vec-row"><span>Y</span><input id="adsR1" type="number" step="0.01"></div>
+                <div class="vec-row"><span>Z</span><input id="adsR2" type="number" step="0.01"></div>
+            </div>
+
+            <!-- ---- SIGHT ---- -->
+            <div class="grp">
+                <h3>準心本地座標（武器上）</h3>
+                <label>位置 (x, y, z)</label>
+                <div class="vec-row"><span>X</span><input id="sightP0" type="number" step="0.005"></div>
+                <div class="vec-row"><span>Y</span><input id="sightP1" type="number" step="0.005"></div>
+                <div class="vec-row"><span>Z</span><input id="sightP2" type="number" step="0.005"></div>
+            </div>
+
+            <!-- ---- GRIP R ---- -->
+            <div class="grp">
+                <h3>右手握把 — 慣用手</h3>
+                <label>位置 (x, y, z)</label>
+                <div class="vec-row"><span>X</span><input id="gripRP0" type="number" step="0.005"></div>
+                <div class="vec-row"><span>Y</span><input id="gripRP1" type="number" step="0.005"></div>
+                <div class="vec-row"><span>Z</span><input id="gripRP2" type="number" step="0.005"></div>
+                <label>旋轉</label>
+                <div class="vec-row"><span>X</span><input id="gripRR0" type="number" step="0.01"></div>
+                <div class="vec-row"><span>Y</span><input id="gripRR1" type="number" step="0.01"></div>
+                <div class="vec-row"><span>Z</span><input id="gripRR2" type="number" step="0.01"></div>
+            </div>
+
+            <!-- ---- GRIP L ---- -->
+            <div class="grp">
+                <h3>左手握把 — 支撐手</h3>
+                <label>位置 (x, y, z)</label>
+                <div class="vec-row"><span>X</span><input id="gripLP0" type="number" step="0.005"></div>
+                <div class="vec-row"><span>Y</span><input id="gripLP1" type="number" step="0.005"></div>
+                <div class="vec-row"><span>Z</span><input id="gripLP2" type="number" step="0.005"></div>
+                <label>旋轉</label>
+                <div class="vec-row"><span>X</span><input id="gripLR0" type="number" step="0.01"></div>
+                <div class="vec-row"><span>Y</span><input id="gripLR1" type="number" step="0.01"></div>
+                <div class="vec-row"><span>Z</span><input id="gripLR2" type="number" step="0.01"></div>
+            </div>
+
+            <!-- ---- SHOULDERS ---- -->
+            <div class="grp">
+                <h3>肩膀（手臂骨骼，fpRoot 座標系）</h3>
+                <label>左肩</label>
+                <div class="vec-row"><span>X</span><input id="shoulderL0" type="number" step="0.01"></div>
+                <div class="vec-row"><span>Y</span><input id="shoulderL1" type="number" step="0.01"></div>
+                <div class="vec-row"><span>Z</span><input id="shoulderL2" type="number" step="0.01"></div>
+                <label>右肩</label>
+                <div class="vec-row"><span>X</span><input id="shoulderR0" type="number" step="0.01"></div>
+                <div class="vec-row"><span>Y</span><input id="shoulderR1" type="number" step="0.01"></div>
+                <div class="vec-row"><span>Z</span><input id="shoulderR2" type="number" step="0.01"></div>
+            </div>
+
+            <h2>動畫</h2>
+            <div class="vec-row"><span>擺動</span><input id="wAnimSw" type="number" step="0.01"></div>
+            <div class="vec-row"><span>後衝</span><input id="wAnimKc" type="number" step="0.005"></div>
+
+            <h2>檔案 / 資料</h2>
+            <div class="row">
+                <button id="btnNew">新增</button>
+                <button id="btnSave">儲存</button>
+                <button id="btnLoadSaved">載入已儲存…</button>
+            </div>
+            <div class="row" style="margin-top:6px">
+                <button id="btnImport">匯入 JSON</button>
+                <button id="btnExport">匯出 JSON</button>
+            </div>
+            <div class="row" style="margin-top:6px">
+                <button id="btnCopy">複製設定</button>
+            </div>
+            <textarea id="jsonOut" rows="6" style="margin-top:8px"
+                placeholder="武器 JSON 預覽 — 使用「匯出 JSON」下載檔案。"></textarea>
+            <div id="status"></div>
+        </div>
+
+        <!-- ==================== MIDDLE: 3D preview ==================== -->
+        <div id="viewport">
+            <div id="viewTabs">
+                <button data-tab="hands" class="active">雙手 + 槍</button>
+                <button data-tab="gun">僅槍枝</button>
+            </div>
+            <div id="hud">
+                <b style="color:#e8c86a">黃色</b> = 眼睛 / 位置箭頭<br>
+                <b style="color:#ff60c0">洋紅</b> = 準心 / 旋轉箭頭<br>
+                <b style="color:#60ff60">綠色</b> = 肩膀<br>
+                <b style="color:#6ac8e8">青色</b> = 尺寸箭頭<br>
+                拖曳 = 旋轉 · 滾輪 = 縮放
+            </div>
+            <div id="camPresets">
+                <button data-cam="fp" class="active">第一人視角</button>
+                <button data-cam="side">側視</button>
+                <button data-cam="top">俯視</button>
+            </div>
+            <div id="readout">準心於 fpRoot：—</div>
+        </div>
+
+        <!-- ==================== RIGHT: model parts ==================== -->
+        <div class="col">
+            <h1 style="font-size:13px">◈ 模型零件</h1>
+            <div class="row">
+                <button id="btnAddPart">+ 零件</button>
+                <button id="btnDupPart">複製</button>
+                <button id="btnDelPart">刪除</button>
+            </div>
+            <div id="partsList" style="margin-top:10px"></div>
+        </div>
+
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        (function () {
+            'use strict';
+
+            /* ============================================================
+               DEFAULT WEAPON
+               ============================================================ */
+            const DEFAULT_W = {
+                key: 'pistol', name: 'M9 PISTOL', icon: '⌐', color: '#6a6a72',
+                ammoType: '9mm', magSize: 12, fireRate: 0.16, reloadTime: 1.35,
+                damage: 24, bulletSpeed: 130, spread: 0.006, auto: false,
+                recoilKick: 0.028, scopeFov: 62, scopeSens: 0.72,
+                muzzleLocal: [0, 0.055, -0.30],
+                bulletColor: 0xffd8a0, bulletSize: 0.034,
+                sightLocal: [0, 0.078, -0.10],
+                hipPose: { p: [0.14, -0.16, -0.24], r: [0.10, 0.20, -0.04] },
+                adsPose: { p: [0, 0, -0.02], r: [0, 0, 0] },
+                adsAuto: true,
+                gripR: { p: [0.000, -0.030, 0.020], r: [0.10, 0.00, 0.00] },
+                gripL: { p: [-0.035, -0.030, -0.010], r: [0.10, 0.20, 0.15] },
+                shoulderL: [-0.18, -0.06, 0.04],
+                shoulderR: [0.18, -0.06, 0.04],
+                anim: { swing: 0.14, kick: 0.055 },
+                model: [
+                    { p: [0, 0.050, -0.16], s: [0.045, 0.048, 0.26], c: 0x505058 },
+                    { p: [0, -0.010, -0.02], s: [0.040, 0.110, 0.06], c: 0x2c2c34 },
+                    { p: [0, 0.020, -0.06], s: [0.035, 0.030, 0.06], c: 0x303038 },
+                    { p: [0, 0.055, -0.30], s: [0.030, 0.030, 0.03], c: 0x181820 },
+                    { p: [0, 0.030, 0.02], s: [0.035, 0.040, 0.04], c: 0x303038 },
+                    { p: [0, -0.075, -0.01], s: [0.035, 0.060, 0.04], c: 0x1c1c22 },
+                    { p: [0, 0.076, -0.16], s: [0.020, 0.010, 0.24], c: 0x2a2a32 },
+                    { p: [0, 0.079, -0.24], s: [0.030, 0.012, 0.020], c: 0x1a1a1e },
+                    { p: [0, 0.078, -0.08], s: [0.030, 0.012, 0.020], c: 0x1a1a1e }
+                ]
+            };
+
+            const SMG_PRESET = {
+                key: 'smg', name: 'MP-9 SMG', icon: '▭', color: '#5a5a62',
+                ammoType: '9mm', magSize: 30, fireRate: 0.075, reloadTime: 1.9,
+                damage: 15, bulletSpeed: 140, spread: 0.016, auto: true,
+                recoilKick: 0.018, scopeFov: 55, scopeSens: 0.65,
+                muzzleLocal: [0, 0.070, -0.50],
+                bulletColor: 0xffd8a0, bulletSize: 0.034,
+                sightLocal: [0, 0.115, -0.14],
+                hipPose: { p: [0.16, -0.20, -0.20], r: [0.08, 0.18, -0.03] },
+                adsPose: { p: [0, 0, -0.02], r: [0, 0, 0] },
+                adsAuto: true,
+                gripR: { p: [0.000, -0.060, 0.050], r: [0.15, 0.00, 0.00] },
+                gripL: { p: [-0.030, -0.060, -0.200], r: [0.10, 0.30, 0.10] },
+                shoulderL: [-0.18, -0.06, 0.04],
+                shoulderR: [0.18, -0.06, 0.04],
+                anim: { swing: 0.09, kick: 0.035 },
+                model: [
+                    { p: [0, 0.020, -0.20], s: [0.060, 0.075, 0.36], c: 0x3e3e46 },
+                    { p: [0, 0.070, -0.50], s: [0.034, 0.034, 0.24], c: 0x22222a },
+                    { p: [0, -0.080, -0.02], s: [0.045, 0.140, 0.06], c: 0x282830 },
+                    { p: [0, -0.100, -0.14], s: [0.040, 0.160, 0.055], c: 0x181820 },
+                    { p: [0, 0.020, 0.04], s: [0.045, 0.060, 0.14], c: 0x3e3e46 },
+                    { p: [0, -0.060, -0.26], s: [0.045, 0.110, 0.05], c: 0x282830 },
+                    { p: [0, 0.110, -0.20], s: [0.020, 0.020, 0.10], c: 0x2a2a32 },
+                    { p: [0, 0.122, -0.44], s: [0.026, 0.014, 0.020], c: 0x1a1a1e },
+                    { p: [0, 0.115, -0.10], s: [0.026, 0.014, 0.020], c: 0x1a1a1e }
+                ]
+            };
+
+            const STORAGE_KEY = 'arive-weapons-v1';
+
+            let W = JSON.parse(JSON.stringify(DEFAULT_W));
+            let selectedPart = 0;
+            let blendT = 0;
+            let activeView = 'hip';
+            let viewTab = 'hands';      // 'hands' | 'gun'
+
+            /* ============================================================
+               THREE SETUP
+               ============================================================ */
+            const wrap = document.getElementById('viewport');
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+            renderer.setClearColor(0x05070a, 1);
+            wrap.appendChild(renderer.domElement);
+
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 50);
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+            const keyLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            keyLight.position.set(1.2, 1.8, 1.0); scene.add(keyLight);
+            const fill = new THREE.DirectionalLight(0x8899bb, 0.5);
+            fill.position.set(-1.0, 0.5, -1.2); scene.add(fill);
+
+            const grid = new THREE.GridHelper(4, 40, 0x223040, 0x141c26);
+            grid.position.y = -0.6;
+            scene.add(grid);
+
+            /* ============================================================
+               RIG HIERARCHY (mirrors game.js runtime hierarchy)
+               ============================================================ */
+            const fpRoot = new THREE.Group();
+            scene.add(fpRoot);
+
+            const weaponRig = new THREE.Group();
+            fpRoot.add(weaponRig);
+
+            let weaponMesh = null;
+            let sightMarker = null;
+            let muzzleMarker = null;
+
+            /* ---- Selection highlight ------------------------------------
+               A single 1×1×1 box wireframe that is scaled to whatever
+               part is selected.  depthTest is OFF so the outline is
+               always drawn on top of the mesh — which is what you want
+               in an editor, especially when the highlighted part is
+               behind another part. */
+            const selectedHighlight = new THREE.LineSegments(
+                new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
+                new THREE.LineBasicMaterial({
+                    color: 0xe8c86a,
+                    transparent: true,
+                    opacity: 0.95,
+                    depthTest: false,
+                    depthWrite: false,
+                    fog: false
+                })
+            );
+            selectedHighlight.renderOrder = 250;
+            selectedHighlight.visible = false;
+            weaponRig.add(selectedHighlight);
+
+            function updateSelectedHighlight() {
+                const p = W.model[selectedPart];
+                if (!p || !p.p || !p.s) {
+                    selectedHighlight.visible = false;
+                    return;
+                }
+                selectedHighlight.position.set(p.p[0], p.p[1], p.p[2]);
+                if (p.r) selectedHighlight.rotation.set(p.r[0], p.r[1], p.r[2]);
+                else selectedHighlight.rotation.set(0, 0, 0);
+
+                /* 1.10 inflation — the wireframe floats just outside the
+                   surface, so it reads as an "outline" rather than
+                   z-fighting with the mesh's own edges. */
+                selectedHighlight.scale.set(
+                    p.s[0] * 1.10,
+                    p.s[1] * 1.10,
+                    p.s[2] * 1.10
+                );
+                selectedHighlight.visible = true;
+            }
+
+            /* ---- Hands ---- */
+            const SKIN_MAT = new THREE.MeshLambertMaterial({ color: 0xd4a686 });
+            const SLEEVE_MAT = new THREE.MeshLambertMaterial({ color: 0x3a4a30 });
+
+            const HAND = {
+                palmW: 0.065, palmH: 0.13, palmD: 0.14,
+                thumbW: 0.04, thumbH: 0.05, thumbD: 0.07,
+                thumbX: -0.03, thumbY: 0.06, thumbZ: 0.02,
+            };
+
+            function buildPalm(side) {
+                const g = new THREE.Group();
+
+                const palm = new THREE.Mesh(
+                    new THREE.BoxGeometry(HAND.palmW, HAND.palmH, HAND.palmD),
+                    SKIN_MAT);
+                palm.position.set(0, 0, -HAND.palmD * 0.5);
+                g.add(palm);
+
+                const thumb = new THREE.Mesh(
+                    new THREE.BoxGeometry(HAND.thumbW, HAND.thumbH, HAND.thumbD),
+                    SKIN_MAT);
+                thumb.position.set(
+                    HAND.thumbX * side,
+                    HAND.thumbY,
+                    HAND.thumbZ - HAND.palmD * 0.5
+                );
+                g.add(thumb);
+
+                return g;
+            }
+
+            const handR = buildPalm(+1); fpRoot.add(handR);
+            const handL = buildPalm(-1); fpRoot.add(handL);
+
+            /* ---- Arm bones ---- */
+            const ARM_SEG_W = 0.10;
+            const UPPER_ARM_BASE_LEN = 0.26;
+            const FOREARM_BASE_LEN = 0.28;
+
+            function buildBone(baseLen) {
+                const m = new THREE.Mesh(
+                    new THREE.BoxGeometry(ARM_SEG_W, baseLen, ARM_SEG_W),
+                    SLEEVE_MAT);
+                fpRoot.add(m);
+                return m;
+            }
+            const armRUpper = buildBone(UPPER_ARM_BASE_LEN);
+            const armRFore = buildBone(FOREARM_BASE_LEN);
+            const armLUpper = buildBone(UPPER_ARM_BASE_LEN);
+            const armLFore = buildBone(FOREARM_BASE_LEN);
+
+            /* ---- Markers ---- */
+            const eyeMarker = new THREE.Mesh(
+                new THREE.SphereGeometry(0.022, 12, 8),
+                new THREE.MeshBasicMaterial({ color: 0xffe060 }));
+            fpRoot.add(eyeMarker);
+
+            function buildShoulderMarker() {
+                const m = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.016, 10, 8),
+                    new THREE.MeshBasicMaterial({ color: 0x60ff60 }));
+                fpRoot.add(m);
+                return m;
+            }
+            const shoulderMarkerL = buildShoulderMarker();
+            const shoulderMarkerR = buildShoulderMarker();
+
+            /* ============================================================
+               DIRECTION ARROW (ghost indicator)
+               ============================================================ */
+            const dirArrow = new THREE.Group();
+            dirArrow.visible = false;
+            weaponRig.add(dirArrow);
+
+            const _arrowUp = new THREE.Vector3(0, 1, 0);
+            const _arrowX = new THREE.Vector3(1, 0, 0);
+            const _arrowY = new THREE.Vector3(0, 1, 0);
+            const _arrowZ = new THREE.Vector3(0, 0, 1);
+            const _arrowAxes = [_arrowX, _arrowY, _arrowZ];
+
+            const ARROW_MAT = new THREE.MeshBasicMaterial({
+                color: 0xffe060,
+                transparent: true,
+                opacity: 0.85,
+                depthTest: false,
+                depthWrite: false,
+                fog: false
+            });
+
+            // Arrow built pointing +Y; rotate with setFromUnitVectors
+            const arrowShaft = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.0035, 0.0035, 0.11, 8),
+                ARROW_MAT);
+            arrowShaft.position.y = 0.055;
+            dirArrow.add(arrowShaft);
+
+            const arrowHead = new THREE.Mesh(
+                new THREE.ConeGeometry(0.014, 0.032, 12),
+                ARROW_MAT);
+            arrowHead.position.y = 0.126;
+            dirArrow.add(arrowHead);
+
+            const arrowOrigin = new THREE.Mesh(
+                new THREE.SphereGeometry(0.008, 8, 6),
+                ARROW_MAT);
+            dirArrow.add(arrowOrigin);
+
+            dirArrow.traverse(o => { o.renderOrder = 200; });
+
+            // Back-facing ghost arrow — points the other way for negative direction hint.
+            const backArrow = new THREE.Group();
+            backArrow.visible = false;
+            weaponRig.add(backArrow);
+
+            const backShaft = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.0025, 0.0025, 0.08, 8),
+                ARROW_MAT);
+            backShaft.position.y = -0.04;
+            backArrow.add(backShaft);
+            const backHead = new THREE.Mesh(
+                new THREE.ConeGeometry(0.011, 0.024, 12),
+                ARROW_MAT);
+            backHead.position.y = -0.092;
+            backHead.rotation.z = Math.PI;
+            backArrow.add(backHead);
+
+            function showDirArrow(partIdx, axisIdx, kind) {
+                const part = W.model[partIdx];
+                if (!part) { hideDirArrow(); return; }
+
+                const s = part.s;
+                const halfAx = s[axisIdx] * 0.5;
+
+                if (kind === 'size') {
+                    // Anchor at the +axis face of the box
+                    dirArrow.position.set(
+                        part.p[0] + (axisIdx === 0 ? halfAx + 0.015 : 0),
+                        part.p[1] + (axisIdx === 1 ? halfAx + 0.015 : 0),
+                        part.p[2] + (axisIdx === 2 ? halfAx + 0.015 : 0)
+                    );
+                    ARROW_MAT.color.setHex(0x6ac8e8);
+                } else if (kind === 'rot') {
+                    dirArrow.position.set(part.p[0], part.p[1], part.p[2]);
+                    ARROW_MAT.color.setHex(0xff60c0);
+                } else {
+                    dirArrow.position.set(part.p[0], part.p[1], part.p[2]);
+                    ARROW_MAT.color.setHex(0xffe060);
+                }
+
+                // Rotate +Y arrow to align with the local axis
+                dirArrow.quaternion.setFromUnitVectors(_arrowUp, _arrowAxes[axisIdx]);
+
+                dirArrow.visible = true;
+                backArrow.position.copy(dirArrow.position);
+                backArrow.quaternion.copy(dirArrow.quaternion);
+                backArrow.visible = (kind === 'size');   // show only for size (box can shrink both ways)
+            }
+
+            function hideDirArrow() {
+                dirArrow.visible = false;
+                backArrow.visible = false;
+            }
+
+            /* ============================================================
+               VIEW TAB SWITCHING
+               ============================================================ */
+            function applyViewTab() {
+                const showRig = (viewTab === 'hands');
+                handL.visible = showRig;
+                handR.visible = showRig;
+                armLUpper.visible = showRig;
+                armLFore.visible = showRig;
+                armRUpper.visible = showRig;
+                armRFore.visible = showRig;
+                shoulderMarkerL.visible = showRig;
+                shoulderMarkerR.visible = showRig;
+                eyeMarker.visible = showRig;
+                // muzzle + sight markers stay visible in both modes (useful references)
+            }
+
+            /* ============================================================
+               BUILD HELPERS
+               ============================================================ */
+            function disposeRecursive(o) {
+                o.traverse(x => {
+                    if (x.geometry) x.geometry.dispose();
+                    if (x.material) {
+                        const ms = Array.isArray(x.material) ? x.material : [x.material];
+                        ms.forEach(m => m.dispose());
+                    }
+                });
+            }
+
+            function rebuildWeapon() {
+                if (weaponMesh) {
+                    weaponRig.remove(weaponMesh);
+                    disposeRecursive(weaponMesh);
+                }
+                weaponMesh = new THREE.Group();
+                for (const part of W.model) {
+                    const geo = new THREE.BoxGeometry(part.s[0], part.s[1], part.s[2]);
+                    const mat = new THREE.MeshLambertMaterial({ color: part.c | 0 });
+                    const m = new THREE.Mesh(geo, mat);
+                    m.position.set(part.p[0], part.p[1], part.p[2]);
+                    if (part.r) m.rotation.set(part.r[0], part.r[1], part.r[2]);
+                    weaponMesh.add(m);
+                }
+
+                muzzleMarker = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.014, 10, 8),
+                    new THREE.MeshBasicMaterial({ color: 0xff4060 }));
+                muzzleMarker.position.set(
+                    W.muzzleLocal[0], W.muzzleLocal[1], W.muzzleLocal[2]);
+                weaponMesh.add(muzzleMarker);
+
+                sightMarker = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.010, 10, 8),
+                    new THREE.MeshBasicMaterial({ color: 0xff60c0 }));
+                sightMarker.position.set(
+                    W.sightLocal[0], W.sightLocal[1], W.sightLocal[2]);
+                weaponMesh.add(sightMarker);
+
+                weaponRig.add(weaponMesh);
+            }
+
+            /* ============================================================
+               POSE / GRIP / BONES
+               ============================================================ */
+            function computeAdsPose() {
+                if (!W.adsAuto) return W.adsPose;
+                const s = W.sightLocal;
+                return {
+                    p: [-s[0], -s[1], -0.02 - s[2]],
+                    r: [0, 0, 0]
+                };
+            }
+
+            const _tmpV = new THREE.Vector3();
+            const _tmpE = new THREE.Euler();
+            const _tmpQ = new THREE.Quaternion();
+            const _up = new THREE.Vector3(0, 1, 0);
+
+            function applyGrip(hand, grip, rig) {
+                _tmpV.set(grip.p[0], grip.p[1], grip.p[2]);
+                _tmpV.applyQuaternion(rig.quaternion);
+                hand.position.copy(rig.position).add(_tmpV);
+
+                _tmpE.set(grip.r[0], grip.r[1], grip.r[2]);
+                _tmpQ.setFromEuler(_tmpE);
+                hand.quaternion.copy(rig.quaternion).multiply(_tmpQ);
+            }
+
+            const _elbow = new THREE.Vector3();
+            const _dir = new THREE.Vector3();
+            const _mid = new THREE.Vector3();
+
+            function updateBone(upper, fore, shoulder, handPos, side) {
+                _mid.copy(shoulder).add(handPos).multiplyScalar(0.5);
+                _elbow.set(
+                    _mid.x + side * 0.075,
+                    _mid.y - 0.09,
+                    _mid.z + 0.09
+                );
+
+                _dir.copy(_elbow).sub(shoulder);
+                const upLen = _dir.length();
+                upper.position.copy(shoulder).add(_elbow).multiplyScalar(0.5);
+                upper.quaternion.setFromUnitVectors(_up, _dir.normalize());
+                upper.scale.set(1, upLen / UPPER_ARM_BASE_LEN, 1);
+
+                _dir.copy(handPos).sub(_elbow);
+                const foreLen = _dir.length();
+                fore.position.copy(_elbow).add(handPos).multiplyScalar(0.5);
+                fore.quaternion.setFromUnitVectors(_up, _dir.normalize());
+                fore.scale.set(1, foreLen / FOREARM_BASE_LEN, 1);
+            }
+
+            function updateRig() {
+                const hip = W.hipPose;
+                const ads = computeAdsPose();
+
+                weaponRig.position.set(
+                    hip.p[0] + (ads.p[0] - hip.p[0]) * blendT,
+                    hip.p[1] + (ads.p[1] - hip.p[1]) * blendT,
+                    hip.p[2] + (ads.p[2] - hip.p[2]) * blendT
+                );
+                weaponRig.rotation.set(
+                    hip.r[0] + (ads.r[0] - hip.r[0]) * blendT,
+                    hip.r[1] + (ads.r[1] - hip.r[1]) * blendT,
+                    hip.r[2] + (ads.r[2] - hip.r[2]) * blendT
+                );
+
+                applyGrip(handR, W.gripR, weaponRig);
+                applyGrip(handL, W.gripL, weaponRig);
+
+                const shoulderL = new THREE.Vector3().fromArray(W.shoulderL);
+                const shoulderR = new THREE.Vector3().fromArray(W.shoulderR);
+                shoulderMarkerL.position.copy(shoulderL);
+                shoulderMarkerR.position.copy(shoulderR);
+
+                updateBone(armLUpper, armLFore, shoulderL, handL.position, -1);
+                updateBone(armRUpper, armRFore, shoulderR, handR.position, +1);
+
+                if (sightMarker) {
+                    const p = new THREE.Vector3().copy(sightMarker.position);
+                    p.applyQuaternion(weaponRig.quaternion);
+                    p.add(weaponRig.position);
+                    const el = document.getElementById('readout');
+                    el.textContent =
+                        '準心於 fpRoot：(' +
+                        p.x.toFixed(3) + ', ' +
+                        p.y.toFixed(3) + ', ' +
+                        p.z.toFixed(3) + ')';
+                }
+
+                /* Keep the outline glued to the selected part. */
+                updateSelectedHighlight();
+            }
+
+            /* ============================================================
+               UI HELPERS
+               ============================================================ */
+            const $ = id => document.getElementById(id);
+
+            function colorHex(n) { return '#' + (n | 0).toString(16).padStart(6, '0'); }
+            function colorInt(s) {
+                const v = s.trim().replace(/^#/, '').replace(/^0x/i, '');
+                const n = parseInt(v, 16);
+                return Number.isFinite(n) ? n : 0xff00ff;
+            }
+
+            /* ---- Slider upgrade: inject a range input next to every number ---- */
+            const SLIDER_SPECS = [
+                // pose positions
+                ['hipP0', -0.5, 0.5, 0.005], ['hipP1', -0.5, 0.5, 0.005], ['hipP2', -0.5, 0.5, 0.005],
+                // pose rotations
+                ['hipR0', -1.6, 1.6, 0.01], ['hipR1', -1.6, 1.6, 0.01], ['hipR2', -1.6, 1.6, 0.01],
+                // ads
+                ['adsP0', -0.5, 0.5, 0.005], ['adsP1', -0.5, 0.5, 0.005], ['adsP2', -0.5, 0.5, 0.005],
+                ['adsR0', -1.6, 1.6, 0.01], ['adsR1', -1.6, 1.6, 0.01], ['adsR2', -1.6, 1.6, 0.01],
+                // sight
+                ['sightP0', -0.5, 0.5, 0.005], ['sightP1', -0.5, 0.5, 0.005], ['sightP2', -0.5, 0.5, 0.005],
+                // grip right
+                ['gripRP0', -0.5, 0.5, 0.005], ['gripRP1', -0.5, 0.5, 0.005], ['gripRP2', -0.5, 0.5, 0.005],
+                ['gripRR0', -1.6, 1.6, 0.01], ['gripRR1', -1.6, 1.6, 0.01], ['gripRR2', -1.6, 1.6, 0.01],
+                // grip left
+                ['gripLP0', -0.5, 0.5, 0.005], ['gripLP1', -0.5, 0.5, 0.005], ['gripLP2', -0.5, 0.5, 0.005],
+                ['gripLR0', -1.6, 1.6, 0.01], ['gripLR1', -1.6, 1.6, 0.01], ['gripLR2', -1.6, 1.6, 0.01],
+                // shoulders
+                ['shoulderL0', -0.5, 0.5, 0.005], ['shoulderL1', -0.5, 0.5, 0.005], ['shoulderL2', -0.5, 0.5, 0.005],
+                ['shoulderR0', -0.5, 0.5, 0.005], ['shoulderR1', -0.5, 0.5, 0.005], ['shoulderR2', -0.5, 0.5, 0.005],
+                // anim
+                ['wAnimSw', -1.5, 1.5, 0.01],
+                ['wAnimKc', -0.2, 0.2, 0.005],
+            ];
+
+            function upgradeSliders() {
+                for (const [id, min, max, step] of SLIDER_SPECS) {
+                    const num = $(id);
+                    if (!num) continue;
+                    const sld = document.createElement('input');
+                    sld.type = 'range';
+                    sld.id = id + 'Sld';
+                    sld.min = min; sld.max = max; sld.step = step;
+                    sld.value = num.value || 0;
+                    num.parentElement.insertBefore(sld, num);
+                }
+            }
+
+            /* Bind slider + number together */
+            function bindPair(id, onChange) {
+                const num = $(id);
+                const sld = $(id + 'Sld');
+                const commit = (raw) => {
+                    const v = parseFloat(raw);
+                    if (!isFinite(v)) return;
+                    if (num) num.value = v;
+                    if (sld) sld.value = v;
+                    onChange(v);
+                };
+                if (num) num.addEventListener('input', () => commit(num.value));
+                if (sld) sld.addEventListener('input', () => commit(sld.value));
+            }
+
+            /* Set both slider + number from a value */
+            function setValue(id, v) {
+                const num = $(id);
+                const sld = $(id + 'Sld');
+                if (num) num.value = v;
+                if (sld) sld.value = v;
+            }
+            function setVec(pfx, arr) {
+                for (let i = 0; i < 3; i++) setValue(pfx + i, arr[i]);
+            }
+
+            /* ============================================================
+               BINDINGS
+               ============================================================ */
+            const scalarBindings = [
+                ['wKey', 'key', v => String(v)],
+                ['wName', 'name', v => String(v)],
+                ['wIcon', 'icon', v => String(v)],
+                ['wColor', 'color', v => String(v)],
+                ['wAmmo', 'ammoType', v => String(v)],
+                ['wMag', 'magSize', v => parseFloat(v)],
+                ['wRate', 'fireRate', v => parseFloat(v)],
+                ['wRel', 'reloadTime', v => parseFloat(v)],
+                ['wDmg', 'damage', v => parseFloat(v)],
+                ['wAuto', 'auto', v => v === '1'],
+                ['wSpread', 'spread', v => parseFloat(v)],
+                ['wRecoil', 'recoilKick', v => parseFloat(v)],
+                ['wBSpeed', 'bulletSpeed', v => parseFloat(v)],
+                ['wBSize', 'bulletSize', v => parseFloat(v)],
+                ['wBColor', 'bulletColor', v => colorInt(v)],
+                ['wScopeFov', 'scopeFov', v => parseFloat(v)],
+                ['wScopeSens', 'scopeSens', v => parseFloat(v)],
+            ];
+
+            function setNested(path, val) {
+                const parts = path.split('.');
+                let o = W;
+                for (let i = 0; i < parts.length - 1; i++) o = o[parts[i]];
+                o[parts[parts.length - 1]] = val;
+            }
+
+            for (const [id, key, cast] of scalarBindings) {
+                $(id).addEventListener('input', e => {
+                    const v = cast(e.target.value);
+                    if (v === v) setNested(key, v);
+                });
+            }
+
+            /* Pose vector bindings — routes through the slider+number pair */
+            function bindPoseVec(pfx, poseKey, field) {
+                for (let i = 0; i < 3; i++) {
+                    bindPair(pfx + i, v => {
+                        W[poseKey][field][i] = v;
+                        updateRig();
+                    });
+                }
+            }
+
+            /* Vec3-as-array bindings (sight, shoulders, muzzle) */
+            function bindArrayVec(pfx, arrayKey) {
+                for (let i = 0; i < 3; i++) {
+                    bindPair(pfx + i, v => {
+                        W[arrayKey][i] = v;
+                        if (arrayKey === 'sightLocal' && sightMarker) {
+                            sightMarker.position.fromArray(W.sightLocal);
+                        }
+                        if (arrayKey === 'muzzleLocal' && muzzleMarker) {
+                            muzzleMarker.position.fromArray(W.muzzleLocal);
+                        }
+                        updateRig();
+                    });
+                }
+            }
+
+            /* Anim scalar bindings */
+            bindPair('wAnimSw', v => { W.anim.swing = v; });
+            bindPair('wAnimKc', v => { W.anim.kick = v; });
+
+            /* ============================================================
+               BUILD SLIDERS FIRST, THEN WIRE POSE BINDINGS
+               ============================================================ */
+            upgradeSliders();
+
+            bindPoseVec('hipP', 'hipPose', 'p');
+            bindPoseVec('hipR', 'hipPose', 'r');
+            bindPoseVec('adsP', 'adsPose', 'p');
+            bindPoseVec('adsR', 'adsPose', 'r');
+            bindPoseVec('gripRP', 'gripR', 'p');
+            bindPoseVec('gripRR', 'gripR', 'r');
+            bindPoseVec('gripLP', 'gripL', 'p');
+            bindPoseVec('gripLR', 'gripL', 'r');
+
+            bindArrayVec('sightP', 'sightLocal');
+            bindArrayVec('shoulderL', 'shoulderL');
+            bindArrayVec('shoulderR', 'shoulderR');
+
+            $('adsAuto').addEventListener('change', e => {
+                W.adsAuto = e.target.checked;
+                toggleAdsInputs();
+                updateRig();
+            });
+
+            function toggleAdsInputs() {
+                const dis = W.adsAuto;
+                for (let i = 0; i < 3; i++) {
+                    const ids = ['adsP' + i, 'adsR' + i];
+                    for (const id of ids) {
+                        const n = $(id);
+                        const s = $(id + 'Sld');
+                        if (n) n.disabled = dis;
+                        if (s) s.disabled = dis;
+                    }
+                }
+            }
+
+            /* Blend slider */
+            $('blend').addEventListener('input', e => {
+                blendT = parseFloat(e.target.value);
+                $('blendVal').textContent = blendT.toFixed(2);
+                updateRig();
+            });
+
+            /* View tabs (HIP / ADS / BLEND) */
+            document.querySelectorAll('.posetabs button').forEach(b => {
+                b.addEventListener('click', () => {
+                    const v = b.dataset.view;
+                    activeView = v;
+                    document.querySelectorAll('.posetabs button')
+                        .forEach(x => x.classList.toggle('active', x === b));
+                    let t = 0;
+                    if (v === 'ads') t = 1;
+                    else if (v === 'blend') t = blendT;
+                    if (v !== 'blend') {
+                        blendT = t;
+                        $('blend').value = t;
+                        $('blendVal').textContent = t.toFixed(2);
+                    }
+                    updateRig();
+                });
+            });
+
+            /* View tabs (雙手 + 槍 / 僅槍枝) */
+            document.querySelectorAll('#viewTabs button').forEach(b => {
+                b.addEventListener('click', () => {
+                    viewTab = b.dataset.tab;
+                    document.querySelectorAll('#viewTabs button')
+                        .forEach(x => x.classList.toggle('active', x === b));
+                    applyViewTab();
+                    applyCameraPreset(viewTab === 'gun' ? 'gunOnly' : 'fp');
+                    document.querySelectorAll('#camPresets button')
+                        .forEach(x => x.classList.toggle('active', false));
+                });
+            });
+
+            /* ============================================================
+               CAMERA PRESETS
+               ============================================================ */
+            let camYaw = 0, camPitch = 0, camDist = 0.5;
+            let orbitTarget = { x: 0, y: 0, z: -0.05 };
+
+            function applyCameraPreset(name) {
+                if (name === 'fp') {
+                    camYaw = 0; camPitch = 0; camDist = 0.5;
+                    orbitTarget = { x: 0, y: 0, z: -0.5 };
+                } else if (name === 'side') {
+                    camYaw = Math.PI / 2; camPitch = 0.1; camDist = 0.55;
+                    orbitTarget = { x: 0, y: -0.05, z: -0.15 };
+                } else if (name === 'top') {
+                    camYaw = 0; camPitch = 1.3; camDist = 0.55;
+                    orbitTarget = { x: 0, y: -0.05, z: -0.15 };
+                } else if (name === 'gunOnly') {
+                    camYaw = 0.9; camPitch = 0.3; camDist = 0.9;
+                    orbitTarget = { x: 0, y: -0.02, z: -0.22 };
+                }
+                updateCamera();
+            }
+
+            document.querySelectorAll('#camPresets button').forEach(b => {
+                b.addEventListener('click', () => {
+                    document.querySelectorAll('#camPresets button')
+                        .forEach(x => x.classList.toggle('active', x === b));
+                    applyCameraPreset(b.dataset.cam);
+                });
+            });
+
+            function updateCamera() {
+                const t = orbitTarget;
+                camera.position.set(
+                    t.x + Math.sin(camYaw) * Math.cos(camPitch) * camDist,
+                    t.y + Math.sin(camPitch) * camDist,
+                    t.z + Math.cos(camYaw) * Math.cos(camPitch) * camDist
+                );
+                camera.lookAt(t.x, t.y, t.z);
+            }
+
+            /* Orbit input */
+            let dragging = false, lastX = 0, lastY = 0;
+            renderer.domElement.addEventListener('mousedown', e => {
+                if (e.button === 0) {
+                    dragging = true; lastX = e.clientX; lastY = e.clientY;
+                    document.querySelectorAll('#camPresets button')
+                        .forEach(x => x.classList.remove('active'));
+                }
+            });
+            window.addEventListener('mousemove', e => {
+                if (!dragging) return;
+                camYaw -= (e.clientX - lastX) * 0.006;
+                camPitch += (e.clientY - lastY) * 0.006;
+                camPitch = Math.max(-1.5, Math.min(1.5, camPitch));
+                lastX = e.clientX; lastY = e.clientY;
+                updateCamera();
+            });
+            window.addEventListener('mouseup', () => dragging = false);
+            renderer.domElement.addEventListener('wheel', e => {
+                e.preventDefault();
+                camDist *= (e.deltaY > 0 ? 1.08 : 0.92);
+                camDist = Math.max(0.15, Math.min(3.0, camDist));
+                updateCamera();
+            }, { passive: false });
+
+            function resize() {
+                const w = wrap.clientWidth, h = wrap.clientHeight;
+                renderer.setSize(w, h, false);
+                camera.aspect = w / h;
+                camera.updateProjectionMatrix();
+            }
+            window.addEventListener('resize', resize);
+
+            /* ============================================================
+               PARTS PANEL
+               ============================================================ */
+            const partsList = $('partsList');
+
+            const PART_POS_MIN = -0.5, PART_POS_MAX = 0.5, PART_POS_STEP = 0.005;
+            const PART_SIZE_MIN = 0.005, PART_SIZE_MAX = 0.5, PART_SIZE_STEP = 0.005;
+            const PART_ROT_MIN = -1.6, PART_ROT_MAX = 1.6, PART_ROT_STEP = 0.01;
+
+            const AXIS_LABELS = ['X', 'Y', 'Z'];
+            const SIZE_LABELS = ['寬', '高', '深'];
+            const ROT_LABELS = ['RX', 'RY', 'RZ'];
+
+            function partRow(idx, group, axis, label, value, min, max, step) {
+                return '' +
+                    '<div class="vec-row">' +
+                    '<span>' + label + '</span>' +
+                    '<input type="range" ' +
+                    'data-part="' + idx + '" ' +
+                    'data-group="' + group + '" ' +
+                    'data-axis="' + axis + '" ' +
+                    'min="' + min + '" max="' + max + '" step="' + step + '" ' +
+                    'value="' + value + '">' +
+                    '<input type="number" ' +
+                    'data-part="' + idx + '" ' +
+                    'data-group="' + group + '" ' +
+                    'data-axis="' + axis + '" ' +
+                    'min="' + min + '" max="' + max + '" step="' + step + '" ' +
+                    'value="' + value + '">' +
+                    '</div>';
+            }
+
+            function rebuildPartsList() {
+                partsList.innerHTML = '';
+                W.model.forEach((part, i) => {
+                    if (!part.r) part.r = [0, 0, 0];
+
+                    const el = document.createElement('div');
+                    el.className = 'part' + (i === selectedPart ? ' sel' : '');
+
+                    let html = '' +
+                        '<div class="hd">' +
+                        '<b>零件 ' + i + '</b>' +
+                        '<span style="color:' + colorHex(part.c | 0) + '">■</span>' +
+                        '</div>';
+
+                    html += '<div class="sec">位置</div>';
+                    for (let a = 0; a < 3; a++) {
+                        html += partRow(i, 'p', a, AXIS_LABELS[a],
+                            part.p[a], PART_POS_MIN, PART_POS_MAX, PART_POS_STEP);
+                    }
+
+                    html += '<div class="sec">尺寸</div>';
+                    for (let a = 0; a < 3; a++) {
+                        html += partRow(i, 's', a, SIZE_LABELS[a],
+                            part.s[a], PART_SIZE_MIN, PART_SIZE_MAX, PART_SIZE_STEP);
+                    }
+
+                    html += '<div class="sec">旋轉</div>';
+                    for (let a = 0; a < 3; a++) {
+                        html += partRow(i, 'r', a, ROT_LABELS[a],
+                            part.r[a], PART_ROT_MIN, PART_ROT_MAX, PART_ROT_STEP);
+                    }
+
+                    html += '<div class="sec">顏色</div>' +
+                        '<input data-part="' + i + '" data-f="color" type="color" value="' +
+                        colorHex(part.c | 0) + '">';
+
+                    el.innerHTML = html;
+
+                    /* Select part on card click (but not if a child input is clicked) */
+                    el.addEventListener('click', (ev) => {
+                        if (ev.target !== el && ev.target.closest('input,label')) return;
+                        selectedPart = i;
+                        rebuildPartsList();
+                        updateSelectedHighlight();
+                    });
+
+                    /* Wire up all part inputs */
+                    el.querySelectorAll('[data-part]').forEach(inp => {
+                        const partIdx = parseInt(inp.dataset.part, 10);
+                        const group = inp.dataset.group;
+                        const axis = inp.dataset.axis !== undefined
+                            ? parseInt(inp.dataset.axis, 10) : -1;
+
+                        if (inp.dataset.f === 'color') {
+                            inp.addEventListener('input', ev => {
+                                const v = colorInt(ev.target.value);
+                                W.model[partIdx].c = v;
+                                const sw = el.querySelector('.hd span');
+                                if (sw) sw.style.color = colorHex(v);
+                                rebuildWeapon();
+                                updateRig();
+                            });
+                            return;
+                        }
+
+                        inp.addEventListener('input', () => {
+                            const v = parseFloat(inp.value);
+                            if (!isFinite(v)) return;
+                            const p = W.model[partIdx];
+
+                            /* Sync sibling slider/number */
+                            el.querySelectorAll(
+                                '[data-part="' + partIdx + '"]' +
+                                '[data-group="' + group + '"]' +
+                                '[data-axis="' + axis + '"]'
+                            ).forEach(sib => {
+                                if (sib !== inp) sib.value = v;
+                            });
+
+                            if (group === 'p') p.p[axis] = v;
+                            else if (group === 's') p.s[axis] = v;
+                            else if (group === 'r') p.r[axis] = v;
+
+                            rebuildWeapon();
+                            updateRig();
+
+                            /* If we're editing this part, keep the arrow in sync */
+                            if (document.activeElement === inp) {
+                                showDirArrow(partIdx, axis,
+                                    group === 's' ? 'size' : group === 'r' ? 'rot' : 'pos');
+                            }
+                        });
+
+                        inp.addEventListener('focus', () => {
+                            if (group && axis >= 0) {
+                                showDirArrow(partIdx, axis,
+                                    group === 's' ? 'size' : group === 'r' ? 'rot' : 'pos');
+                            }
+                        });
+                    });
+
+                    /* Hide the arrow when leaving this card */
+                    el.addEventListener('focusout', () => {
+                        setTimeout(() => {
+                            if (!el.contains(document.activeElement)) {
+                                hideDirArrow();
+                            }
+                        }, 30);
+                    });
+
+                    partsList.appendChild(el);
+                });
+            }
+
+            $('btnAddPart').onclick = () => {
+                W.model.push({
+                    p: [0, 0, 0],
+                    s: [0.05, 0.05, 0.05],
+                    r: [0, 0, 0],
+                    c: 0x808080
+                });
+                selectedPart = W.model.length - 1;
+                rebuildPartsList(); rebuildWeapon(); updateRig();
+            };
+            $('btnDupPart').onclick = () => {
+                const p = W.model[selectedPart];
+                if (!p) return;
+                W.model.push({
+                    p: [...p.p], s: [...p.s],
+                    r: p.r ? [...p.r] : [0, 0, 0],
+                    c: p.c
+                });
+                selectedPart = W.model.length - 1;
+                rebuildPartsList(); rebuildWeapon(); updateRig();
+            };
+            $('btnDelPart').onclick = () => {
+                if (W.model.length <= 1) return;
+                W.model.splice(selectedPart, 1);
+                selectedPart = Math.max(0, selectedPart - 1);
+                rebuildPartsList(); rebuildWeapon(); updateRig();
+                hideDirArrow();
+            };
+
+            /* ============================================================
+               EXPORT / LOAD
+               ============================================================ */
+            function buildExportJSON() {
+                const out = {
+                    key: W.key, name: W.name, icon: W.icon, color: W.color,
+                    ammoType: W.ammoType, magSize: W.magSize,
+                    fireRate: W.fireRate, reloadTime: W.reloadTime,
+                    damage: W.damage, bulletSpeed: W.bulletSpeed,
+                    spread: W.spread, auto: W.auto,
+                    recoilKick: W.recoilKick, scopeFov: W.scopeFov,
+                    scopeSens: W.scopeSens,
+                    muzzleLocal: W.muzzleLocal.slice(),
+                    bulletColor: W.bulletColor, bulletSize: W.bulletSize,
+                    sightLocal: W.sightLocal.slice(),
+                    hipPose: { p: W.hipPose.p.slice(), r: W.hipPose.r.slice() },
+                    adsPose: W.adsAuto ? null :
+                        { p: W.adsPose.p.slice(), r: W.adsPose.r.slice() },
+                    adsAuto: !!W.adsAuto,
+                    gripR: { p: W.gripR.p.slice(), r: W.gripR.r.slice() },
+                    gripL: { p: W.gripL.p.slice(), r: W.gripL.r.slice() },
+                    shoulderL: W.shoulderL.slice(),
+                    shoulderR: W.shoulderR.slice(),
+                    anim: { swing: W.anim.swing, kick: W.anim.kick },
+                    model: W.model.map(m => {
+                        const hasRot = m.r && (m.r[0] || m.r[1] || m.r[2]);
+                        return {
+                            p: m.p.slice(), s: m.s.slice(), c: m.c,
+                            ...(hasRot ? { r: m.r.slice() } : {})
+                        };
+                    })
+                };
+                return JSON.stringify(out, null, 4);
+            }
+
+            /* ---------- localStorage (quick iteration list) ---------- */
+            function getSaved() {
+                try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+                catch (e) { return []; }
+            }
+            function setSaved(a) {
+                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(a)); }
+                catch (e) { }
+            }
+
+            /* ---------- shared loader (used by SAVE→LOAD + IMPORT) ---------- */
+            function loadFromObject(def) {
+                // Migrate old naming (heldPose / scopePose → hipPose / adsPose)
+                if (def.heldPose && !def.hipPose) def.hipPose = def.heldPose;
+                if (def.scopePose && !def.adsPose) def.adsPose = def.scopePose;
+
+                // Merge top-level scalars onto defaults.
+                W = Object.assign(JSON.parse(JSON.stringify(DEFAULT_W)), def);
+
+                /* ---- restore any nested shape that came in as null / missing ----
+                   Every `something.p[i]` access in the rest of the editor assumes
+                   these objects exist.  The JSON format allows `adsPose: null`
+                   (meaning "use auto-ADS from sightLocal"), so we must put a
+                   valid placeholder back even when the file had null. */
+                if (!W.hipPose || !Array.isArray(W.hipPose.p) || !Array.isArray(W.hipPose.r)) {
+                    W.hipPose = { p: [0.14, -0.16, -0.24], r: [0.10, 0.20, -0.04] };
+                }
+                if (!W.adsPose || !Array.isArray(W.adsPose.p) || !Array.isArray(W.adsPose.r)) {
+                    W.adsPose = { p: [0, 0, -0.02], r: [0, 0, 0] };
+                }
+                if (!W.gripR || !Array.isArray(W.gripR.p) || !Array.isArray(W.gripR.r)) {
+                    W.gripR = { p: [0, -0.03, 0.02], r: [0.10, 0, 0] };
+                }
+                if (!W.gripL || !Array.isArray(W.gripL.p) || !Array.isArray(W.gripL.r)) {
+                    W.gripL = { p: [-0.035, -0.03, -0.01], r: [0.10, 0.20, 0.15] };
+                }
+                if (!Array.isArray(W.sightLocal)) W.sightLocal = [0, 0.078, -0.10];
+                if (!Array.isArray(W.muzzleLocal)) W.muzzleLocal = [0, 0.055, -0.30];
+                if (!Array.isArray(W.shoulderL)) W.shoulderL = [-0.18, -0.06, 0.04];
+                if (!Array.isArray(W.shoulderR)) W.shoulderR = [0.18, -0.06, 0.04];
+
+                if (!W.anim ||
+                    typeof W.anim.swing !== 'number' ||
+                    typeof W.anim.kick !== 'number') {
+                    W.anim = { swing: 0.10, kick: 0.04 };
+                }
+
+                if (typeof W.adsAuto !== 'boolean') W.adsAuto = !def.adsPose;
+
+                if (!Array.isArray(W.model)) W.model = [];
+                W.model.forEach(p => {
+                    if (!Array.isArray(p.p)) p.p = [0, 0, 0];
+                    if (!Array.isArray(p.s)) p.s = [0.05, 0.05, 0.05];
+                    if (!Array.isArray(p.r)) p.r = [0, 0, 0];
+                });
+
+                syncUI();
+                rebuildWeapon();
+                rebuildPartsList();
+                updateRig();
+            }
+
+            /* ---------- NEW ---------- */
+            $('btnNew').onclick = () => {
+                if (W.model.length && !confirm('放棄目前的武器？')) return;
+                W = JSON.parse(JSON.stringify(DEFAULT_W));
+                W.model.forEach(p => { if (!p.r) p.r = [0, 0, 0]; });
+                syncUI();
+                rebuildWeapon();
+                rebuildPartsList();
+                updateRig();
+                setStatus('新武器');
+            };
+
+            /* ---------- SAVE (localStorage) ---------- */
+            $('btnSave').onclick = () => {
+                const obj = JSON.parse(buildExportJSON());
+                const list = getSaved();
+                const i = list.findIndex(o => o.key === obj.key);
+                if (i >= 0) list[i] = obj; else list.push(obj);
+                setSaved(list);
+                setStatus('已儲存：' + obj.key);
+            };
+
+            /* ---------- LOAD SAVED… (localStorage picker) ---------- */
+            $('btnLoadSaved').onclick = () => {
+                const list = getSaved();
+                if (!list.length) { setStatus('沒有已儲存的武器'); return; }
+                const keys = list.map(o => o.key);
+                const pick = prompt('要載入哪一個？\n' + keys.join('\n'), keys[0]);
+                if (!pick) return;
+                const found = list.find(o => o.key === pick);
+                if (found) {
+                    loadFromObject(found);
+                    setStatus('已載入：' + pick);
+                }
+            };
+
+            /* ---------- IMPORT (file picker) ---------- */
+            $('btnImport').onclick = () => {
+                const inp = document.createElement('input');
+                inp.type = 'file';
+                inp.accept = '.json,application/json';
+                inp.onchange = () => {
+                    const f = inp.files[0];
+                    if (!f) return;
+                    const r = new FileReader();
+                    r.onload = () => {
+                        try {
+                            loadFromObject(JSON.parse(r.result));
+                            setStatus('已匯入：' + f.name);
+                        } catch (e) {
+                            setStatus('匯入失敗：' + e.message);
+                        }
+                    };
+                    r.readAsText(f);
+                };
+                inp.click();
+            };
+
+            /* ---------- EXPORT JSON (download <key>.json) ---------- */
+            $('btnExport').onclick = () => {
+                const obj = JSON.parse(buildExportJSON());
+                $('jsonOut').value = buildExportJSON();
+                const blob = new Blob(
+                    [JSON.stringify(obj, null, 2)],
+                    { type: 'application/json' }
+                );
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = obj.key + '.json';
+                a.click();
+                URL.revokeObjectURL(a.href);
+                setStatus('已匯出：' + obj.key + '.json → 放入 weaponModel/');
+            };
+
+            /* ---------- COPY CONFIG ---------- */
+            $('btnCopy').onclick = () => {
+                const out = buildExportJSON();
+                navigator.clipboard.writeText(out).then(
+                    () => setStatus('已複製 ✓'),
+                    () => {
+                        $('jsonOut').value = out; $('jsonOut').select();
+                        document.execCommand('copy');
+                        setStatus('已複製（備援）✓');
+                    });
+            };
+
+            let statusTimer = 0;
+            function setStatus(msg) {
+                $('status').textContent = msg;
+                clearTimeout(statusTimer);
+                statusTimer = setTimeout(() => $('status').textContent = '', 2400);
+            }
+
+            /* ============================================================
+               SYNC UI FROM W
+               ============================================================ */
+            function syncUI() {
+                $('wKey').value = W.key;
+                $('wName').value = W.name;
+                $('wIcon').value = W.icon;
+                $('wColor').value = W.color;
+                $('wAmmo').value = W.ammoType;
+                $('wMag').value = W.magSize;
+                $('wRate').value = W.fireRate;
+                $('wRel').value = W.reloadTime;
+                $('wDmg').value = W.damage;
+                $('wAuto').value = W.auto ? '1' : '0';
+                $('wSpread').value = W.spread;
+                $('wRecoil').value = W.recoilKick;
+                $('wBSpeed').value = W.bulletSpeed;
+                $('wBSize').value = W.bulletSize;
+                $('wBColor').value = colorHex(W.bulletColor);
+                $('wScopeFov').value = W.scopeFov;
+                $('wScopeSens').value = W.scopeSens;
+
+                setVec('hipP', W.hipPose.p);
+                setVec('hipR', W.hipPose.r);
+                setVec('adsP', W.adsPose.p);
+                setVec('adsR', W.adsPose.r);
+                setVec('sightP', W.sightLocal);
+                setVec('gripRP', W.gripR.p);
+                setVec('gripRR', W.gripR.r);
+                setVec('gripLP', W.gripL.p);
+                setVec('gripLR', W.gripL.r);
+                setVec('shoulderL', W.shoulderL);
+                setVec('shoulderR', W.shoulderR);
+
+                setValue('wAnimSw', W.anim.swing);
+                setValue('wAnimKc', W.anim.kick);
+
+                $('adsAuto').checked = !!W.adsAuto;
+                toggleAdsInputs();
+            }
+
+            /* ============================================================
+               BOOT
+               ============================================================ */
+            syncUI();
+            rebuildWeapon();
+            rebuildPartsList();
+            updateRig();
+            resize();
+            applyViewTab();
+            applyCameraPreset('fp');
+
+            $('blend').value = 0;
+            $('blendVal').textContent = '0.00';
+            document.querySelector('.posetabs button[data-view="hip"]').classList.add('active');
+
+            (function loop() {
+                requestAnimationFrame(loop);
+                renderer.render(scene, camera);
+            })();
+
+            /* Public helper for quick preset loading */
+            window.__loadSmgPreset = function () {
+                W = JSON.parse(JSON.stringify(SMG_PRESET));
+                W.model.forEach(p => { if (!p.r) p.r = [0, 0, 0]; });
+                syncUI();
+                rebuildWeapon();
+                rebuildPartsList();
+                updateRig();
+                setStatus('已載入 SMG 預設');
+            };
+        })();
+    </script>
+</body>
+
+</html>

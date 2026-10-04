@@ -96,6 +96,15 @@
   font-size:9px; color:rgba(255,255,255,0.55);
   text-shadow:1px 1px 0 #000;
 }
+.inv-item-count {
+  position:absolute;
+  right:3px; top:2px;
+  font-size:11px;
+  font-weight:bold;
+  color:#f6dd8b;
+  text-shadow:1px 1px 0 #000,-1px -1px 0 #000;
+  pointer-events:none;
+}
 .inv-help {
   margin-top:10px; font-size:11px; letter-spacing:1px;
   color:#7a6e5e; text-align:center;
@@ -384,6 +393,47 @@
         getUiRank() { return this.uiRank; }
 
         addItem(def) {
+            /* ============================================================
+               AMMO STACKING
+               ------------------------------------------------------------
+               An ammo drop carries `count` rounds and a `maxStack` cap.
+               Before allocating a NEW slot, try to top up an existing
+               stack of the same `ammoType`.  Only leftovers get a fresh
+               cell.  Everything else falls through to the original
+               free-spot placement path.
+               ============================================================ */
+            if (def && def.isAmmo &&
+                typeof def.count === 'number' && def.count > 0) {
+
+                const maxStack = (typeof def.maxStack === 'number' && def.maxStack > 0)
+                    ? def.maxStack : 200;
+                let remaining = def.count;
+
+                for (const existing of this.items) {
+                    if (remaining <= 0) break;
+                    if (!existing.isAmmo) continue;
+                    if (existing.ammoType !== def.ammoType) continue;
+                    const cur = (typeof existing.count === 'number') ? existing.count : 0;
+                    const room = Math.max(0, maxStack - cur);
+                    if (room <= 0) continue;
+                    const moved = Math.min(room, remaining);
+                    existing.count = cur + moved;
+                    remaining -= moved;
+                }
+
+                /* Everything fit into existing stacks — done, no new cell. */
+                if (remaining <= 0) {
+                    this.render();
+                    this._emitChange();
+                    return this.items.find(it =>
+                        it.isAmmo && it.ammoType === def.ammoType) || null;
+                }
+
+                /* Some rounds left over — carry the remainder into the
+                   normal placement flow below. */
+                def = Object.assign({}, def, { count: remaining });
+            }
+
             const item = {
                 id: def.id != null ? def.id : ('it' + (this._nextId++)),
                 name: def.name || 'Item',
@@ -399,7 +449,17 @@
                 /* Carry the furniture tags through the bag so a stashed piece
                    still knows it's furniture when it comes back out. */
                 size: def.size,
-                furnitureKey: def.furnitureKey
+                furnitureKey: def.furnitureKey,
+
+                /* ---- Ammo fields --------------------------------------
+                   Preserved on the slot item so:
+                     · the merge loop above can find this stack next time,
+                     · a drop-outside rebuilds the pickup with the right count,
+                     · drag / swap / auto-arrange carry the data along. */
+                isAmmo: !!def.isAmmo,
+                ammoType: def.ammoType,
+                count: (typeof def.count === 'number') ? def.count : 1,
+                maxStack: def.maxStack
             };
             const spot = this._findFreeSpot(item);
             if (!spot) return null;
@@ -670,9 +730,20 @@
         _itemHtml(it, w, h) {
             const activeIcon = (it.rotated && it.iconImageRotated) ? it.iconImageRotated : it.iconImage;
             const icon = activeIcon ? `<img class="inv-item-img" src="${activeIcon}" alt="">` : (it.icon || '');
+
+            /* Ammo stacks get a count badge so the player can read
+               "18" in the corner of a 1×1 cell, or "156" once it has
+               been topped up by additional drops.  Rendered on the
+               grid tile AND on the incoming-slot tile (both call
+               _itemHtml). */
+            const countBadge = (it.isAmmo && typeof it.count === 'number')
+                ? `<div class="inv-item-count">${it.count}</div>`
+                : '';
+
             return `<div class="inv-item-icon">${icon}</div>
         <div class="inv-item-name">${it.name}</div>
-        <div class="inv-item-size">${w}×${h}</div>`;
+        <div class="inv-item-size">${w}×${h}</div>
+        ${countBadge}`;
         }
 
         _occupancy(excludeId) {

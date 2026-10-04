@@ -577,6 +577,22 @@
                 <button data-furn-size="medium" class="active">MEDIUM</button>
                 <button data-furn-size="large">LARGE</button>
             </div>
+
+            <!-- Facing direction -->
+            <div class="section" style="margin-top:6px;">FACING</div>
+            <div class="row">
+                <label style="flex:1;color:var(--muted);font-size:10px;">
+                    DIR <span id="furnDirLabel" style="color:#ffdd44;font-weight:bold;">0°</span>
+                </label>
+                <button id="btnFurnRotL" title="Rotate CCW (,) — hold Shift for 15°" style="padding:4px 9px;">↺</button>
+                <button id="btnFurnRotR" title="Rotate CW (.) — hold Shift for 15°" style="padding:4px 9px;">↻</button>
+            </div>
+            <div style="font-size:9px;color:#7a8794;line-height:1.5;">
+                Hover a box and press <b style="color:#e8c86a">,</b> /
+                <b style="color:#e8c86a">.</b> to spin it.<br>
+                Arrows above each box point at their forward (+Z at 0°).
+            </div>
+
             <div class="row" style="margin-top:4px;">
                 <button id="btnClearFurniture" style="flex:1; border-color: #c06060; color: #c06060;">
                     CLEAR ALL FURNITURE BOXES
@@ -633,6 +649,7 @@
         <b>LMB drag</b> paint · <b>RMB drag</b> orbit · <b>MMB drag</b> pan · <b>Wheel</b> zoom<br>
         <b>BOX / ERASE BOX / REPLACE BOX / LINE</b> A → ghost → B · <b>RMB / ESC</b> cancel<br>
         <b>Q/E</b> layer −/+ · <b>[ / ]</b> brush −/+ · <b>M</b> mirror X · <b>Shift+M</b> mirror Z<br>
+        <b>FURNITURE tool:</b> hover a box · <b>, / .</b> rotate facing (Shift = 15°)<br>
         <b>R</b> randomizer · <b>P</b> player ref · <b>C</b> paint · <b>L</b> line · <b>F</b> fullscreen · <b>1..9</b>
         block · <b>Ctrl+Z/Y</b> undo/redo
     </div>
@@ -858,8 +875,17 @@
             let lineWidth = 1; // 1, 3, 5, 7
 
             /* ---------- furniture-box tool state ---------- */
-            let furnitureBoxes = [];               // [{ x, y, z, size }]
-            let furnitureSize = 'medium';         // 'small' | 'medium' | 'large'
+            let furnitureBoxes = [];               // [{ x, y, z, size, dir }]
+            let furnitureSize = 'medium';          // 'small' | 'medium' | 'large'
+
+            /* Facing direction for new boxes (radians, Y axis).
+               Local +Z is forward, so 0 = +Z, π/2 = +X, π = -Z, 3π/2 = -X.
+               Persisted per-box as `dir` and read by game.js at spawn time. */
+            let furnitureDir = 0;
+
+            /* Index into furnitureBoxes of the box currently under the
+               cursor with the FURNITURE tool active — -1 when none. */
+            let hoveredFurnitureIdx = -1;
 
             const FURN_BOX_DIMS = { small: 3, medium: 6, large: 10 };
             const FURN_COLOR = 0xffa040;
@@ -1200,18 +1226,79 @@
             const furnitureGroup = new THREE.Group();
             scene.add(furnitureGroup);
 
+            /* ---- Direction arrow --------------------------------------
+   A shaft + cone that points along local +Z (yaw 0), then
+   rotated by `dir` around Y.  Drawn with depthTest off so it
+   is always readable, even through solid voxels. */
+            /* Builds the arrow MESH ONLY — no yaw applied.  Used by the
+   committed boxes (via buildDirArrow, which adds the yaw) and
+   by the ghost preview, which needs to rebuild the arrow when
+   its box size changes. */
+            function buildDirArrowParts(length, color) {
+                const g = new THREE.Group();
+                const L = Math.max(1.6, length);
+                const SHAFT_FRAC = 0.62;
+                const HEAD_FRAC = 0.38;
+                const col = color || 0xffdd44;
+
+                const lineMat = new THREE.LineBasicMaterial({
+                    color: col, transparent: true, opacity: 0.98,
+                    depthTest: false, depthWrite: false
+                });
+                const headMat = new THREE.MeshBasicMaterial({
+                    color: col, transparent: true, opacity: 0.98,
+                    depthTest: false, depthWrite: false
+                });
+
+                const shaftEnd = L * SHAFT_FRAC;
+                const shaft = new THREE.Line(
+                    new THREE.BufferGeometry().setFromPoints([
+                        new THREE.Vector3(0, 0, 0),
+                        new THREE.Vector3(0, 0, shaftEnd)
+                    ]),
+                    lineMat
+                );
+                shaft.renderOrder = 1001;
+                g.add(shaft);
+
+                const headLen = L * HEAD_FRAC;
+                const headRad = Math.max(0.16, headLen * 0.35);
+                const head = new THREE.Mesh(
+                    new THREE.ConeGeometry(headRad, headLen, 6), headMat
+                );
+                /* Cone's default axis is +Y — rotate X +90° so the tip
+                   points along +Z, matching the direction convention. */
+                head.rotation.x = Math.PI / 2;
+                head.position.z = shaftEnd + headLen * 0.5;
+                head.renderOrder = 1001;
+                g.add(head);
+
+                return g;
+            }
+
+            function buildDirArrow(dir, length, color) {
+                const g = buildDirArrowParts(length, color);
+                g.rotation.y = dir;
+                return g;
+            }
+
             function buildFurnitureVisuals() {
                 while (furnitureGroup.children.length) {
                     const c = furnitureGroup.children.pop();
                     if (c.geometry) c.geometry.dispose();
                     if (c.material) c.material.dispose();
                 }
-                for (const fb of furnitureBoxes) {
+
+                for (let i = 0; i < furnitureBoxes.length; i++) {
+                    const fb = furnitureBoxes[i];
                     const d = FURN_BOX_DIMS[fb.size] || 6;
+                    const dir = (typeof fb.dir === 'number') ? fb.dir : 0;
+
                     const cx = fb.x + d * 0.5;
                     const cy = fb.y + d * 0.5;
                     const cz = fb.z + d * 0.5;
 
+                    /* Wireframe -------------------------------------------------- */
                     const wire = new THREE.LineSegments(
                         new THREE.EdgesGeometry(new THREE.BoxGeometry(d, d, d)),
                         new THREE.LineBasicMaterial({
@@ -1222,8 +1309,11 @@
                     );
                     wire.position.set(cx, cy, cz);
                     wire.renderOrder = 996;
+                    wire.userData.furnIdx = i;
+                    wire.userData.isFurnWire = true;
                     furnitureGroup.add(wire);
 
+                    /* Translucent fill (also serves as the hover hitbox) -------- */
                     const fill = new THREE.Mesh(
                         new THREE.BoxGeometry(d, d, d),
                         new THREE.MeshBasicMaterial({
@@ -1234,8 +1324,57 @@
                     );
                     fill.position.set(cx, cy, cz);
                     fill.renderOrder = 995;
+                    fill.userData.furnIdx = i;
+                    fill.userData.isFurnFill = true;
                     furnitureGroup.add(fill);
+
+                    /* Direction arrow — floats above the box ---------------- */
+                    const hovered = (i === hoveredFurnitureIdx);
+                    const arrowColor = hovered ? 0xfff2a0 : 0xffdd44;
+                    const arrow = buildDirArrow(dir, d * 0.85, arrowColor);
+                    arrow.position.set(cx, cy + d * 0.5 + 0.4, cz);
+                    arrow.userData.furnIdx = i;
+                    furnitureGroup.add(arrow);
                 }
+            }
+
+            /* Rotate a single furniture box (by index) by `delta` radians
+   around Y, or rotate the *default* direction if idx < 0. */
+            function rotateFurnitureDir(idx, delta) {
+                if (idx >= 0 && idx < furnitureBoxes.length) {
+                    /* A committed box is hovered — rotate its stored dir. */
+                    const fb = furnitureBoxes[idx];
+                    const cur = (typeof fb.dir === 'number') ? fb.dir : 0;
+                    fb.dir = ((cur + delta) % (Math.PI * 2) +
+                        Math.PI * 2) % (Math.PI * 2);
+                    buildFurnitureVisuals();
+                    commit();
+                    toast('DIR ' +
+                        Math.round(fb.dir * 180 / Math.PI) + '°');
+                } else {
+                    /* No box under the cursor — the value applies to the
+                       next box placed, so the ghost preview must reflect
+                       the new facing immediately. */
+                    furnitureDir = ((furnitureDir + delta) % (Math.PI * 2) +
+                        Math.PI * 2) % (Math.PI * 2);
+                    refreshFurnitureDirLabel();
+
+                    if (currentTool === 'furniture' && lastHover) {
+                        const t = getTargetCell(lastHover);
+                        if (t && inBounds(t.x, t.y, t.z)) {
+                            updateFurnitureGhost(t);
+                        }
+                    }
+
+                    toast('NEW BOX DIR ' +
+                        Math.round(furnitureDir * 180 / Math.PI) + '°');
+                }
+            }
+
+            function refreshFurnitureDirLabel() {
+                const el = document.getElementById('furnDirLabel');
+                if (!el) return;
+                el.textContent = Math.round(furnitureDir * 180 / Math.PI) + '°';
             }
 
             let furnitureGhost = null;
@@ -1245,8 +1384,11 @@
                     return;
                 }
                 const d = FURN_BOX_DIMS[furnitureSize] || 6;
+
                 if (!furnitureGhost) {
                     const g = new THREE.Group();
+
+                    /* [0] wireframe */
                     const wire = new THREE.LineSegments(
                         new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
                         new THREE.LineBasicMaterial({
@@ -1256,6 +1398,9 @@
                         })
                     );
                     wire.renderOrder = 998;
+                    g.add(wire);
+
+                    /* [1] translucent fill */
                     const fill = new THREE.Mesh(
                         new THREE.BoxGeometry(1, 1, 1),
                         new THREE.MeshBasicMaterial({
@@ -1265,19 +1410,54 @@
                         })
                     );
                     fill.renderOrder = 997;
-                    g.add(wire);
                     g.add(fill);
+
+                    /* [2] facing-arrow container.
+                       Its children are rebuilt below whenever the box size
+                       changes; its yaw tracks the live furnitureDir. */
+                    const arrowHolder = new THREE.Group();
+                    arrowHolder.userData.size = 0;   // force first build
+                    g.add(arrowHolder);
+
                     scene.add(g);
                     furnitureGhost = g;
                 }
+
                 furnitureGhost.visible = true;
                 furnitureGhost.position.set(
                     cell.x + d * 0.5,
                     cell.y + d * 0.5,
                     cell.z + d * 0.5
                 );
-                furnitureGhost.children[0].scale.set(d, d, d);
-                furnitureGhost.children[1].scale.set(d, d, d);
+
+                const wire = furnitureGhost.children[0];
+                const fill = furnitureGhost.children[1];
+                const arrowHolder = furnitureGhost.children[2];
+
+                wire.scale.set(d, d, d);
+                fill.scale.set(d, d, d);
+
+                /* Size changed → rebuild the arrow geometry so its shaft
+                   and head scale with the box.  `.add()` on a three.js
+                   Object3D removes the child from its previous parent, so
+                   the while-loop drains `parts` cleanly. */
+                if (arrowHolder.userData.size !== d) {
+                    while (arrowHolder.children.length) {
+                        const c = arrowHolder.children.pop();
+                        if (c.geometry) c.geometry.dispose();
+                        if (c.material) c.material.dispose();
+                    }
+                    const parts = buildDirArrowParts(d * 0.85, 0xffdd44);
+                    while (parts.children.length) {
+                        arrowHolder.add(parts.children[0]);
+                    }
+                    arrowHolder.userData.size = d;
+                }
+
+                /* Float above the box, pointing along the current
+                   editor direction.  Local +Z is forward. */
+                arrowHolder.position.set(0, d * 0.5 + 0.4, 0);
+                arrowHolder.rotation.y = furnitureDir;
             }
             function hideFurnitureGhost() {
                 if (furnitureGhost) furnitureGhost.visible = false;
@@ -1620,11 +1800,32 @@
                     hideLineGhost();
                 }
 
-                /* ---- FURNITURE box preview ---- */
+                /* ---- FURNITURE box preview + hover picking ---------------- */
                 if (currentTool === 'furniture' && t && inBounds(t.x, t.y, t.z)) {
                     updateFurnitureGhost(t);
                 } else {
                     hideFurnitureGhost();
+                }
+
+                /* Which committed furniture box (if any) is under the cursor?
+                   Raycast the semi-transparent fills so the arrow above a box
+                   doesn't block its own hit test. */
+                let newHoverIdx = -1;
+                if (currentTool === 'furniture') {
+                    const fills = [];
+                    for (const c of furnitureGroup.children) {
+                        if (c.userData && c.userData.isFurnFill) fills.push(c);
+                    }
+                    if (fills.length) {
+                        const hits = raycaster.intersectObjects(fills, false);
+                        if (hits.length) {
+                            newHoverIdx = hits[0].object.userData.furnIdx;
+                        }
+                    }
+                }
+                if (newHoverIdx !== hoveredFurnitureIdx) {
+                    hoveredFurnitureIdx = newHoverIdx;
+                    buildFurnitureVisuals();   // repaint with the new highlight
                 }
             }
 
@@ -1760,9 +1961,12 @@
                     if (!removed) {
                         furnitureBoxes.push({
                             x: target.x, y: target.y, z: target.z,
-                            size: furnitureSize
+                            size: furnitureSize,
+                            dir: furnitureDir     // ← pick up the current facing
                         });
-                        toast('FURNITURE BOX placed (' + furnitureSize.toUpperCase() + ')');
+                        toast('FURNITURE BOX placed (' +
+                            furnitureSize.toUpperCase() + ', ' +
+                            Math.round(furnitureDir * 180 / Math.PI) + '°)');
                     }
                     buildFurnitureVisuals();
                     commit();
@@ -1782,14 +1986,16 @@
             function snapshot() {
                 return {
                     grid: Array.from(grid.entries()),
-                    furniture: furnitureBoxes.slice()
+                    /* Deep copy — rotating a box's `dir` must not mutate
+                       a stored snapshot. */
+                    furniture: furnitureBoxes.map(fb => Object.assign({}, fb))
                 };
             }
             function restoreSnapshot(snap) {
                 grid.clear();
                 for (const [k, v] of snap.grid) grid.set(k, v);
                 rebuildAll();
-                furnitureBoxes = snap.furniture.slice();
+                furnitureBoxes = snap.furniture.map(fb => Object.assign({}, fb));
                 buildFurnitureVisuals();
             }
 
@@ -2177,6 +2383,7 @@
             function refreshFurnitureModeBlock() {
                 const block = document.getElementById('furnitureModeBlock');
                 block.classList.toggle('visible', currentTool === 'furniture');
+                if (currentTool === 'furniture') refreshFurnitureDirLabel();
             }
 
             function refreshFurnitureSizeButtons() {
@@ -2185,6 +2392,16 @@
                     b.onclick = () => {
                         furnitureSize = b.dataset.furnSize;
                         refreshFurnitureSizeButtons();
+
+                        /* Rebuild the ghost at the new size (and rebuild its
+                           arrow) without waiting for the next mousemove. */
+                        if (currentTool === 'furniture' && lastHover) {
+                            const t = getTargetCell(lastHover);
+                            if (t && inBounds(t.x, t.y, t.z)) {
+                                updateFurnitureGhost(t);
+                            }
+                        }
+
                         toast('FURNITURE SIZE: ' + furnitureSize.toUpperCase());
                     };
                 });
@@ -2705,6 +2922,18 @@ ${body}
                     return;
                 }
 
+                /* Furniture facing — comma rotates CCW, period rotates CW.
+   Shift = 15° fine steps; otherwise 45° per tap.
+   Targets the hovered box (FURNITURE tool) if there is one,
+   otherwise the default that new boxes inherit. */
+                if (e.code === 'Comma' || e.code === 'Period') {
+                    const step = e.shiftKey ? Math.PI / 12 : Math.PI / 4;
+                    const delta = (e.code === 'Comma') ? -step : +step;
+                    rotateFurnitureDir(hoveredFurnitureIdx, delta);
+                    e.preventDefault();
+                    return;
+                }
+
                 if (e.code === 'KeyC') {
                     currentTool = 'paint';
                     boxStart = null; hideAllBoxGhosts();
@@ -2773,6 +3002,13 @@ ${body}
                 commit();
                 toast('FURNITURE BOXES CLEARED');
             };
+            document.getElementById('btnFurnRotL').onclick = () => {
+                rotateFurnitureDir(hoveredFurnitureIdx, -Math.PI / 4);
+            };
+            document.getElementById('btnFurnRotR').onclick = () => {
+                rotateFurnitureDir(hoveredFurnitureIdx, +Math.PI / 4);
+            };
+            refreshFurnitureDirLabel();
 
             bindThicknessInput();
             refreshBrushButtons();

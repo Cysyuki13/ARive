@@ -16,6 +16,28 @@
    ========================================================================= */
 window.ARIVE_FURNITURE = window.ARIVE_FURNITURE || [];
 
+/* =========================================================================
+   FACING DIRECTION
+   -------------------------------------------------------------------------
+   Every model in this file is authored facing world +Z.
+
+   · `dir = 0`          → model faces world +Z
+   · `dir = π/2`        → model faces world +X
+   · `dir = π`          → model faces world -Z
+   · `dir = 3π/2`       → model faces world -X
+
+   The editor stores the chosen direction on each furniture marker in
+   a structure's `furniture` array as a `dir` field (radians, Y axis).
+   game.js reads it back at spawn time and applies it as the mesh's
+   yaw, so pieces placed facing the room in the editor stay facing
+   the room in the world.
+
+   Models that are not symmetric (a chair with a back, a desk with a
+   front edge, a chest with a latch) should be authored with their
+   front on +Z.  If a model was authored the other way round, give it
+   an explicit 180° yaw in the editor — no code change is required.
+   ========================================================================= */
+
 /* ------------------------------------------------------------------ SMALL */
 ARIVE_FURNITURE.push({
     key: 'chair', name: 'CHAIR', size: 'small',
