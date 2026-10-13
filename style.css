@@ -1068,3 +1068,58 @@ body {
     color: #ffc8c8;
     border-color: #e8a0a0;
 }
+
+.mp-room-list {
+    max-height: 320px;
+    overflow-y: auto;
+    border: 2px solid #2b333f;
+    background: #0a0d12;
+    margin: 12px 0;
+}
+
+.mp-room-row {
+    display: flex;
+    align-items: center;
+    padding: 10px 14px;
+    border-bottom: 1px solid #1a2028;
+    gap: 12px;
+}
+
+.mp-room-row:last-child {
+    border-bottom: none;
+}
+
+.mp-room-info {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+}
+
+.mp-room-name {
+    color: #f6dd8b;
+    font: bold 13px 'Courier New', monospace;
+    letter-spacing: 1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mp-room-meta {
+    color: #7a6e5e;
+    font: 10px 'Courier New', monospace;
+    letter-spacing: 1px;
+    margin-top: 3px;
+}
+
+.mp-room-join {
+    padding: 6px 14px !important;
+    font-size: 11px !important;
+}
+
+.mp-room-empty {
+    padding: 24px;
+    text-align: center;
+    color: #7a6e5e;
+    font: 11px 'Courier New', monospace;
+    letter-spacing: 2px;
+}

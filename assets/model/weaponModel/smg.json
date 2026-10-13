@@ -76,8 +76,21 @@
   ],
   "anim": {
     "swing": 0.08,
-    "kick": 0.022
+    "kick": 0.022,
+    "recoilTravel": 0.025,
+    "aimTravelMul": 0.5
   },
+  "iconR": [
+    0,
+    2.4,
+    -0.5
+  ],
+  "iconP": [
+    0,
+    0,
+    0
+  ],
+  "iconScale": 2.1,
   "model": [
     {
       "p": [

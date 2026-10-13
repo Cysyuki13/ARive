@@ -1,0 +1,1928 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>ARive · Enemy Model Editor</title>
+    <style>
+        :root {
+            --bg: #12141a;
+            --panel: #1a1d24;
+            --panel2: #222630;
+            --line: #2c313d;
+            --fg: #dde3ee;
+            --dim: #8b94a8;
+            --accent: #5fd0a0;
+            --accent2: #ffb454;
+            --danger: #e0575f;
+        }
+
+        * {
+            box-sizing: border-box
+        }
+
+        html,
+        body {
+            height: 100%;
+            margin: 0
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--fg);
+            overflow: hidden;
+            font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            background: var(--panel);
+            border-bottom: 1px solid var(--line);
+            flex: 0 0 auto;
+        }
+
+        header h1 {
+            font-size: 13px;
+            margin: 0;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: var(--accent)
+        }
+
+        header .sp {
+            flex: 1
+        }
+
+        button,
+        select,
+        input {
+            font: inherit;
+            color: inherit
+        }
+
+        button {
+            background: var(--panel2);
+            border: 1px solid var(--line);
+            border-radius: 5px;
+            padding: 5px 11px;
+            cursor: pointer;
+            transition: .12s;
+        }
+
+        button:hover {
+            background: #2c313d;
+            border-color: #3d4557
+        }
+
+        button.primary {
+            background: #1e5c46;
+            border-color: #2b8a68;
+            color: #d6ffee
+        }
+
+        button.primary:hover {
+            background: #24705a
+        }
+
+        button.danger {
+            border-color: #5a2a2e;
+            color: #ffb8bc
+        }
+
+        button.danger:hover {
+            background: #3a1c20
+        }
+
+        button:disabled {
+            opacity: .4;
+            cursor: default
+        }
+
+        main {
+            flex: 1;
+            display: flex;
+            min-height: 0
+        }
+
+        /* ---------- sidebar ---------- */
+        #sidebar {
+            width: 210px;
+            flex: 0 0 auto;
+            background: var(--panel);
+            border-right: 1px solid var(--line);
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        #sidebar .grp {
+            padding: 8px 10px 4px;
+            font-size: 10px;
+            letter-spacing: .14em;
+            text-transform: uppercase;
+            color: var(--dim)
+        }
+
+        #typeList {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 6px 10px
+        }
+
+        .titem {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            border-radius: 5px;
+            cursor: pointer;
+            color: #c3cbd9;
+        }
+
+        .titem:hover {
+            background: var(--panel2)
+        }
+
+        .titem.sel {
+            background: #1e5c46;
+            color: #dcffee
+        }
+
+        .titem .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--accent2);
+            opacity: 0;
+            flex: 0 0 auto
+        }
+
+        .titem.mod .dot {
+            opacity: 1
+        }
+
+        .titem .nm {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap
+        }
+
+        .titem .bd {
+            font-size: 9px;
+            color: var(--dim)
+        }
+
+        .titem.sel .bd {
+            color: #9fe8c8
+        }
+
+        /* ---------- centre ---------- */
+        #editor {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--line)
+        }
+
+        #editorHead {
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--line);
+            background: var(--panel);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 0 0 auto;
+        }
+
+        #editorHead input.name {
+            background: var(--panel2);
+            border: 1px solid var(--line);
+            border-radius: 5px;
+            padding: 4px 8px;
+            width: 150px;
+        }
+
+        .pill {
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 99px;
+            background: var(--panel2);
+            border: 1px solid var(--line);
+            color: var(--dim)
+        }
+
+        #form {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px
+        }
+
+        fieldset {
+            border: 1px solid var(--line);
+            border-radius: 7px;
+            margin: 0 0 12px;
+            padding: 8px 10px 10px;
+            background: var(--panel);
+        }
+
+        legend {
+            padding: 0 6px;
+            color: var(--accent);
+            font-size: 11px;
+            letter-spacing: .08em;
+            text-transform: uppercase
+        }
+
+        .row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 2px 0;
+            min-height: 24px
+        }
+
+        .row>label {
+            width: 130px;
+            flex: 0 0 auto;
+            color: var(--dim);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap
+        }
+
+        .row input[type=number],
+        .row input[type=text] {
+            background: var(--panel2);
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            padding: 3px 6px;
+            width: 100px;
+        }
+
+        .row input[type=color] {
+            width: 34px;
+            height: 22px;
+            padding: 0;
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            background: none;
+            cursor: pointer;
+        }
+
+        .row .hex {
+            width: 76px;
+            color: var(--dim)
+        }
+
+        .row.changed label {
+            color: var(--accent2)
+        }
+
+        .row.changed input {
+            box-shadow: inset 0 0 0 1px #6a5320
+        }
+
+        .row select {
+            background: var(--panel2);
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            padding: 3px 6px
+        }
+
+        .empty {
+            padding: 40px;
+            text-align: center;
+            color: var(--dim);
+            line-height: 1.9
+        }
+
+        /* ---------- preview ---------- */
+        #preview {
+            width: 400px;
+            flex: 0 0 auto;
+            display: flex;
+            flex-direction: column;
+            background: #0f1115;
+            min-height: 0;
+        }
+
+        #previewHead {
+            padding: 6px 10px;
+            border-bottom: 1px solid var(--line);
+            background: var(--panel);
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            font-size: 11px;
+            color: var(--dim);
+            flex-wrap: wrap;
+        }
+
+        #previewCanvas {
+            flex: 1;
+            display: block;
+            width: 100%;
+            min-height: 0
+        }
+
+        #previewCanvas.editing {
+            cursor: crosshair;
+        }
+
+        #stats {
+            padding: 6px 10px;
+            border-top: 1px solid var(--line);
+            font-size: 11px;
+            color: var(--dim);
+            background: var(--panel);
+            white-space: pre-wrap;
+            max-height: 120px;
+            overflow: auto;
+        }
+
+        /* ---------- voxel edit toolbar ---------- */
+        #btnEditVox.on {
+            background: #2b8a68;
+            border-color: #4ab89a;
+            color: #eafff5
+        }
+
+        #editTools {
+            display: none;
+            gap: 4px;
+            align-items: center
+        }
+
+        #editTools.on {
+            display: flex
+        }
+
+        #editTools button {
+            padding: 3px 8px;
+            font-size: 11px
+        }
+
+        #editTools button.on {
+            background: #2b8a68;
+            border-color: #4ab89a;
+            color: #eafff5
+        }
+
+        #paintColor {
+            width: 26px;
+            height: 22px;
+            padding: 0;
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            background: none;
+            cursor: pointer;
+        }
+
+        #toast {
+            position: fixed;
+            bottom: 16px;
+            left: 50%;
+            transform: translateX(-50%) translateY(60px);
+            background: #1e5c46;
+            border: 1px solid #2b8a68;
+            color: #d6ffee;
+            padding: 7px 16px;
+            border-radius: 99px;
+            opacity: 0;
+            transition: .25s;
+            pointer-events: none;
+            z-index: 50;
+            font-size: 12px;
+        }
+
+        #toast.on {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0)
+        }
+
+        #toast.err {
+            background: #5c1e22;
+            border-color: #8a2b31;
+            color: #ffd6d8
+        }
+
+        #drop {
+            position: fixed;
+            inset: 0;
+            background: rgba(18, 20, 26, .92);
+            z-index: 60;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            color: var(--accent);
+            border: 3px dashed var(--accent);
+            border-radius: 8px;
+        }
+
+        #drop.on {
+            display: flex
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>ARive · Enemy Editor</h1>
+        <button id="btnOpen">Open enemy.js…</button>
+        <button id="btnReload" title="Re-fetch ../enemy.js">Reload from disk</button>
+        <span class="sp"></span>
+        <span id="fileName" style="color:var(--dim)">no file loaded</span>
+        <button id="btnCopy">Copy source</button>
+        <button id="btnSaveAs">Download enemy.js</button>
+        <button id="btnSave" class="primary" disabled>Save</button>
+    </header>
+
+    <main>
+        <aside id="sidebar">
+            <div class="grp">Zombies</div>
+            <div id="typeListZ" class="typeList"></div>
+            <div class="grp">Aliens</div>
+            <div id="typeListA" class="typeList"></div>
+            <div style="padding:8px;display:flex;gap:6px;border-top:1px solid var(--line)">
+                <button id="btnNewZ" style="flex:1">+ Zombie</button>
+                <button id="btnNewA" style="flex:1">+ Alien</button>
+            </div>
+        </aside>
+
+        <section id="editor">
+            <div id="editorHead">
+                <input class="name" id="typeName" spellcheck="false" placeholder="type key" />
+                <span class="pill" id="builderPill">buildZombie</span>
+                <span class="sp" style="flex:1"></span>
+                <button id="btnDuplicate">Duplicate</button>
+                <button id="btnDelete" class="danger">Delete</button>
+            </div>
+            <div id="form">
+                <div class="empty">Open <b>enemy.js</b> to begin.<br />
+                    <span style="font-size:11px">Drag &amp; drop the file anywhere on this window.</span>
+                </div>
+            </div>
+        </section>
+
+        <section id="preview">
+            <div id="previewHead">
+                <label><input type="checkbox" id="chkSpin" /> spin</label>
+                <label><input type="checkbox" id="chkWalk" checked /> animate</label>
+                <label><input type="checkbox" id="chkParts" /> parts</label>
+                <span class="sp" style="flex:1"></span>
+                <button id="btnEditVox" title="Toggle voxel edit mode">✎ Voxels</button>
+                <span id="editTools">
+                    <button id="toolAdd" title="Add voxel on the clicked face">+ Add</button>
+                    <button id="toolRemove" title="Remove the clicked voxel">− Remove</button>
+                    <button id="toolPaint" title="Repaint the clicked voxel">🎨 Paint</button>
+                    <input type="color" id="paintColor" value="#7a9060" />
+                    <button id="btnResetVox" title="Discard all voxel edits for this type">↺ Reset</button>
+                </span>
+                <span id="voxCount"></span>
+            </div>
+            <canvas id="previewCanvas"></canvas>
+            <div id="stats">—</div>
+        </section>
+    </main>
+
+    <div id="drop">Drop enemy.js here</div>
+    <div id="toast"></div>
+
+    <input type="file" id="filePicker" accept=".js,text/javascript" style="display:none" />
+
+    <script src="https://unpkg.com/three@0.134.0/build/three.min.js"></script>
+    <script>
+        "use strict";
+        /* ============================================================================
+           0.  TINY DOM HELPERS
+           ========================================================================== */
+        const $ = (s) => document.querySelector(s);
+        const el = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
+
+        let toastTimer = null;
+        function toast(msg, isErr) {
+            const t = $("#toast");
+            t.textContent = msg;
+            t.className = "on" + (isErr ? " err" : "");
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => { t.className = isErr ? "err" : ""; }, 2200);
+        }
+
+        /* ============================================================================
+           1.  SOURCE-TEXT UTILITIES
+           ========================================================================== */
+
+        function skipWS(s, i) {
+            for (; ;) {
+                while (i < s.length && /\s/.test(s[i])) i++;
+                if (s[i] === "/" && s[i + 1] === "/") { while (i < s.length && s[i] !== "\n") i++; continue; }
+                if (s[i] === "/" && s[i + 1] === "*") {
+                    i += 2;
+                    while (i < s.length && !(s[i] === "*" && s[i + 1] === "/")) i++;
+                    i += 2;
+                    continue;
+                }
+                return i;
+            }
+        }
+
+        function matchBracket(s, i) {
+            const open = s[i];
+            const close = open === "{" ? "}" : open === "(" ? ")" : "]";
+            let depth = 0;
+            for (; i < s.length; i++) {
+                const c = s[i];
+                if (c === '"' || c === "'" || c === "`") {
+                    i++;
+                    while (i < s.length && s[i] !== c) { if (s[i] === "\\") i++; i++; }
+                    continue;
+                }
+                if (c === "/" && s[i + 1] === "/") { while (i < s.length && s[i] !== "\n") i++; continue; }
+                if (c === "/" && s[i + 1] === "*") {
+                    i += 2;
+                    while (i < s.length && !(s[i] === "*" && s[i + 1] === "/")) i++;
+                    i++;
+                    continue;
+                }
+                if (c === open) depth++;
+                else if (c === close) { depth--; if (depth === 0) return i; }
+            }
+            return -1;
+        }
+
+        function extractFunction(src, name) {
+            const re = new RegExp("function\\s+" + name + "\\s*\\(");
+            const m = re.exec(src);
+            if (!m) return null;
+            const b = src.indexOf("{", m.index);
+            if (b < 0) return null;
+            const e = matchBracket(src, b);
+            if (e < 0) return null;
+            return src.slice(m.index, e + 1);
+        }
+
+        function parseValue(s, i) {
+            i = skipWS(s, i);
+            const start = i;
+            const c = s[i];
+
+            if (c === "{") {
+                const props = [];
+                i = skipWS(s, i + 1);
+                for (; ;) {
+                    i = skipWS(s, i);
+                    if (i >= s.length) break;
+                    if (s[i] === "}") { i++; break; }
+                    const keyStart = i;
+                    let key;
+                    if (s[i] === '"' || s[i] === "'") {
+                        const q = s[i]; i++;
+                        let k = "";
+                        while (i < s.length && s[i] !== q) {
+                            if (s[i] === "\\") { k += s[i + 1]; i += 2; } else { k += s[i]; i++; }
+                        }
+                        i++; key = k;
+                    } else {
+                        while (i < s.length && /[\w$]/.test(s[i])) i++;
+                        key = s.slice(keyStart, i);
+                    }
+                    if (!key) break;
+                    i = skipWS(s, i);
+                    if (s[i] === ":") i++;
+                    const v = parseValue(s, i);
+                    props.push({ key, keyStart, start: v.start, end: v.end, node: v });
+                    i = skipWS(s, v.end);
+                    if (s[i] === ",") { i++; continue; }
+                    if (s[i] === "}") { i++; break; }
+                    break;
+                }
+                return { kind: "object", start, end: i, props };
+            }
+
+            if (c === "[") {
+                const items = [];
+                i = skipWS(s, i + 1);
+                if (s[i] === "]") return { kind: "array", start, end: i + 1, items };
+                for (; ;) {
+                    const v = parseValue(s, i);
+                    items.push(v);
+                    i = skipWS(s, v.end);
+                    if (s[i] === ",") { i++; i = skipWS(s, i); if (s[i] === "]") { i++; break; } continue; }
+                    if (s[i] === "]") { i++; break; }
+                    break;
+                }
+                return { kind: "array", start, end: i, items };
+            }
+
+            if (c === '"' || c === "'") {
+                const q = c; i++;
+                let str = "";
+                while (i < s.length && s[i] !== q) {
+                    if (s[i] === "\\") {
+                        const e = s[i + 1];
+                        str += e === "n" ? "\n" : e === "t" ? "\t" : e === "r" ? "\r" : e;
+                        i += 2;
+                    } else { str += s[i]; i++; }
+                }
+                i++;
+                return { kind: "string", start, end: i, value: str };
+            }
+
+            const numM = /^[-+]?(?:0[xX][0-9a-fA-F]+|\d+\.?\d*(?:[eE][-+]?\d+)?|\.\d+)/.exec(s.slice(i));
+            if (numM) {
+                i += numM[0].length;
+                return { kind: "number", start, end: i, value: Number(numM[0]) };
+            }
+
+            const idM = /^[A-Za-z_$][\w$]*/.exec(s.slice(i));
+            if (idM) {
+                i += idM[0].length;
+                const w = idM[0];
+                let value = w;
+                if (w === "true") value = true;
+                else if (w === "false") value = false;
+                else if (w === "null") value = null;
+                else if (w === "undefined") value = undefined;
+                return { kind: "literal", start, end: i, value, raw: w };
+            }
+
+            throw new Error("Unexpected token at " + i + ": " + JSON.stringify(s.slice(i, i + 32)));
+        }
+
+        function astToJS(node) {
+            if (!node) return undefined;
+            if (node.kind === "object") {
+                const o = {};
+                for (const p of node.props) o[p.key] = astToJS(p.node);
+                return o;
+            }
+            if (node.kind === "array") return node.items.map(astToJS);
+            return node.value;
+        }
+
+        function deepEqual(a, b) {
+            if (a === b) return true;
+            if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false;
+            if (Array.isArray(a) !== Array.isArray(b)) return false;
+            const ka = Object.keys(a), kb = Object.keys(b);
+            if (ka.length !== kb.length) return false;
+            for (const k of ka) if (!deepEqual(a[k], b[k])) return false;
+            return true;
+        }
+
+        /* ============================================================================
+           2.  PARSE THE ZOMBIE_TYPES BLOCK
+           ========================================================================== */
+
+        function parseEnemySource(src) {
+            const ztIdx = src.indexOf("const ZOMBIE_TYPES");
+            if (ztIdx < 0) throw new Error("Could not find `const ZOMBIE_TYPES` in the file.");
+            const ztBrace = src.indexOf("{", ztIdx);
+            if (ztBrace < 0) throw new Error("Malformed ZOMBIE_TYPES declaration.");
+            const ztEnd = matchBracket(src, ztBrace);
+            if (ztEnd < 0) throw new Error("Unbalanced braces in ZOMBIE_TYPES.");
+
+            const entries = [];
+            let i = ztBrace + 1;
+
+            while (i < ztEnd) {
+                i = skipWS(src, i);
+                if (i >= ztEnd || src[i] === "}") break;
+
+                const keyM = /^([A-Za-z_$][\w$]*)\s*:/.exec(src.slice(i, i + 120));
+                if (!keyM) { i++; continue; }
+
+                const keyStart = i;
+                const name = keyM[1];
+                i += keyM[0].length;
+                i = skipWS(src, i);
+
+                const bM = /^(buildZombie|buildAlien)\s*\(/.exec(src.slice(i, i + 60));
+                if (!bM) { i++; continue; }
+
+                const builder = bM[1];
+                i += bM[0].length;
+                i = skipWS(src, i);
+                if (src[i] !== "{") { i++; continue; }
+
+                const presetStart = i;
+                const presetEnd = matchBracket(src, i) + 1;
+                const presetText = src.slice(presetStart, presetEnd);
+
+                let j = skipWS(src, presetEnd);
+                if (src[j] === ")") j++;
+                j = skipWS(src, j);
+                if (src[j] === ",") j++;
+
+                let ast = null, preset = null, parseErr = null;
+                try {
+                    ast = parseValue(src, presetStart);
+                    preset = astToJS(ast);
+                } catch (err) {
+                    parseErr = err.message;
+                    preset = {};
+                }
+
+                entries.push({
+                    name, builder,
+                    keyStart, presetStart, presetEnd, presetText,
+                    entryStart: keyStart, entryEnd: j,
+                    ast, preset,
+                    original: JSON.parse(JSON.stringify(preset)),
+                    isNew: false,
+                    parseErr,
+                });
+
+                i = j;
+            }
+
+            return { ztBrace, ztEnd, entries };
+        }
+
+        /* ============================================================================
+           3.  SANDBOX EVALUATION OF buildZombie / buildAlien
+           ========================================================================== */
+
+        function makeSandbox(src) {
+            const chunks = [];
+
+            const ev = /const\s+ENEMY_VOXEL\s*=\s*[^;]+;/.exec(src);
+            chunks.push(ev ? ev[0] : "const ENEMY_VOXEL = 0.07;");
+
+            for (const fn of [
+                "boxVoxels", "darkenColor", "lightenColor", "mirrorX",
+                "_rrSlice", "blob", "limb", "paintFrontFace", "hash3",
+                "applyVoxelOverrides",       // optional — skipped if missing
+            ]) {
+                const t = extractFunction(src, fn);
+                if (t) chunks.push(t);
+            }
+
+            const bp = src.indexOf("const BASE_PALETTE");
+            if (bp >= 0) {
+                const b = src.indexOf("{", bp);
+                const e = matchBracket(src, b);
+                chunks.push(src.slice(bp, e + 1) + ";");
+            }
+
+            for (const fn of ["buildZombie", "buildAlien"]) {
+                const t = extractFunction(src, fn);
+                if (t) chunks.push(t);
+            }
+
+            const code =
+                chunks.join("\n\n") +
+                "\nreturn {" +
+                "  buildZombie: typeof buildZombie!=='undefined' ? buildZombie : null," +
+                "  buildAlien:  typeof buildAlien!=='undefined'  ? buildAlien  : null," +
+                "  BASE_PALETTE: typeof BASE_PALETTE!=='undefined' ? BASE_PALETTE : {}" +
+                "};";
+
+            return new Function(code)();
+        }
+
+        /* ============================================================================
+           4.  SERIALISE A PRESET BACK TO SOURCE TEXT
+           ========================================================================== */
+
+        function detectIndent(src, pos) {
+            let lineStart = pos;
+            while (lineStart > 0 && src[lineStart - 1] !== "\n") lineStart--;
+            let pad = "";
+            let i = lineStart;
+            while (i < src.length && (src[i] === " " || src[i] === "\t")) { pad += src[i]; i++; }
+            return pad || "    ";
+        }
+
+        function formatLiteral(v, node, src, hexMode) {
+            if (v === null) return "null";
+            if (v === undefined) return "undefined";
+            if (typeof v === "boolean") return String(v);
+            if (typeof v === "string") return JSON.stringify(v);
+            if (typeof v === "number") {
+                if (!isFinite(v)) return String(v);
+                const wasHex =
+                    hexMode ||
+                    (node && node.kind === "number" && /^[-+]?0[xX]/.test(src.slice(node.start, node.end)));
+                if (wasHex && Number.isInteger(v) && v >= 0 && v <= 0xffffff) {
+                    return "0x" + v.toString(16).padStart(6, "0");
+                }
+                return String(v);
+            }
+            return JSON.stringify(v);
+        }
+
+        /* Detect a voxel override array: [ [x, y, z, hex], ... ] */
+        function looksLikeVoxelArray(value) {
+            if (!Array.isArray(value) || !value.length) return false;
+            const first = value[0];
+            return Array.isArray(first) && first.length === 4 &&
+                typeof first[0] === "number" && typeof first[3] === "number";
+        }
+
+        function renderValue(node, value, pad, src, hexMode) {
+            if (value === undefined) return null;
+
+            if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+                if (node && node.kind === "object" && deepEqual(astToJS(node), value)) {
+                    return src.slice(node.start, node.end);
+                }
+                return renderObject(node && node.kind === "object" ? node : null, value, pad, src, hexMode);
+            }
+
+            if (Array.isArray(value)) {
+                if (node && node.kind === "array" && deepEqual(astToJS(node), value)) {
+                    return src.slice(node.start, node.end);
+                }
+
+                /* Voxel arrays get one [x, y, z, 0xRRGGBB] tuple per line. */
+                if (looksLikeVoxelArray(value)) {
+                    const childPad = pad + "    ";
+                    const rows = value.map(v => {
+                        const hex = (v[3] >>> 0).toString(16).padStart(6, "0");
+                        return childPad + "[" + (v[0] | 0) + ", " + (v[1] | 0) + ", " +
+                            (v[2] | 0) + ", 0x" + hex + "],";
+                    });
+                    return "[\n" + rows.join("\n") + "\n" + pad + "]";
+                }
+
+                return "[" + value.map((v) => renderValue(null, v, pad, src, hexMode)).join(", ") + "]";
+            }
+
+            if (node && deepEqual(astToJS(node), value)) return src.slice(node.start, node.end);
+            return formatLiteral(value, node, src, hexMode);
+        }
+
+        function renderObject(node, obj, pad, src, hexMode) {
+            const childPad = pad + "    ";
+
+            const keys = [];
+            if (node) for (const p of node.props) if (p.key in obj && keys.indexOf(p.key) < 0) keys.push(p.key);
+            for (const k of Object.keys(obj)) if (keys.indexOf(k) < 0) keys.push(k);
+
+            const lines = [];
+            let cur = "";
+            const flush = () => { if (cur) { lines.push(childPad + cur); cur = ""; } };
+
+            for (const k of keys) {
+                const v = obj[k];
+                if (v === undefined) continue;
+
+                const prop = node ? node.props.find((p) => p.key === k) : null;
+                const childHex = hexMode || k === "palette";
+                const isObj = v !== null && typeof v === "object";
+
+                const text = renderValue(prop ? prop.node : null, v, childPad, src, childHex);
+                if (text == null) continue;
+
+                const piece = k + ": " + text + ",";
+
+                if (isObj) {
+                    flush();
+                    lines.push(childPad + piece);
+                } else {
+                    if (cur && cur.length + piece.length + 1 > 72) flush();
+                    cur += (cur ? " " : "") + piece;
+                }
+            }
+            flush();
+
+            if (!lines.length) return "{}";
+            return "{\n" + lines.join("\n") + "\n" + pad + "}";
+        }
+
+        function renderPreset(entry, src) {
+            if (deepEqual(entry.preset, entry.original)) return entry.presetText;
+            if (entry.ast) {
+                const pad = detectIndent(src, entry.presetStart);
+                return renderObject(entry.ast, entry.preset, pad, src, false);
+            }
+            return renderObject(null, entry.preset, "        ", src, false);
+        }
+
+        /* ============================================================================
+           5.  BUILD THE NEW enemy.js TEXT
+           ========================================================================== */
+
+        function lineStartIfBlank(src, i) {
+            let j = i;
+            while (j > 0 && src[j - 1] !== "\n") j--;
+            for (let k = j; k < i; k++) if (!/\s/.test(src[k])) return i;
+            return j;
+        }
+
+        function buildOutput() {
+            const src = state.src;
+            const edits = [];
+
+            for (const e of state.entries) {
+                if (e.isNew) continue;
+                const text = renderPreset(e, src);
+                if (text !== e.presetText) edits.push({ start: e.presetStart, end: e.presetEnd, text });
+            }
+
+            for (const e of state.deleted) {
+                let end = e.entryEnd;
+                while (end < src.length && (src[end] === " " || src[end] === "\t")) end++;
+                if (src[end] === "\n") end++;
+                edits.push({ start: lineStartIfBlank(src, e.entryStart), end, text: "" });
+            }
+
+            const fresh = state.entries.filter((e) => e.isNew);
+            if (fresh.length) {
+                let ins = state.ztEnd;
+                while (ins > 0 && (src[ins - 1] === " " || src[ins - 1] === "\t")) ins--;
+                let text = "";
+                for (const e of fresh) {
+                    text += "        " + e.name + ": " + e.builder + "(" +
+                        renderObject(null, e.preset, "        ", src, false) + "),\n";
+                }
+                edits.push({ start: ins, end: ins, text });
+            }
+
+            edits.sort((a, b) => a.start - b.start);
+
+            let out = "", last = 0;
+            for (const ed of edits) {
+                if (ed.start < last) continue;
+                out += src.slice(last, ed.start) + ed.text;
+                last = ed.end;
+            }
+            out += src.slice(last);
+            return out;
+        }
+
+        /* ============================================================================
+           6.  APPLICATION STATE
+           ========================================================================== */
+
+        const state = {
+            src: "",
+            fileName: "enemy.js",
+            fileHandle: null,
+            ztEnd: 0,
+            entries: [],
+            deleted: [],
+            selected: null,
+            sandbox: null,
+            basePalette: {},
+            basePaletteKeys: [],
+        };
+
+        /* ============================================================================
+           7.  LOADING
+           ========================================================================== */
+
+        function loadSource(text, name) {
+            try {
+                const parsed = parseEnemySource(text);
+                state.src = text;
+                state.fileName = name || "enemy.js";
+                state.ztEnd = parsed.ztEnd;
+                state.entries = parsed.entries;
+                state.deleted = [];
+                state.sandbox = makeSandbox(text);
+                state.basePalette = state.sandbox.BASE_PALETTE || {};
+                state.basePaletteKeys = Object.keys(state.basePalette);
+                state.selected = state.entries.length ? state.entries[0] : null;
+
+                const broken = state.entries.filter((e) => e.parseErr);
+                $("#fileName").textContent = state.fileName;
+                $("#btnSave").disabled = false;
+
+                renderSidebar();
+                renderEditor();
+
+                if (broken.length) {
+                    toast("Loaded with " + broken.length + " unparsable preset(s)", true);
+                } else {
+                    toast("Loaded " + state.entries.length + " enemy types");
+                }
+            } catch (err) {
+                console.error(err);
+                toast("Parse error: " + err.message, true);
+            }
+        }
+
+        async function openViaPicker() {
+            if (window.showOpenFilePicker) {
+                try {
+                    const [h] = await window.showOpenFilePicker({
+                        types: [{ description: "JavaScript", accept: { "text/javascript": [".js"] } }],
+                    });
+                    const f = await h.getFile();
+                    state.fileHandle = h;
+                    loadSource(await f.text(), f.name);
+                    return;
+                } catch (e) { if (e.name === "AbortError") return; }
+            }
+            $("#filePicker").click();
+        }
+
+        $("#filePicker").addEventListener("change", async (ev) => {
+            const f = ev.target.files[0];
+            if (!f) return;
+            state.fileHandle = null;
+            loadSource(await f.text(), f.name);
+            ev.target.value = "";
+        });
+
+        $("#btnOpen").onclick = openViaPicker;
+
+        $("#btnReload").onclick = async () => {
+            if (location.protocol === "file:") {
+                toast("Reload needs http:// — click Open instead", true);
+                return;
+            }
+            try {
+                const res = await fetch("../enemy.js", { cache: "no-store" });
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                state.fileHandle = null;
+                loadSource(await res.text(), "enemy.js");
+                toast("Reloaded from disk");
+            } catch (e) {
+                toast("Could not fetch ../enemy.js — use Open instead", true);
+            }
+        };
+
+        /* drag & drop */
+        let dragDepth = 0;
+        window.addEventListener("dragenter", (e) => { e.preventDefault(); dragDepth++; $("#drop").classList.add("on"); });
+        window.addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; $("#drop").classList.remove("on"); } });
+        window.addEventListener("dragover", (e) => e.preventDefault());
+        window.addEventListener("drop", async (e) => {
+            e.preventDefault(); dragDepth = 0; $("#drop").classList.remove("on");
+            const f = e.dataTransfer.files[0];
+            if (!f) return;
+            state.fileHandle = null;
+            loadSource(await f.text(), f.name);
+        });
+
+        /* ============================================================================
+           Auto-load
+           ========================================================================== */
+        function showLanding() {
+            const form = $("#form");
+            form.innerHTML = "";
+            const box = el("div", "empty");
+            box.innerHTML =
+                "<div style='font-size:15px;color:var(--accent);margin-bottom:14px'>" +
+                "Load <b>enemy.js</b></div>" +
+                "<div style='margin-bottom:18px;color:var(--dim)'>" +
+                (location.protocol === "file:"
+                    ? "You're viewing this page from <code>file://</code>, so the browser<br>" +
+                    "won't let it read <code>enemy.js</code> automatically.<br>" +
+                    "Pick the file with the button below, or drag it onto this window."
+                    : "No <code>enemy.js</code> found next to this page.") +
+                "</div>";
+            const b1 = el("button");
+            b1.className = "primary";
+            b1.style.padding = "9px 22px";
+            b1.style.fontSize = "13px";
+            b1.textContent = "📂  Open enemy.js…";
+            b1.onclick = openViaPicker;
+            box.appendChild(b1);
+            box.appendChild(el("div")).style.cssText = "height:10px";
+            box.appendChild(document.createTextNode(""));
+            const hint = el("div");
+            hint.style.cssText = "font-size:11px;color:var(--dim);margin-top:14px;line-height:1.7";
+            hint.innerHTML =
+                "<b>Tip — skip this step every time:</b><br>" +
+                "run <code>python -m http.server 8080</code> in the ARive folder,<br>" +
+                "then open <code>http://localhost:8080/EditorTools/enemyEditor.html</code>. " +
+                "It'll auto-load.";
+            box.appendChild(hint);
+            form.appendChild(box);
+        }
+
+        window.addEventListener("load", async () => {
+            if (location.protocol === "file:") { showLanding(); return; }
+            try {
+                const res = await fetch("../enemy.js", { cache: "no-store" });
+                if (res.ok) loadSource(await res.text(), "enemy.js");
+                else showLanding();
+            } catch (e) {
+                showLanding();
+            }
+        });
+
+        /* ============================================================================
+           8.  SIDEBAR
+           ========================================================================== */
+
+        function isModified(e) {
+            if (e.isNew) return true;
+            return !deepEqual(e.preset, e.original);
+        }
+
+        function makeItem(e) {
+            const d = el("div", "titem" + (state.selected === e ? " sel" : "") + (isModified(e) ? " mod" : ""));
+            d.appendChild(el("span", "dot"));
+            const nm = el("span", "nm"); nm.textContent = e.name; d.appendChild(nm);
+            const bd = el("span", "bd"); bd.textContent = e.builder === "buildAlien" ? "alien" : "zombie";
+            d.appendChild(bd);
+            d.onclick = () => { state.selected = e; renderSidebar(); renderEditor(); };
+            return d;
+        }
+
+        function renderSidebar() {
+            const zl = $("#typeListZ"), al = $("#typeListA");
+            zl.innerHTML = ""; al.innerHTML = "";
+            zl.className = "typeList"; al.className = "typeList";
+            zl.style.cssText = al.style.cssText = "padding:0 6px 10px";
+            for (const e of state.entries) {
+                (e.builder === "buildAlien" ? al : zl).appendChild(makeItem(e));
+            }
+            if (!zl.children.length) zl.innerHTML = '<div style="padding:4px 10px;color:#555c6b">—</div>';
+            if (!al.children.length) al.innerHTML = '<div style="padding:4px 10px;color:#555c6b">—</div>';
+        }
+
+        /* ============================================================================
+           9.  FORM
+           ========================================================================== */
+
+        const ENUMS = {
+            shape: ["greenscout", "blob", "stalker", "insect", "cyclops", "serpent", "grey", "hopper"],
+            hat: ["", "cap", "beanie", "hood", "bandana", "turban", "horns"],
+            hair: ["", "short", "long", "mohawk", "bald"],
+            outfit: ["", "shirt", "striped", "tie", "vest", "shorts"],
+            face: ["", "default", "shock", "drool", "roar", "ghoul", "grin",
+                "shadow", "squint", "blank", "sneer", "surprise", "snarl",
+                "skull", "monocle", "grit", "goofy"],
+        };
+
+        function hex6(n) { return "#" + (n >>> 0 & 0xffffff).toString(16).padStart(6, "0"); }
+
+        function buildRows(obj, original, container, path, onChange) {
+            const colorMode = path.length > 0 && path[0] === "palette";
+
+            for (const key of Object.keys(obj)) {
+                /* Voxel overrides are managed by the preview toolbar, not the form. */
+                if (key === "voxelOverrides") continue;
+
+                const val = obj[key];
+                const opath = path.concat(key);
+                const origVal = original ? original[key] : undefined;
+
+                if (val !== null && typeof val === "object" && !Array.isArray(val)) {
+                    const fs = el("fieldset");
+                    const lg = el("legend"); lg.textContent = key; fs.appendChild(lg);
+                    buildRows(val, origVal, fs, opath, onChange);
+
+                    if (key === "palette") {
+                        const add = el("div", "row");
+                        const sel = el("select");
+                        sel.innerHTML = '<option value="">+ add colour…</option>';
+                        for (const k of state.basePaletteKeys) {
+                            if (k in val) continue;
+                            const o = el("option"); o.value = k; o.textContent = k; sel.appendChild(o);
+                        }
+                        sel.onchange = () => {
+                            const k = sel.value;
+                            if (!k) return;
+                            val[k] = state.basePalette[k] | 0;
+                            onChange(); renderEditor();
+                        };
+                        add.appendChild(el("label")).textContent = "";
+                        add.appendChild(sel);
+                        fs.appendChild(add);
+                    }
+                    container.appendChild(fs);
+                    continue;
+                }
+
+                const row = el("div", "row");
+                if (!deepEqual(val, origVal)) row.classList.add("changed");
+
+                const lab = el("label"); lab.textContent = key; lab.title = key;
+                row.appendChild(lab);
+
+                const enumVals = ENUMS[key];
+
+                if (enumVals && typeof val !== "object") {
+                    const sel = el("select");
+                    const cur = val == null ? "" : String(val);
+                    const vals = enumVals.slice();
+                    if (vals.indexOf(cur) < 0) vals.push(cur);
+                    for (const v of vals) {
+                        const o = el("option");
+                        o.value = v;
+                        o.textContent = v === "" ? "— none —" : v;
+                        sel.appendChild(o);
+                    }
+                    sel.value = cur;
+                    sel.onchange = () => { obj[key] = sel.value === "" ? null : sel.value; onChange(); };
+                    row.appendChild(sel);
+                } else if (typeof val === "number" && colorMode) {
+                    const picker = el("input"); picker.type = "color"; picker.value = hex6(val);
+                    const txt = el("input"); txt.type = "text"; txt.className = "hex";
+                    txt.value = "0x" + (val >>> 0).toString(16).padStart(6, "0");
+
+                    picker.oninput = () => {
+                        obj[key] = parseInt(picker.value.slice(1), 16);
+                        txt.value = "0x" + obj[key].toString(16).padStart(6, "0");
+                        onChange();
+                    };
+                    txt.onchange = () => {
+                        const n = Number(txt.value.trim());
+                        if (!isNaN(n)) {
+                            obj[key] = n >>> 0 & 0xffffff;
+                            picker.value = hex6(obj[key]);
+                            onChange();
+                        }
+                    };
+                    row.appendChild(picker);
+                    row.appendChild(txt);
+
+                    const del = el("button"); del.textContent = "×"; del.title = "remove colour";
+                    del.style.padding = "1px 7px";
+                    del.onclick = () => { delete obj[key]; onChange(); renderEditor(); };
+                    row.appendChild(del);
+                } else if (typeof val === "number") {
+                    const inp = el("input"); inp.type = "number";
+                    inp.step = Number.isInteger(val) ? "1" : "any";
+                    inp.value = val;
+                    inp.oninput = () => {
+                        const n = parseFloat(inp.value);
+                        if (!isNaN(n)) { obj[key] = n; onChange(); }
+                    };
+                    row.appendChild(inp);
+                } else if (typeof val === "boolean") {
+                    const inp = el("input"); inp.type = "checkbox"; inp.checked = val;
+                    inp.onchange = () => { obj[key] = inp.checked; onChange(); };
+                    row.appendChild(inp);
+                } else if (typeof val === "string") {
+                    const inp = el("input"); inp.type = "text"; inp.value = val;
+                    inp.oninput = () => { obj[key] = inp.value; onChange(); };
+                    row.appendChild(inp);
+                } else if (val === null || val === undefined) {
+                    const inp = el("input"); inp.type = "text"; inp.placeholder = "(null)";
+                    inp.value = val === null ? "null" : "";
+                    inp.onchange = () => {
+                        const t = inp.value.trim();
+                        obj[key] = t === "" || t === "null" ? null : (isNaN(Number(t)) ? t : Number(t));
+                        onChange();
+                    };
+                    row.appendChild(inp);
+                } else {
+                    const inp = el("input"); inp.type = "text"; inp.value = JSON.stringify(val);
+                    inp.onchange = () => { try { obj[key] = JSON.parse(inp.value); onChange(); } catch (e) { } };
+                    row.appendChild(inp);
+                }
+
+                if (colorMode) {
+                    const del = el("button"); del.textContent = "×"; del.style.padding = "1px 7px";
+                    del.title = "remove";
+                    del.onclick = () => { delete obj[key]; onChange(); renderEditor(); };
+                    if (!row.querySelector('button[title="remove colour"]')) row.appendChild(del);
+                }
+
+                container.appendChild(row);
+            }
+        }
+
+        let previewQueued = false;
+        function schedulePreview() {
+            renderSidebar();
+            if (previewQueued) return;
+            previewQueued = true;
+            requestAnimationFrame(() => { previewQueued = false; rebuildPreview(); });
+            updateStats();
+        }
+
+        function renderEditor() {
+            const form = $("#form");
+            form.innerHTML = "";
+
+            const e = state.selected;
+            if (!e) {
+                $("#typeName").value = "";
+                $("#builderPill").textContent = "—";
+                form.innerHTML = '<div class="empty">Select a type on the left.</div>';
+                rebuildPreview();
+                return;
+            }
+
+            $("#typeName").value = e.name;
+            $("#builderPill").textContent = e.builder;
+
+            if (e.parseErr) {
+                const w = el("div", "empty");
+                w.innerHTML = "This preset could not be parsed:<br><b>" + e.parseErr + "</b>";
+                form.appendChild(w);
+                return;
+            }
+
+            const fs = el("fieldset");
+            const lg = el("legend"); lg.textContent = "preset";
+            fs.appendChild(lg);
+
+            buildRows(e.preset, e.original, fs, [], () => {
+                for (const row of form.querySelectorAll(".row")) row.classList.remove("changed");
+                schedulePreview();
+            });
+            form.appendChild(fs);
+
+            if (e.preset.voxelOverrides && Object.keys(e.preset.voxelOverrides).length) {
+                const info = el("div");
+                info.style.cssText =
+                    "padding:8px 10px;margin:0 0 12px;border:1px solid var(--line);" +
+                    "border-radius:7px;background:var(--panel);font-size:11px;color:var(--dim)";
+                const parts = Object.keys(e.preset.voxelOverrides);
+                const total = parts.reduce((n, k) => n + e.preset.voxelOverrides[k].length, 0);
+                info.innerHTML =
+                    "<span style='color:var(--accent2)'>✎ Voxel overrides active</span><br>" +
+                    "parts: <b>" + parts.join(", ") + "</b><br>" +
+                    "total: <b>" + total + "</b> voxels — click <b>↺ Reset</b> to discard.";
+                form.appendChild(info);
+            }
+
+            rebuildPreview();
+            updateStats();
+        }
+
+        /* live-update the type name */
+        $("#typeName").addEventListener("input", (ev) => {
+            const e = state.selected;
+            if (!e) return;
+            e.name = ev.target.value.trim() || "unnamed";
+            renderSidebar();
+        });
+
+        /* ============================================================================
+           10.  TYPE-LEVEL ACTIONS
+           ========================================================================== */
+
+        $("#btnDuplicate").onclick = () => {
+            const e = state.selected;
+            if (!e) return;
+            const copy = {
+                name: uniqueName(e.name + "_copy"),
+                builder: e.builder,
+                preset: JSON.parse(JSON.stringify(e.preset)),
+                ast: null,
+                isNew: true,
+            };
+            state.entries.push(copy);
+            state.selected = copy;
+            renderSidebar(); renderEditor();
+            toast("Duplicated as " + copy.name);
+        };
+
+        $("#btnDelete").onclick = () => {
+            const e = state.selected;
+            if (!e) return;
+            if (!confirm("Delete type “" + e.name + "”?")) return;
+            if (!e.isNew) state.deleted.push(e);
+            state.entries.splice(state.entries.indexOf(e), 1);
+            state.selected = state.entries[0] || null;
+            renderSidebar(); renderEditor();
+        };
+
+        function uniqueName(base) {
+            base = base.replace(/[^\w$]/g, "_");
+            if (!/^[A-Za-z_$]/.test(base)) base = "_" + base;
+            let n = base, i = 2;
+            while (state.entries.some((e) => e.name === n)) n = base + "_" + i++;
+            return n;
+        }
+
+        function newType(builder) {
+            const sample = state.entries.find((x) => x.builder === builder && x.ast);
+            const preset = sample ? JSON.parse(JSON.stringify(sample.preset))
+                : { hp: 60, speedWalk: 1.6, speedRun: 3.4, attackDamage: 10, attackRange: 1.5 };
+            const e = {
+                name: uniqueName(builder === "buildAlien" ? "newalien" : "newzombie"),
+                builder, preset, ast: null, isNew: true,
+            };
+            state.entries.push(e);
+            state.selected = e;
+            renderSidebar(); renderEditor();
+        }
+
+        $("#btnNewZ").onclick = () => newType("buildZombie");
+        $("#btnNewA").onclick = () => newType("buildAlien");
+
+        /* ============================================================================
+           11.  SAVE / EXPORT
+           ========================================================================== */
+
+        async function doSave() {
+            if (!state.src) return;
+            let out;
+            try { out = buildOutput(); }
+            catch (err) { toast("Build failed: " + err.message, true); return; }
+
+            if (state.fileHandle && state.fileHandle.createWritable) {
+                try {
+                    const w = await state.fileHandle.createWritable();
+                    await w.write(out);
+                    await w.close();
+                    toast("Saved to " + state.fileName);
+                    return;
+                } catch (e) { /* fall through to download */ }
+            }
+            download(out, state.fileName || "enemy.js");
+        }
+
+        function download(text, name) {
+            const blob = new Blob([text], { type: "text/javascript" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url; a.download = name;
+            document.body.appendChild(a); a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            toast("Downloaded " + name);
+        }
+
+        $("#btnSave").onclick = doSave;
+        $("#btnSaveAs").onclick = () => {
+            if (!state.src) return;
+            download(buildOutput(), state.fileName || "enemy.js");
+        };
+        $("#btnCopy").onclick = async () => {
+            if (!state.src) return;
+            try { await navigator.clipboard.writeText(buildOutput()); toast("Source copied"); }
+            catch (e) { toast("Clipboard blocked", true); }
+        };
+
+        window.addEventListener("keydown", (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+                e.preventDefault(); doSave();
+            }
+        });
+
+        /* ============================================================================
+           12.  3-D PREVIEW
+           ========================================================================== */
+
+        const FACES = [
+            { n: [1, 0, 0], shade: 0.86, c: [[1, 0, 0], [1, 1, 0], [1, 0, 1], [1, 1, 1]] },
+            { n: [-1, 0, 0], shade: 0.86, c: [[0, 0, 0], [0, 0, 1], [0, 1, 0], [0, 1, 1]] },
+            { n: [0, 1, 0], shade: 1.00, c: [[0, 1, 0], [0, 1, 1], [1, 1, 0], [1, 1, 1]] },
+            { n: [0, -1, 0], shade: 0.55, c: [[0, 0, 0], [1, 0, 0], [0, 0, 1], [1, 0, 1]] },
+            { n: [0, 0, 1], shade: 0.74, c: [[0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]] },
+            { n: [0, 0, -1], shade: 0.74, c: [[0, 0, 0], [0, 1, 0], [1, 0, 0], [1, 1, 0]] },
+        ];
+
+        function buildVoxelGeometry(voxels, vs) {
+            if (!voxels || !voxels.length) return null;
+            const key = (x, y, z) => x + "," + y + "," + z;
+            const solid = new Set();
+            for (const v of voxels) solid.add(key(v[0], v[1], v[2]));
+
+            const positions = [], normals = [], colors = [], indices = [];
+            let cursor = 0;
+
+            for (const [x, y, z, hex] of voxels) {
+                const r = ((hex >> 16) & 255) / 255;
+                const g = ((hex >> 8) & 255) / 255;
+                const b = (hex & 255) / 255;
+                for (let f = 0; f < 6; f++) {
+                    const face = FACES[f];
+                    if (solid.has(key(x + face.n[0], y + face.n[1], z + face.n[2]))) continue;
+                    for (let k = 0; k < 4; k++) {
+                        const c = face.c[k];
+                        positions.push((x + c[0]) * vs, (y + c[1]) * vs, (z + c[2]) * vs);
+                        normals.push(face.n[0], face.n[1], face.n[2]);
+                        colors.push(r * face.shade, g * face.shade, b * face.shade);
+                    }
+                    indices.push(cursor, cursor + 1, cursor + 2, cursor + 1, cursor + 3, cursor + 2);
+                    cursor += 4;
+                }
+            }
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+            geo.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+            geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+            geo.setIndex(indices);
+            geo.computeBoundingSphere();
+            return geo;
+        }
+
+        const PV = {
+            renderer: null, scene: null, camera: null,
+            root: null, parts: null, model: null,
+            yaw: 0.7, pitch: 0.18, dist: 3.2,
+            autoRotate: false, animate: true, showParts: false,
+            baseMat: null,
+            t: 0, raf: null,
+            /* ---- voxel edit mode ---- */
+            editMode: false,
+            tool: "remove",
+            paintColor: 0x7a9060,
+            raycaster: null,
+            ndc: null,
+        };
+
+        function initPreview() {
+            const canvas = $("#previewCanvas");
+            const r = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+            r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+            PV.renderer = r;
+
+            const sc = new THREE.Scene();
+            sc.background = new THREE.Color(0x0f1115);
+            PV.scene = sc;
+
+            PV.camera = new THREE.PerspectiveCamera(38, 1, 0.05, 200);
+
+            sc.add(new THREE.HemisphereLight(0xbfd4ff, 0x2a3040, 1.15));
+
+            const d1 = new THREE.DirectionalLight(0xffffff, 0.8);
+            d1.position.set(3.5, 6, 4.5); sc.add(d1);
+            const d2 = new THREE.DirectionalLight(0x88aaff, 0.35);
+            d2.position.set(-4.5, 2.5, -3.5); sc.add(d2);
+
+            const grid = new THREE.GridHelper(8, 32, 0x39414f, 0x232833);
+            grid.position.y = -0.001;
+            sc.add(grid);
+
+            PV.baseMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+            PV.raycaster = new THREE.Raycaster();
+            PV.ndc = new THREE.Vector2();
+
+            /* ---- orbit + click-to-edit ---- */
+            let dragging = false, lx = 0, ly = 0;
+            let downX = 0, downY = 0, downT = 0;
+
+            canvas.addEventListener("pointerdown", (e) => {
+                dragging = true;
+                lx = e.clientX; ly = e.clientY;
+                downX = e.clientX; downY = e.clientY;
+                downT = performance.now();
+                canvas.setPointerCapture(e.pointerId);
+            });
+            canvas.addEventListener("pointerup", (e) => {
+                dragging = false;
+                try { canvas.releasePointerCapture(e.pointerId); } catch (x) { }
+
+                if (!PV.editMode) return;
+                const dx = e.clientX - downX;
+                const dy = e.clientY - downY;
+                const dt = performance.now() - downT;
+                if (dx * dx + dy * dy > 25 || dt > 400) return;  // it was a drag
+                applyVoxelTool(e);
+            });
+            canvas.addEventListener("pointermove", (e) => {
+                if (!dragging) return;
+                PV.yaw -= (e.clientX - lx) * 0.008;
+                PV.pitch = Math.max(-1.2, Math.min(1.3, PV.pitch + (e.clientY - ly) * 0.008));
+                lx = e.clientX; ly = e.clientY;
+            });
+            canvas.addEventListener("wheel", (e) => {
+                e.preventDefault();
+                PV.dist = Math.max(0.35, Math.min(20, PV.dist * (1 + Math.sign(e.deltaY) * 0.12)));
+            }, { passive: false });
+
+            $("#chkSpin").onchange = (e) => { PV.autoRotate = e.target.checked; };
+            $("#chkWalk").onchange = (e) => { PV.animate = e.target.checked; };
+            $("#chkParts").onchange = (e) => { PV.showParts = e.target.checked; applyPartColors(); };
+
+            const ro = new ResizeObserver(() => resizePreview());
+            ro.observe(canvas.parentElement);
+            resizePreview();
+
+            const loop = () => {
+                PV.raf = requestAnimationFrame(loop);
+                PV.t += 1 / 60;
+                if (PV.autoRotate) PV.yaw += 0.006;
+                animatePreview();
+                const cam = PV.camera;
+                const cp = Math.cos(PV.pitch);
+                cam.position.set(
+                    Math.sin(PV.yaw) * cp * PV.dist,
+                    0.85 + Math.sin(PV.pitch) * PV.dist,
+                    Math.cos(PV.yaw) * cp * PV.dist,
+                );
+                cam.lookAt(0, 0.85, 0);
+                r.render(sc, cam);
+            };
+            loop();
+        }
+
+        function resizePreview() {
+            const canvas = $("#previewCanvas");
+            const w = canvas.clientWidth || 1, h = canvas.clientHeight || 1;
+            PV.renderer.setSize(w, h, false);
+            PV.camera.aspect = w / h;
+            PV.camera.updateProjectionMatrix();
+        }
+
+        const PART_COLORS = {
+            head: 0xff5566, torso: 0x55aaff, armL: 0xffcc44,
+            armR: 0xffaa22, legL: 0x66dd88, legR: 0x44bb66,
+        };
+
+        function applyPartColors() {
+            if (!PV.parts) return;
+            for (const k in PV.parts) {
+                const mesh = PV.parts[k].mesh;
+                if (!mesh) continue;
+                if (PV.showParts) {
+                    if (mesh.material === PV.baseMat) {
+                        mesh.material = new THREE.MeshLambertMaterial({ color: PART_COLORS[k] || 0x888888 });
+                    } else {
+                        mesh.material.color.setHex(PART_COLORS[k] || 0x888888);
+                    }
+                } else {
+                    mesh.material = PV.baseMat;
+                }
+            }
+        }
+
+        function disposePreviewRoot() {
+            if (!PV.root) return;
+            PV.scene.remove(PV.root);
+            PV.root.traverse((o) => {
+                if (o.isMesh) {
+                    if (o.geometry) o.geometry.dispose();
+                    if (o.material && o.material !== PV.baseMat && o.material.dispose) o.material.dispose();
+                }
+            });
+            PV.root = null; PV.parts = null; PV.model = null;
+        }
+
+        function rebuildPreview() {
+            if (!PV.renderer) return;
+            disposePreviewRoot();
+
+            const e = state.selected;
+            if (!e || e.parseErr || !state.sandbox) { updateStats(); return; }
+
+            const fn = e.builder === "buildAlien" ? state.sandbox.buildAlien : state.sandbox.buildZombie;
+            if (typeof fn !== "function") { updateStats("builders unavailable"); return; }
+
+            let model;
+            try { model = fn(JSON.parse(JSON.stringify(e.preset))); }
+            catch (err) { updateStats("build error: " + err.message); return; }
+
+            if (!model || !model.parts) { updateStats("no parts"); return; }
+
+            /* Apply voxel overrides client-side, so the editor works even when
+               enemy.js doesn't yet contain applyVoxelOverrides. */
+            if (e.preset.voxelOverrides) {
+                for (const k in e.preset.voxelOverrides) {
+                    if (model.parts[k]) {
+                        model.parts[k].voxels = e.preset.voxelOverrides[k].map(v => v.slice());
+                    }
+                }
+            }
+
+            const vs = model.voxelSize || 0.07;
+            const root = new THREE.Group();
+            const parts = {};
+            let total = 0;
+
+            for (const key in model.parts) {
+                const spec = model.parts[key];
+                const pivot = new THREE.Group();
+                pivot.position.set(spec.pivot[0] * vs, spec.pivot[1] * vs, spec.pivot[2] * vs);
+
+                const geo = buildVoxelGeometry(spec.voxels, vs);
+                const mesh = new THREE.Mesh(geo || new THREE.BufferGeometry(), PV.baseMat);
+                pivot.add(mesh);
+
+                parts[key] = { pivot, mesh, base: pivot.position.clone(), spec };
+                total += spec.voxels.length;
+            }
+            for (const key in model.parts) {
+                const parentKey = model.parts[key].parent;
+                const parent = parentKey === "root" ? root : (parts[parentKey] ? parts[parentKey].pivot : root);
+                parent.add(parts[key].pivot);
+            }
+
+            PV.scene.add(root);
+            PV.root = root; PV.parts = parts; PV.model = model;
+            PV.totalVoxels = total;
+            applyPartColors();
+
+            const box = new THREE.Box3().setFromObject(root);
+            if (isFinite(box.min.y)) {
+                const size = new THREE.Vector3(); box.getSize(size);
+                const h = Math.max(size.y, 0.5);
+                PV.dist = h * 2.0;
+            }
+
+            updateStats();
+        }
+
+        function animatePreview() {
+            if (!PV.parts || !PV.animate) return;
+            const t = PV.t;
+            const P = PV.parts;
+
+            const swing = Math.sin(t * 3.2);
+            const bounce = Math.abs(Math.sin(t * 3.2));
+
+            if (P.legL) P.legL.pivot.rotation.x = swing * 0.55;
+            if (P.legR) P.legR.pivot.rotation.x = -swing * 0.55;
+
+            if (P.armL) P.armL.pivot.rotation.x = -swing * 0.45;
+            if (P.armR) P.armR.pivot.rotation.x = swing * 0.45;
+
+            if (P.torso) {
+                P.torso.pivot.rotation.x = -0.06;
+                P.torso.pivot.rotation.z = -swing * 0.03;
+                if (P.torso.base) P.torso.pivot.position.y = P.torso.base.y - bounce * 0.02;
+            }
+            if (P.head) {
+                P.head.pivot.rotation.y = Math.sin(t * 0.7) * 0.18;
+                P.head.pivot.rotation.x = Math.sin(t * 1.3) * 0.05;
+            }
+        }
+
+        function updateStats(extra) {
+            const e = state.selected;
+            const s = $("#stats");
+            const vc = $("#voxCount");
+            if (extra) { s.textContent = extra; vc.textContent = ""; return; }
+            if (!e) { s.textContent = "—"; vc.textContent = ""; return; }
+
+            const m = PV.model;
+            const lines = [];
+            lines.push(e.name + "  ·  " + e.builder);
+            if (PV.editMode) lines.push("✎ EDIT MODE  ·  tool: " + PV.tool);
+            if (m) {
+                lines.push("voxel size  " + (m.voxelSize || 0).toFixed(4));
+                lines.push("body type   " + (m.bodyType || "?"));
+                lines.push("hp " + m.hp + "   walk " + m.speedWalk + "   run " + m.speedRun);
+                lines.push("dmg " + m.attackDamage + "   range " + m.attackRange);
+                if (m.startsCrawling) lines.push("starts crawling");
+                lines.push("");
+                for (const k in m.parts) {
+                    const p = m.parts[k];
+                    lines.push("  " + k.padEnd(7) + " " + String(p.voxels.length).padStart(4) + " vox");
+                }
+            }
+            s.textContent = lines.join("\n");
+            vc.textContent = PV.totalVoxels != null ? PV.totalVoxels + " voxels" : "";
+        }
+
+        /* ============================================================================
+           13.  VOXEL EDIT MODE
+           ========================================================================== */
+
+        function setupVoxelEditor() {
+            const btnEdit = $("#btnEditVox");
+            const tools = $("#editTools");
+            const canvas = $("#previewCanvas");
+
+            btnEdit.onclick = () => {
+                PV.editMode = !PV.editMode;
+                btnEdit.classList.toggle("on", PV.editMode);
+                tools.classList.toggle("on", PV.editMode);
+                canvas.classList.toggle("editing", PV.editMode);
+                updateStats();
+                toast(PV.editMode
+                    ? "Voxel edit: " + PV.tool + " — click a face"
+                    : "Voxel edit off");
+            };
+
+            const setTool = (t) => {
+                PV.tool = t;
+                $("#toolAdd").classList.toggle("on", t === "add");
+                $("#toolRemove").classList.toggle("on", t === "remove");
+                $("#toolPaint").classList.toggle("on", t === "paint");
+                updateStats();
+            };
+            $("#toolAdd").onclick = () => setTool("add");
+            $("#toolRemove").onclick = () => setTool("remove");
+            $("#toolPaint").onclick = () => setTool("paint");
+            setTool("remove");
+
+            $("#paintColor").oninput = (e) => {
+                PV.paintColor = parseInt(e.target.value.slice(1), 16) >>> 0;
+            };
+            /* initialize from a reasonable default */
+            $("#paintColor").value = "#" + (PV.paintColor >>> 0).toString(16).padStart(6, "0");
+
+            $("#btnResetVox").onclick = () => {
+                const e = state.selected;
+                if (!e) return;
+                if (!e.preset.voxelOverrides) { toast("Nothing to reset"); return; }
+                if (!confirm("Discard all voxel edits for “" + e.name + "”?")) return;
+                delete e.preset.voxelOverrides;
+                renderSidebar();
+                renderEditor();
+                toast("Voxel edits reset");
+            };
+        }
+
+        function applyVoxelTool(ev) {
+            const pick = pickVoxel(ev);
+            if (!pick) return;
+
+            const entry = state.selected;
+            if (!entry) return;
+
+            const { partKey, vx, vy, vz, nx, ny, nz } = pick;
+            const src = PV.parts[partKey].spec.voxels;
+            let changed = false;
+
+            if (PV.tool === "add") {
+                const ax = vx + nx, ay = vy + ny, az = vz + nz;
+                if (findVoxel(src, ax, ay, az) < 0) {
+                    src.push([ax, ay, az, PV.paintColor >>> 0]);
+                    changed = true;
+                }
+            } else if (PV.tool === "remove") {
+                const i = findVoxel(src, vx, vy, vz);
+                if (i >= 0) { src.splice(i, 1); changed = true; }
+            } else if (PV.tool === "paint") {
+                const i = findVoxel(src, vx, vy, vz);
+                if (i >= 0 && (src[i][3] >>> 0) !== (PV.paintColor >>> 0)) {
+                    src[i][3] = PV.paintColor >>> 0;
+                    changed = true;
+                }
+            }
+
+            if (!changed) return;
+
+            /* Rebuild just this part's geometry for instant feedback. */
+            const part = PV.parts[partKey];
+            if (part.mesh.geometry) part.mesh.geometry.dispose();
+            part.mesh.geometry = buildVoxelGeometry(src, PV.model.voxelSize);
+
+            /* Persist into the preset. */
+            if (!entry.preset.voxelOverrides) entry.preset.voxelOverrides = {};
+            entry.preset.voxelOverrides[partKey] = src.map(v => v.slice());
+
+            /* Update counters & sidebar-modified dot. */
+            let total = 0;
+            for (const k in PV.parts) total += PV.parts[k].spec.voxels.length;
+            PV.totalVoxels = total;
+
+            updateStats();
+            renderSidebar();
+        }
+
+        function pickVoxel(ev) {
+            const canvas = $("#previewCanvas");
+            const r = canvas.getBoundingClientRect();
+            PV.ndc.x = ((ev.clientX - r.left) / r.width) * 2 - 1;
+            PV.ndc.y = -((ev.clientY - r.top) / r.height) * 2 + 1;
+
+            PV.raycaster.setFromCamera(PV.ndc, PV.camera);
+
+            const meshes = [], keys = [];
+            for (const k in PV.parts) {
+                const m = PV.parts[k].mesh;
+                if (m && m.visible !== false && m.geometry.attributes.position) {
+                    meshes.push(m); keys.push(k);
+                }
+            }
+            if (!meshes.length) return null;
+
+            const hits = PV.raycaster.intersectObjects(meshes, false);
+            if (!hits.length) return null;
+
+            const hit = hits[0];
+            const idx = meshes.indexOf(hit.object);
+            if (idx < 0) return null;
+
+            const partKey = keys[idx];
+            const vs = PV.model.voxelSize;
+
+            const n = hit.face.normal;
+
+            /* Move the hit point into local space, then nudge along -n by
+               half a voxel so the floor() lands inside the hit voxel. */
+            const p = hit.point.clone();
+            hit.object.worldToLocal(p);
+            const nudge = vs * 0.5;
+            const vx = Math.floor((p.x - n.x * nudge) / vs);
+            const vy = Math.floor((p.y - n.y * nudge) / vs);
+            const vz = Math.floor((p.z - n.z * nudge) / vs);
+
+            return { partKey, vx, vy, vz, nx: n.x, ny: n.y, nz: n.z };
+        }
+
+        function findVoxel(voxels, x, y, z) {
+            for (let i = 0; i < voxels.length; i++) {
+                const v = voxels[i];
+                if (v[0] === x && v[1] === y && v[2] === z) return i;
+            }
+            return -1;
+        }
+
+        /* ============================================================================
+           GO
+           ========================================================================== */
+        initPreview();
+        setupVoxelEditor();
+    </script>
+</body>
+
+</html>

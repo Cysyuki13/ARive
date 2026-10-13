@@ -1,0 +1,2949 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+  <meta charset="utf-8">
+  <title>ARive — 音訊編輯器</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html,
+    body {
+      height: 100%;
+    }
+
+    body {
+      background: #0b0d11;
+      color: #c8b88a;
+      font: 11px/1.4 "Courier New", "Microsoft JhengHei", monospace;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    button {
+      font: bold 10px "Courier New", "Microsoft JhengHei", monospace;
+      letter-spacing: 1px;
+      background: #12161d;
+      color: #c8b88a;
+      border: 2px solid #2b333f;
+      padding: 5px 9px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all .1s;
+    }
+
+    button:hover:not(:disabled) {
+      border-color: #e8c86a;
+      color: #f6dd8b;
+    }
+
+    button:disabled {
+      opacity: .35;
+      cursor: not-allowed;
+    }
+
+    button.primary {
+      border-color: #e8c86a;
+      color: #f6dd8b;
+    }
+
+    button.primary:hover:not(:disabled) {
+      background: #2b1f0f;
+    }
+
+    input[type=range] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: #12161d;
+      height: 4px;
+      outline: none;
+      border: 1px solid #2b333f;
+      flex: 1;
+    }
+
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 10px;
+      height: 14px;
+      background: #e8c86a;
+      cursor: pointer;
+      border: 1px solid #05070a;
+    }
+
+    input[type=range]::-moz-range-thumb {
+      width: 10px;
+      height: 14px;
+      background: #e8c86a;
+      cursor: pointer;
+      border: 1px solid #05070a;
+    }
+
+    input[type=number],
+    select,
+    input[type=text] {
+      background: #05070a;
+      color: #c8b88a;
+      border: 1px solid #2b333f;
+      padding: 3px 5px;
+      font: 11px "Courier New", monospace;
+    }
+
+    input[type=number] {
+      width: 70px;
+    }
+
+    input[type=checkbox] {
+      accent-color: #e8c86a;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 12px;
+      background: #12161d;
+      border-bottom: 2px solid #2b333f;
+      flex: 0 0 auto;
+    }
+
+    .brand {
+      font-weight: bold;
+      letter-spacing: 3px;
+      color: #e8c86a;
+      font-size: 12px;
+    }
+
+    .file-info {
+      color: #6a5a44;
+      font-size: 10px;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .file-info.modified {
+      color: #d04030;
+    }
+
+    .actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 6px;
+      padding: 6px 12px;
+      flex-wrap: wrap;
+      background: #0e1116;
+      border-bottom: 1px solid #1a1d24;
+      flex: 0 0 auto;
+      align-items: center;
+    }
+
+    .toolbar .group {
+      display: flex;
+      gap: 3px;
+      padding-right: 8px;
+      border-right: 1px solid #1a1d24;
+      align-items: center;
+    }
+
+    .toolbar .group:last-child {
+      border-right: none;
+      padding-right: 0;
+    }
+
+    .toolbar label {
+      color: #6a5a44;
+      font-size: 10px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .workflowbar {
+      display: flex;
+      gap: 8px;
+      padding: 8px 12px;
+      flex-wrap: wrap;
+      background: linear-gradient(to right, #1a1408 0%, #0e1116 100%);
+      border-bottom: 2px solid #3a2e26;
+      flex: 0 0 auto;
+      align-items: center;
+    }
+
+    .wflabel {
+      color: #e8c86a;
+      font-size: 10px;
+      letter-spacing: 2px;
+      font-weight: bold;
+      padding-right: 6px;
+      text-shadow: 0 0 8px rgba(232, 200, 106, .4);
+    }
+
+    .workflowbar button {
+      background: #1a1408;
+      border-color: #3a2e26;
+      font-size: 10px;
+      padding: 5px 11px;
+    }
+
+    .workflowbar button:hover:not(:disabled) {
+      background: #2b1f0f;
+      border-color: #e8c86a;
+    }
+
+    .fxbar {
+      display: flex;
+      gap: 8px;
+      padding: 6px 12px;
+      flex-wrap: wrap;
+      background: #0a0c10;
+      border-bottom: 1px solid #1a1d24;
+      flex: 0 0 auto;
+      align-items: center;
+    }
+
+    .fxgroup {
+      display: flex;
+      gap: 3px;
+      padding-right: 10px;
+      border-right: 1px solid #1a1d24;
+      align-items: center;
+    }
+
+    .fxgroup:last-child {
+      border-right: none;
+      padding-right: 0;
+    }
+
+    .fxlabel {
+      color: #4a5a30;
+      font-size: 9px;
+      letter-spacing: 2px;
+      padding-right: 4px;
+      font-weight: bold;
+    }
+
+    .fxgroup button {
+      font-size: 9px;
+      padding: 3px 7px;
+      background: #0e1116;
+      border-width: 1px;
+    }
+
+    .viewport {
+      flex: 1;
+      position: relative;
+      min-height: 0;
+      background: #05070a;
+      overflow: hidden;
+    }
+
+    #wave {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: crosshair;
+    }
+
+    .status {
+      display: flex;
+      gap: 18px;
+      padding: 6px 12px;
+      background: #12161d;
+      border-top: 2px solid #2b333f;
+      flex: 0 0 auto;
+      font-size: 10px;
+      color: #6a5a44;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .status .item {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+    }
+
+    .status .val {
+      color: #c8b88a;
+    }
+
+    .status .val.sel {
+      color: #e8c86a;
+    }
+
+    .status .spacer {
+      flex: 1;
+    }
+
+    .desc-bar {
+      padding: 6px 12px;
+      background: #0e1116;
+      border-top: 1px solid #1a1d24;
+      font-size: 10px;
+      color: #8a9a50;
+      min-height: 24px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+
+    .desc-bar b {
+      color: #e8c86a;
+    }
+
+    .desc-bar .key {
+      background: #12161d;
+      border: 1px solid #2b333f;
+      padding: 1px 5px;
+      color: #c8b88a;
+    }
+
+    .help {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: rgba(14, 17, 22, .92);
+      border: 1px solid #2b333f;
+      padding: 10px 14px;
+      font-size: 10px;
+      color: #6a5a44;
+      pointer-events: none;
+      line-height: 1.7;
+      max-width: 260px;
+    }
+
+    .help b {
+      color: #c8b88a;
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, .85);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    .modal.open {
+      display: flex;
+    }
+
+    .modal-content {
+      background: #0e1116;
+      border: 2px solid #e8c86a;
+      padding: 18px;
+      max-width: 720px;
+      max-height: 85vh;
+      overflow-y: auto;
+      line-height: 1.8;
+    }
+
+    .modal-content h2 {
+      color: #e8c86a;
+      letter-spacing: 3px;
+      font-size: 13px;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #2b333f;
+    }
+
+    .modal-content h3 {
+      color: #f6dd8b;
+      letter-spacing: 2px;
+      font-size: 11px;
+      margin: 14px 0 6px;
+    }
+
+    .modal-content table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+
+    .modal-content td {
+      padding: 4px 8px;
+      border-bottom: 1px solid #1a1d24;
+      vertical-align: top;
+    }
+
+    .modal-content td:first-child {
+      color: #e8c86a;
+      font-weight: bold;
+      white-space: nowrap;
+      width: 130px;
+    }
+
+    .modal-content .kbd {
+      background: #12161d;
+      border: 1px solid #2b333f;
+      padding: 1px 6px;
+      color: #c8b88a;
+      font-size: 10px;
+      border-radius: 2px;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid #1a1d24;
+    }
+
+    .fx-field {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-size: 11px;
+    }
+
+    .fx-field>label {
+      flex: 0 0 140px;
+      color: #6a5a44;
+    }
+
+    .fx-field>input[type=range] {
+      flex: 1;
+    }
+
+    .fx-field>.fx-val {
+      flex: 0 0 90px;
+      text-align: right;
+      color: #c8b88a;
+      background: #05070a;
+      padding: 2px 6px;
+      border: 1px solid #1a1d24;
+      font-size: 10px;
+    }
+
+    .fx-desc {
+      font-size: 10px;
+      color: #6a5a44;
+      background: #05070a;
+      padding: 8px 10px;
+      border-left: 2px solid #2b333f;
+      margin-bottom: 14px;
+      line-height: 1.6;
+      white-space: pre-line;
+    }
+
+    .presets-section {
+      margin-bottom: 14px;
+      padding: 10px 12px;
+      background: linear-gradient(to right, #1a1408, #0e1116);
+      border: 1px solid #3a2e26;
+      border-radius: 2px;
+    }
+
+    .presets-section .ps-title {
+      color: #e8c86a;
+      font-size: 10px;
+      letter-spacing: 2px;
+      margin-bottom: 8px;
+      font-weight: bold;
+    }
+
+    .presets-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .presets-row button {
+      background: #1a1408;
+      border-color: #3a2e26;
+      font-size: 10px;
+      padding: 4px 10px;
+    }
+
+    .presets-row button:hover:not(:disabled) {
+      background: #2b1f0f;
+      border-color: #e8c86a;
+    }
+
+    .user-presets {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px dashed #2b333f;
+    }
+
+    .user-presets .up-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 6px;
+      flex-wrap: wrap;
+    }
+
+    .user-presets .up-name {
+      background: #05070a;
+      border: 1px solid #2b333f;
+      color: #c8b88a;
+      padding: 3px 8px;
+      font-size: 10px;
+      flex: 1;
+      min-width: 120px;
+    }
+
+    .preview-bar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      padding: 8px 12px;
+      margin-top: 10px;
+      background: #05070a;
+      border: 1px solid #1a1d24;
+      font-size: 10px;
+      color: #6a5a44;
+    }
+
+    .preview-bar b {
+      color: #e8c86a;
+    }
+
+    .preview-bar .hint {
+      flex: 1;
+    }
+
+    .range-note {
+      margin: 8px 0 12px;
+      padding: 6px 10px;
+      background: #1a1408;
+      border: 1px solid #3a2e26;
+      font-size: 10px;
+      color: #e8c86a;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .range-note .tag {
+      background: #2b1f0f;
+      padding: 2px 6px;
+      border: 1px solid #e8c86a;
+      letter-spacing: 1px;
+    }
+
+    .wf-progress {
+      padding: 12px;
+      background: #05070a;
+      border: 1px solid #1a1d24;
+      margin: 12px 0;
+      font-size: 11px;
+      color: #8a9a50;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .wf-step {
+      padding: 4px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid #0e1116;
+    }
+
+    .wf-step .icon {
+      color: #e8c86a;
+      width: 16px;
+    }
+
+    .wf-step .name {
+      flex: 1;
+      color: #c8b88a;
+    }
+
+    .wf-step .status {
+      color: #6a5a44;
+      font-size: 10px;
+    }
+
+    .wf-step.done .status {
+      color: #8a9a50;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 60px;
+      transform: translateX(-50%);
+      background: #12161d;
+      border: 2px solid #e8c86a;
+      color: #f6dd8b;
+      padding: 8px 16px;
+      letter-spacing: 2px;
+      font-size: 11px;
+      opacity: 0;
+      transition: opacity .2s;
+      pointer-events: none;
+      z-index: 200;
+    }
+
+    .toast.show {
+      opacity: 1;
+    }
+
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #05070a;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #2b333f;
+      border: 2px solid #05070a;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #e8c86a;
+    }
+
+    .drop-overlay {
+      position: absolute;
+      inset: 0;
+      display: none;
+      background: rgba(232, 200, 106, .08);
+      border: 3px dashed #e8c86a;
+      align-items: center;
+      justify-content: center;
+      color: #e8c86a;
+      letter-spacing: 4px;
+      font-size: 16px;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .drop-overlay.show {
+      display: flex;
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <div class="brand">◈ ARIVE · 音訊編輯器 v2</div>
+    <div class="file-info" id="fileInfo">尚未載入檔案</div>
+    <div class="actions">
+      <button id="btnOpen" class="primary" data-desc="開啟音訊檔（支援 MP3 / WAV / OGG / FLAC / M4A），或以拖放方式丟到畫面。">開啟檔案</button>
+      <button id="btnExportWav" disabled data-desc="將目前的樣本資料匯出成 16 位元 WAV 檔案。">匯出 WAV</button>
+      <button id="btnExportMp3" disabled data-desc="將目前的樣本資料匯出成 192 kbps MP3。">匯出 MP3</button>
+      <input type="file" id="filePicker" accept="audio/*" hidden>
+    </div>
+  </header>
+
+  <div class="workflowbar">
+    <span class="wflabel">◈ 一鍵工作流</span>
+    <button data-workflow="gunshot" disabled data-desc="槍聲標準處理：移除 DC → 正規化 → 輕度壓縮 → 淡出（5ms）。套用於選取範圍；無選取時套用於整段。">🔫
+      槍聲處理</button>
+    <button data-workflow="gunshot_far" disabled data-desc="遠處槍聲：低通（1.8kHz）→ 小房間殘響 → 輕微壓縮。">🔫 遠處槍聲</button>
+    <button data-workflow="footstep" disabled data-desc="腳步聲循環：移除 DC → 修剪靜音 → 循環接縫（30ms）→ 正規化 → 雜訊閘。">👣 腳步聲循環</button>
+    <button data-workflow="explosion" disabled data-desc="爆炸處理：移除 DC → 正規化 → 壓縮 → 軟削波 → 淡出。">💥 爆炸處理</button>
+    <button data-workflow="distant_boom" disabled data-desc="遠處爆炸：低通（1.2kHz）→ 大廳殘響 → 壓縮。">💥 遠處爆炸</button>
+    <button data-workflow="radio" disabled data-desc="對講機效果：帶通（1.5kHz）→ 軟削波 → 位元壓碎（8bit, 2x）→ 高通（300Hz）。">📻
+      對講機</button>
+    <button data-workflow="underwater" disabled data-desc="水下效果：低通（600Hz）→ 混響 → 輕微顫音。">🌊 水下效果</button>
+    <button data-workflow="horror" disabled data-desc="恐怖怪物：重新取樣（-5 半音）→ 混響 → 軟削波 → 立體聲加寬。">👻 恐怖怪物</button>
+    <button data-workflow="old_tape" disabled data-desc="老舊錄音：高通（150Hz）→ 軟削波 → 位元壓碎 → 輕微回聲。">📼 老舊錄音</button>
+    <button data-workflow="mechanical" disabled data-desc="機械化：顫音 → 軟削波 → 立體聲加寬。">⚙ 機械化</button>
+    <button data-workflow="clean_up" disabled data-desc="通用清理：移除 DC → 修剪靜音 → 爆音修復 → 正規化 → 淡出。">✨ 通用清理</button>
+  </div>
+
+  <div class="toolbar">
+    <div class="group">
+      <button id="btnUndo" disabled data-desc="復原上一次的編輯動作。" data-key="Ctrl+Z">↶ 復原</button>
+      <button id="btnRedo" disabled data-desc="重做剛才被復原的編輯動作。" data-key="Ctrl+Y">↷ 重做</button>
+    </div>
+
+    <div class="group">
+      <button id="btnPlay" disabled data-desc="從播放頭位置開始播放；勾選「循環選取」時在選取範圍內循環。" data-key="Space">▶ 播放</button>
+      <button id="btnStop" disabled data-desc="停止播放。" data-key="Esc">■ 停止</button>
+      <label title="勾選後播放時會不斷循環選取範圍。">
+        <input type="checkbox" id="chkLoop"> 循環選取
+      </label>
+    </div>
+
+    <div class="group">
+      <button id="btnCopy" disabled data-desc="複製選取範圍到剪貼簿。" data-key="Ctrl+C">複製</button>
+      <button id="btnCut" disabled data-desc="剪下選取範圍。" data-key="Ctrl+X">剪下</button>
+      <button id="btnPaste" disabled data-desc="貼上剪貼簿內容。" data-key="Ctrl+V">貼上</button>
+      <button id="btnDelete" disabled data-desc="刪除選取範圍。" data-key="Delete">刪除</button>
+      <button id="btnSilence" disabled data-desc="將選取範圍靜音。">靜音</button>
+    </div>
+
+    <div class="group">
+      <button id="btnTrimSel" disabled data-desc="裁切成只保留選取範圍。">裁切至選取</button>
+      <button id="btnTrimSilence" disabled data-desc="自動修剪開頭與結尾的無聲段落（作用於整段）。">修剪靜音</button>
+    </div>
+
+    <div class="group">
+      <button id="btnFadeIn" disabled data-desc="對選取範圍施加線性淡入（無選取時作用於整段）。">淡入</button>
+      <button id="btnFadeOut" disabled data-desc="對選取範圍施加線性淡出（無選取時作用於整段）。">淡出</button>
+      <button id="btnNormalize" disabled data-desc="將選取範圍內的峰值調整到 -1 dBFS。">正規化</button>
+      <button id="btnAmplify" disabled data-desc="開啟增幅對話框（作用於選取範圍）。">增幅…</button>
+      <button id="btnReverse" disabled data-desc="反轉選取範圍的樣本順序。">反轉</button>
+      <button id="btnInsertSilence" disabled data-desc="在播放頭插入靜音。">插入靜音…</button>
+    </div>
+
+    <div class="group">
+      <button id="btnHelp" class="primary" data-desc="顯示完整的功能說明。" data-key="F1">? 說明</button>
+    </div>
+  </div>
+
+  <div class="fxbar">
+    <div class="fxgroup">
+      <span class="fxlabel">濾波</span>
+      <button data-fx="lowpass" disabled data-desc="低通濾波：衰減高頻，讓聲音變悶。">低通</button>
+      <button data-fx="highpass" disabled data-desc="高通濾波：衰減低頻，讓聲音變薄。">高通</button>
+      <button data-fx="bandpass" disabled data-desc="帶通濾波：只保留某頻率範圍。">帶通</button>
+    </div>
+    <div class="fxgroup">
+      <span class="fxlabel">空間</span>
+      <button data-fx="echo" disabled data-desc="回聲：加入固定延遲的重複音。">回聲</button>
+      <button data-fx="reverb" disabled data-desc="混響：模擬房間殘響。">混響</button>
+      <button data-fx="chorus" disabled data-desc="合唱：延遲調變複製。">合唱</button>
+    </div>
+    <div class="fxgroup">
+      <span class="fxlabel">調變</span>
+      <button data-fx="tremolo" disabled data-desc="顫音：週期性音量調變。">顫音</button>
+    </div>
+    <div class="fxgroup">
+      <span class="fxlabel">失真</span>
+      <button data-fx="softclip" disabled data-desc="軟削波：溫和飽和。">軟削波</button>
+      <button data-fx="hardclip" disabled data-desc="硬削波：粗糙破音。">硬削波</button>
+      <button data-fx="foldback" disabled data-desc="摺疊失真：金屬科幻感。">摺疊</button>
+      <button data-fx="bitcrush" disabled data-desc="位元壓碎：復古 8-bit 感。">位元壓碎</button>
+    </div>
+    <div class="fxgroup">
+      <span class="fxlabel">動態</span>
+      <button data-fx="compressor" disabled data-desc="壓縮器：縮小動態範圍。">壓縮器</button>
+      <button data-fx="gate" disabled data-desc="雜訊閘：衰減低音量段落。">雜訊閘</button>
+    </div>
+    <div class="fxgroup">
+      <span class="fxlabel">音高</span>
+      <button data-fx="resample" disabled data-desc="重新取樣：同時改變音高與長度。">速度/音高</button>
+    </div>
+    <div class="fxgroup">
+      <span class="fxlabel">工具</span>
+      <button data-fx="removedc" disabled data-desc="移除直流偏移。">移除 DC</button>
+      <button data-fx="stereowiden" disabled data-desc="立體聲加寬。">立體聲加寬</button>
+      <button data-fx="declick" disabled data-desc="爆音修復。">爆音修復</button>
+      <button data-fx="loopcrossfade" disabled data-desc="循環接縫：尾端交叉淡入開頭。">循環接縫</button>
+    </div>
+  </div>
+
+  <div class="viewport" id="viewport">
+    <canvas id="wave"></canvas>
+    <div class="drop-overlay" id="dropOverlay">放開以載入音訊檔</div>
+    <div class="help">
+      <b>滾輪</b> — 縮放<br>
+      <b>中鍵拖曳</b> — 平移<br>
+      <b>點擊</b> — 移動播放頭<br>
+      <b>拖曳</b> — 建立選取範圍<br>
+      <b>Shift+拖曳</b> — 延伸選取<br>
+      <b>空白鍵</b> — 播放/停止<br>
+      <b>F1</b> — 完整說明
+    </div>
+  </div>
+
+  <div class="status">
+    <div class="item">播放頭 <span class="val" id="stPos">0.000 秒</span></div>
+    <div class="item">選取 <span class="val sel" id="stSel">—</span></div>
+    <div class="item">長度 <span class="val" id="stLen">—</span></div>
+    <div class="item">取樣率 <span class="val" id="stRate">—</span></div>
+    <div class="item">聲道 <span class="val" id="stCh">—</span></div>
+    <div class="item">峰值 <span class="val" id="stPeak">—</span></div>
+    <div class="spacer"></div>
+    <div class="item">縮放 <span class="val" id="stZoom">1.0×</span></div>
+  </div>
+
+  <div class="desc-bar" id="descBar">
+    <span id="descText">將滑鼠移到任何按鈕上，這裡會顯示該功能的說明。</span>
+  </div>
+
+  <div class="modal" id="ampModal">
+    <div class="modal-content" style="max-width:420px">
+      <h2>◈ 增幅</h2>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <label style="flex:0 0 90px;color:#6a5a44">增益（dB）</label>
+        <input type="range" id="ampSlider" min="-24" max="24" step="0.5" value="0">
+        <span id="ampVal" style="flex:0 0 40px;text-align:right;color:#c8b88a">0.0</span>
+      </div>
+      <div style="font-size:10px;color:#6a5a44">
+        作用於選取範圍；若沒有選取則作用於整段。
+      </div>
+      <div class="modal-actions">
+        <button id="ampCancel">取消</button>
+        <button id="ampApply" class="primary">套用</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="silModal">
+    <div class="modal-content" style="max-width:420px">
+      <h2>◈ 插入靜音</h2>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <label style="flex:0 0 90px;color:#6a5a44">秒數</label>
+        <input type="number" id="silSecs" min="0.001" max="10" step="0.05" value="0.2">
+      </div>
+      <div class="modal-actions">
+        <button id="silCancel">取消</button>
+        <button id="silApply" class="primary">插入</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="fxModal">
+    <div class="modal-content" style="max-width:640px">
+      <h2 id="fxTitle">◈ 效果</h2>
+      <div class="fx-desc" id="fxDesc"></div>
+
+      <div class="range-note" id="fxRangeNote">
+        <span class="tag" id="fxRangeTag">整段</span>
+        <span id="fxRangeText">—</span>
+      </div>
+
+      <div class="presets-section" id="fxPresetsSection">
+        <div class="ps-title">◈ 快速預設集</div>
+        <div class="presets-row" id="fxPresets"></div>
+      </div>
+
+      <div id="fxFields"></div>
+
+      <div class="user-presets">
+        <div class="ps-title" style="color:#8a9a50;font-size:10px;letter-spacing:2px;margin-bottom:8px">
+          ◈ 我的預設集
+        </div>
+        <div id="fxUserPresets"></div>
+        <div class="up-row">
+          <input type="text" class="up-name" id="fxPresetName" placeholder="輸入名稱後按儲存…" maxlength="40">
+          <button id="fxSavePreset">💾 儲存目前參數</button>
+        </div>
+      </div>
+
+      <div class="preview-bar">
+        <b>◈ 試聽</b>
+        <span class="hint">套用前先聽一下效果（不會修改檔案）</span>
+        <button id="fxPreview">▶ 試聽</button>
+        <button id="fxPreviewStop" disabled>■ 停止</button>
+      </div>
+
+      <div class="modal-actions">
+        <button id="fxCancel">取消</button>
+        <button id="fxApply" class="primary">套用效果</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="wfModal">
+    <div class="modal-content" style="max-width:520px">
+      <h2 id="wfTitle">◈ 執行工作流</h2>
+      <div class="fx-desc" id="wfDesc"></div>
+      <div class="range-note" id="wfRangeNote">
+        <span class="tag" id="wfRangeTag">整段</span>
+        <span id="wfRangeText">—</span>
+      </div>
+      <div class="wf-progress" id="wfProgress"></div>
+      <div class="modal-actions">
+        <button id="wfCancel">取消</button>
+        <button id="wfClose" class="primary" disabled>完成</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="helpModal">
+    <div class="modal-content">
+      <h2>◈ ARIVE 音訊編輯器 — 完整功能說明</h2>
+
+      <h3>套用範圍規則</h3>
+      <table>
+        <tr>
+          <td>有選取範圍</td>
+          <td>所有效果與工作流<b>只作用於選取範圍</b>。選取外完全不受影響。</td>
+        </tr>
+        <tr>
+          <td>沒有選取</td>
+          <td>效果作用於整段音訊（與舊版行為相同）。</td>
+        </tr>
+        <tr>
+          <td>重新取樣</td>
+          <td>選取範圍會被替換成重新取樣後的樣本，長度改變、選取範圍自動更新。</td>
+        </tr>
+      </table>
+
+      <h3>一鍵工作流</h3>
+      <table>
+        <tr>
+          <td>槍聲處理</td>
+          <td>移除 DC → 正規化 → 輕度壓縮 → 淡出。</td>
+        </tr>
+        <tr>
+          <td>遠處槍聲</td>
+          <td>低通 + 小殘響 + 輕壓縮。</td>
+        </tr>
+        <tr>
+          <td>腳步聲循環</td>
+          <td>移除 DC → 修剪靜音 → 循環接縫 → 正規化 → 雜訊閘。</td>
+        </tr>
+        <tr>
+          <td>爆炸處理</td>
+          <td>移除 DC → 正規化 → 壓縮 → 軟削波 → 淡出。</td>
+        </tr>
+        <tr>
+          <td>對講機</td>
+          <td>帶通 → 軟削波 → 位元壓碎 → 高通。</td>
+        </tr>
+        <tr>
+          <td>水下效果</td>
+          <td>低通 → 混響 → 顫音。</td>
+        </tr>
+        <tr>
+          <td>恐怖怪物</td>
+          <td>重新取樣（-5）→ 混響 → 軟削波 → 立體聲加寬。</td>
+        </tr>
+        <tr>
+          <td>老舊錄音</td>
+          <td>高通 → 軟削波 → 位元壓碎 → 回聲。</td>
+        </tr>
+        <tr>
+          <td>機械化</td>
+          <td>顫音 → 軟削波 → 立體聲加寬。</td>
+        </tr>
+        <tr>
+          <td>通用清理</td>
+          <td>移除 DC → 修剪靜音 → 爆音修復 → 正規化 → 淡出。</td>
+        </tr>
+      </table>
+
+      <h3>效果對話框</h3>
+      <table>
+        <tr>
+          <td>快速預設集</td>
+          <td>每個效果提供 3–6 個預設參數，一鍵套用。</td>
+        </tr>
+        <tr>
+          <td>我的預設集</td>
+          <td>調整好參數後輸入名稱、按「儲存」，即可重複使用。</td>
+        </tr>
+        <tr>
+          <td>試聽</td>
+          <td>套用前先聽效果，不會修改檔案。</td>
+        </tr>
+      </table>
+
+      <h3>鍵盤快捷鍵</h3>
+      <table>
+        <tr>
+          <td><span class="kbd">Space</span></td>
+          <td>播放 / 停止</td>
+        </tr>
+        <tr>
+          <td><span class="kbd">Esc</span></td>
+          <td>停止 / 關閉對話框</td>
+        </tr>
+        <tr>
+          <td><span class="kbd">Delete</span></td>
+          <td>刪除選取範圍</td>
+        </tr>
+        <tr>
+          <td><span class="kbd">Ctrl</span>+<span class="kbd">Z</span> / <span class="kbd">Y</span></td>
+          <td>復原 / 重做</td>
+        </tr>
+        <tr>
+          <td><span class="kbd">Ctrl</span>+<span class="kbd">C</span>/<span class="kbd">X</span>/<span
+              class="kbd">V</span></td>
+          <td>複製 / 剪下 / 貼上</td>
+        </tr>
+        <tr>
+          <td><span class="kbd">Ctrl</span>+<span class="kbd">A</span></td>
+          <td>全選</td>
+        </tr>
+        <tr>
+          <td><span class="kbd">F1</span></td>
+          <td>顯示此說明</td>
+        </tr>
+      </table>
+
+      <div class="modal-actions">
+        <button id="helpClose" class="primary">關閉</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    "use strict";
+
+    /* ============================================================
+       1. 全域狀態
+       ============================================================ */
+    let actx = null;
+    let channels = null;
+    let sampleRate = 44100;
+    let fileName = null;
+    let modified = false;
+
+    let cursor = 0;
+    let selStart = -1, selEnd = -1;
+    let viewStart = 0, viewEnd = 0;
+
+    let playing = false;
+    let sourceNode = null;
+    let playStartCtx = 0;
+    let playStartSample = 0;
+    let loopSel = false;
+
+    let undoStack = [], redoStack = [];
+    const UNDO_MAX = 30;
+    let clipboard = null;
+
+    let needsRedraw = true;
+    let dragging = null;
+    let dragStartSample = 0;
+    let dragStartX = 0;
+
+    let previewSource = null;
+
+    const USER_PRESETS_KEY = "arive-audio-editor-presets-v1";
+    let userPresets = {};
+
+    /* ============================================================
+       2. 音訊工具
+       ============================================================ */
+    function audio() {
+      if (actx) return actx;
+      actx = new (window.AudioContext || window.webkitAudioContext)();
+      return actx;
+    }
+    function numChannels() { return channels ? channels.length : 0; }
+    function numSamples() { return channels ? channels[0].length : 0; }
+
+    /* 效果套用範圍：有選取 → 選取；無選取 → 整段。 */
+    function getApplyRange() {
+      if (selStart >= 0 && selEnd > selStart) return [selStart, selEnd];
+      return [0, numSamples()];
+    }
+    function describeRange(range) {
+      const [a, b] = range;
+      const isSel = (selStart >= 0 && selEnd > selStart);
+      return (isSel ? "選取" : "整段") + "　" +
+        (a / sampleRate).toFixed(3) + "s → " + (b / sampleRate).toFixed(3) + "s" +
+        "（" + ((b - a) / sampleRate).toFixed(3) + " 秒）";
+    }
+
+    function rebuildBuffer() {
+      const c = audio();
+      const buf = c.createBuffer(numChannels(), numSamples(), sampleRate);
+      for (let i = 0; i < channels.length; i++) buf.copyToChannel(channels[i], i);
+      return buf;
+    }
+    function loadChannelsFromBuffer(buf) {
+      const out = [];
+      for (let i = 0; i < buf.numberOfChannels; i++)
+        out.push(new Float32Array(buf.getChannelData(i)));
+      return out;
+    }
+
+    /* ============================================================
+       3. 檔案載入
+       ============================================================ */
+    async function loadFile(file) {
+      const ab = await file.arrayBuffer();
+      const buf = await audio().decodeAudioData(ab);
+      channels = loadChannelsFromBuffer(buf);
+      sampleRate = buf.sampleRate;
+      fileName = file.name;
+      modified = false;
+      cursor = 0; selStart = selEnd = -1;
+      viewStart = 0; viewEnd = numSamples();
+      undoStack.length = 0; redoStack.length = 0;
+      clipboard = null;
+      stopPlayback(); stopPreview();
+      markDirty(); updateStatus(); updateButtons(); updateFileInfo();
+    }
+
+    /* ============================================================
+       4. 復原 / 重做
+       ============================================================ */
+    function snapshot() {
+      return { channels: channels.map(c => new Float32Array(c)), selStart, selEnd, cursor };
+    }
+    function restoreSnapshot(s) {
+      channels = s.channels.map(c => new Float32Array(c));
+      selStart = s.selStart; selEnd = s.selEnd; cursor = s.cursor;
+    }
+    function pushUndo() {
+      if (!channels) return;
+      undoStack.push(snapshot());
+      if (undoStack.length > UNDO_MAX) undoStack.shift();
+      redoStack.length = 0;
+      modified = true;
+      updateButtons(); updateFileInfo();
+    }
+    function undo() {
+      if (!undoStack.length) return;
+      redoStack.push(snapshot());
+      restoreSnapshot(undoStack.pop());
+      clampViewAndCursor(); markDirty(); updateStatus(); updateButtons(); updateFileInfo();
+    }
+    function redo() {
+      if (!redoStack.length) return;
+      undoStack.push(snapshot());
+      restoreSnapshot(redoStack.pop());
+      clampViewAndCursor(); markDirty(); updateStatus(); updateButtons(); updateFileInfo();
+    }
+
+    /* ============================================================
+       5. 選取與基本編輯
+       ============================================================ */
+    function hasSelection() { return selStart >= 0 && selEnd > selStart; }
+    function selRange() { return hasSelection() ? [selStart, selEnd] : [0, numSamples()]; }
+
+    function deleteSelection() {
+      if (!hasSelection()) return;
+      pushUndo();
+      const a = selStart, b = selEnd;
+      const newLen = numSamples() - (b - a);
+      channels = channels.map(ch => {
+        const out = new Float32Array(newLen);
+        out.set(ch.subarray(0, a), 0);
+        out.set(ch.subarray(b), a);
+        return out;
+      });
+      cursor = a; selStart = selEnd = -1;
+      clampViewAndCursor(); markDirty(); updateStatus(); updateButtons();
+    }
+
+    function silenceSelection() {
+      const [a, b] = selRange();
+      if (b <= a) return;
+      pushUndo();
+      for (const ch of channels) ch.fill(0, a, b);
+      markDirty(); updateStatus();
+    }
+
+    function copySelection() {
+      const [a, b] = selRange();
+      if (b <= a) return;
+      clipboard = {
+        channels: channels.map(ch => new Float32Array(ch.subarray(a, b))),
+        sampleRate
+      };
+      toast("已複製 " + ((b - a) / sampleRate).toFixed(3) + " 秒");
+      updateButtons();
+    }
+    function cutSelection() { if (hasSelection()) { copySelection(); deleteSelection(); } }
+
+    function pasteAtCursor() {
+      if (!clipboard) return;
+      pushUndo();
+      const [a, b] = hasSelection() ? [selStart, selEnd] : [cursor, cursor];
+      const pasteLen = clipboard.channels[0].length;
+      let srcChans = clipboard.channels;
+      const tc = numChannels();
+      if (srcChans.length === 1 && tc > 1) {
+        srcChans = new Array(tc).fill(0).map(() => new Float32Array(srcChans[0]));
+      } else if (srcChans.length > 1 && tc === 1) {
+        const mixed = new Float32Array(srcChans[0].length);
+        for (const s of srcChans) for (let i = 0; i < mixed.length; i++) mixed[i] += s[i] / srcChans.length;
+        srcChans = [mixed];
+      } else if (srcChans.length !== tc) {
+        const out = [];
+        for (let i = 0; i < tc; i++) out.push(srcChans[i] || new Float32Array(srcChans[0].length));
+        srcChans = out;
+      }
+      const newLen = numSamples() - (b - a) + pasteLen;
+      channels = channels.map((ch, ci) => {
+        const out = new Float32Array(newLen);
+        out.set(ch.subarray(0, a), 0);
+        out.set(srcChans[ci], a);
+        out.set(ch.subarray(b), a + pasteLen);
+        return out;
+      });
+      cursor = a + pasteLen; selStart = a; selEnd = a + pasteLen;
+      clampViewAndCursor(); markDirty(); updateStatus(); updateButtons();
+    }
+
+    function trimToSelection() {
+      if (!hasSelection()) return;
+      pushUndo();
+      const a = selStart, b = selEnd;
+      channels = channels.map(ch => ch.slice(a, b));
+      cursor = 0; selStart = selEnd = -1;
+      viewStart = 0; viewEnd = numSamples();
+      markDirty(); updateStatus(); updateButtons();
+    }
+
+    function trimSilence() {
+      const th = 10 ** (-60 / 20);
+      const n = numSamples();
+      let first = 0, last = n - 1;
+      while (first < n && channels.every(c => Math.abs(c[first]) <= th)) first++;
+      while (last >= first && channels.every(c => Math.abs(c[last]) <= th)) last--;
+      if (first >= last) return false;
+      const pad = Math.round(sampleRate * 0.005);
+      first = Math.max(0, first - pad);
+      last = Math.min(n - 1, last + pad);
+      channels = channels.map(c => c.slice(first, last + 1));
+      cursor = 0; selStart = selEnd = -1;
+      viewStart = 0; viewEnd = numSamples();
+      return true;
+    }
+
+    function applyFade(fadeIn, range) {
+      const [a, b] = range || selRange();
+      if (b <= a) return;
+      const span = b - a;
+      for (const ch of channels)
+        for (let i = 0; i < span; i++) {
+          const t = i / (span - 1 || 1);
+          ch[a + i] *= fadeIn ? t : 1 - t;
+        }
+    }
+
+    function normalize(targetDb, range) {
+      if (!channels) return;
+      const [a, b] = range || selRange();
+      let peak = 0;
+      for (const ch of channels)
+        for (let i = a; i < b; i++) peak = Math.max(peak, Math.abs(ch[i]));
+      if (peak < 1e-9) return;
+      const gain = 10 ** ((targetDb == null ? -1 : targetDb) / 20) / peak;
+      for (const ch of channels) for (let i = a; i < b; i++) ch[i] *= gain;
+    }
+
+    function amplify(db, range) {
+      if (!channels) return;
+      const [a, b] = range || selRange();
+      const gain = 10 ** (db / 20);
+      for (const ch of channels)
+        for (let i = a; i < b; i++) {
+          let v = ch[i] * gain;
+          ch[i] = v > 1 ? 1 : v < -1 ? -1 : v;
+        }
+    }
+
+    function reverse(range) {
+      if (!channels) return;
+      const [a, b] = range || selRange();
+      for (const ch of channels)
+        for (let i = a, j = b - 1; i < j; i++, j--) {
+          const t = ch[i]; ch[i] = ch[j]; ch[j] = t;
+        }
+    }
+
+    function insertSilence(seconds) {
+      if (!channels) return;
+      const n = Math.max(1, Math.round(seconds * sampleRate));
+      pushUndo();
+      const pos = cursor;
+      channels = channels.map(ch => {
+        const out = new Float32Array(ch.length + n);
+        out.set(ch.subarray(0, pos), 0);
+        out.set(ch.subarray(pos), pos + n);
+        return out;
+      });
+      cursor = pos + n; selStart = pos; selEnd = pos + n;
+      markDirty(); updateStatus(); updateButtons();
+    }
+
+    /* ============================================================
+       6. 音效處理 DSP 核心（全部支援 range 參數）
+       ============================================================ */
+    function applyBiquad(type, freqHz, q, range) {
+      const [rStart, rEnd] = range || [0, numSamples()];
+      const w0 = 2 * Math.PI * Math.max(20, Math.min(sampleRate / 2 - 1, freqHz)) / sampleRate;
+      const cosw = Math.cos(w0), sinw = Math.sin(w0);
+      const alpha = sinw / (2 * Math.max(0.0001, q));
+      let b0, b1, b2, a0, a1, a2;
+      if (type === "lowpass") {
+        b0 = (1 - cosw) / 2; b1 = 1 - cosw; b2 = (1 - cosw) / 2;
+        a0 = 1 + alpha; a1 = -2 * cosw; a2 = 1 - alpha;
+      } else if (type === "highpass") {
+        b0 = (1 + cosw) / 2; b1 = -(1 + cosw); b2 = (1 + cosw) / 2;
+        a0 = 1 + alpha; a1 = -2 * cosw; a2 = 1 - alpha;
+      } else {
+        b0 = alpha; b1 = 0; b2 = -alpha;
+        a0 = 1 + alpha; a1 = -2 * cosw; a2 = 1 - alpha;
+      }
+      const nb0 = b0 / a0, nb1 = b1 / a0, nb2 = b2 / a0;
+      const na1 = a1 / a0, na2 = a2 / a0;
+      for (const ch of channels) {
+        let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+        // 預熱：選取範圍之前的樣本只推進濾波器狀態，不寫入
+        for (let i = 0; i < rEnd; i++) {
+          const x = ch[i];
+          const y = nb0 * x + nb1 * x1 + nb2 * x2 - na1 * y1 - na2 * y2;
+          if (i >= rStart) ch[i] = y;
+          x2 = x1; x1 = x; y2 = y1; y1 = y;
+        }
+      }
+    }
+
+    function applyEcho(delaySec, feedback, mix, range) {
+      const [rStart, rEnd] = range || [0, numSamples()];
+      const D = Math.max(1, Math.round(delaySec * sampleRate));
+      feedback = Math.max(0, Math.min(0.95, feedback));
+      for (let ci = 0; ci < channels.length; ci++) {
+        const x = channels[ci];
+        const n = x.length;
+        const buf = new Float32Array(n);
+        for (let i = 0; i < n; i++) {
+          const delayed = i >= D ? buf[i - D] : 0;
+          buf[i] = x[i] + delayed * feedback;
+        }
+        for (let i = rStart; i < rEnd; i++) {
+          x[i] = x[i] * (1 - mix) + buf[i] * mix;
+        }
+      }
+    }
+
+    function applyReverb(roomSize, mix, range) {
+      const [rStart, rEnd] = range || [0, numSamples()];
+      const combs = [0.0297, 0.0371, 0.0411, 0.0437].map(d => Math.max(1, Math.round(d * sampleRate)));
+      const fb = [0.805, 0.827, 0.783, 0.764].map(f => f * Math.max(0.1, Math.min(1.2, roomSize)));
+      const aps = [0.005, 0.0017].map(d => Math.max(1, Math.round(d * sampleRate)));
+      for (let ci = 0; ci < channels.length; ci++) {
+        const x = channels[ci];
+        const n = x.length;
+        const wet = new Float32Array(n);
+        const combBufs = combs.map(d => new Float32Array(d));
+        const combIdx = combs.map(() => 0);
+        for (let i = 0; i < n; i++) {
+          let sum = 0;
+          for (let c = 0; c < combs.length; c++) {
+            const stored = combBufs[c][combIdx[c]];
+            const y = x[i] + stored * fb[c];
+            combBufs[c][combIdx[c]] = y;
+            combIdx[c] = (combIdx[c] + 1) % combs[c];
+            sum += stored;
+          }
+          wet[i] = sum / combs.length;
+        }
+        for (let ap = 0; ap < aps.length; ap++) {
+          const d = aps[ap];
+          const buf = new Float32Array(d);
+          let idx = 0;
+          const g = 0.5;
+          for (let i = 0; i < n; i++) {
+            const stored = buf[idx];
+            const y = -g * wet[i] + stored;
+            buf[idx] = wet[i] + g * y;
+            idx = (idx + 1) % d;
+            wet[i] = y;
+          }
+        }
+        for (let i = rStart; i < rEnd; i++) {
+          x[i] = x[i] * (1 - mix) + wet[i] * mix;
+        }
+      }
+    }
+
+    function applyChorus(rateHz, depthMs, delayMs, mix, range) {
+      const [rStart, rEnd] = range || [0, numSamples()];
+      const baseD = Math.round(delayMs / 1000 * sampleRate);
+      const maxMod = Math.round(depthMs / 1000 * sampleRate);
+      for (let ci = 0; ci < channels.length; ci++) {
+        const ch = channels[ci];
+        const n = ch.length;
+        const phaseOff = ci * Math.PI;
+        for (let i = rStart; i < rEnd; i++) {
+          const phase = 2 * Math.PI * rateHz * i / sampleRate + phaseOff;
+          const d = baseD + Math.round(maxMod * Math.sin(phase));
+          const read = i - d;
+          let s = 0;
+          if (read >= 0 && read < n - 1) {
+            const a = Math.floor(read);
+            const t = read - a;
+            s = ch[a] * (1 - t) + ch[a + 1] * t;
+          }
+          ch[i] = ch[i] * (1 - mix) + s * mix;
+        }
+      }
+    }
+
+    function applyTremolo(rateHz, depth, range) {
+      const [rStart, rEnd] = range || [0, numSamples()];
+      for (const ch of channels) {
+        for (let i = rStart; i < rEnd; i++) {
+          const phase = 2 * Math.PI * rateHz * i / sampleRate;
+          ch[i] *= 1 - depth * (0.5 + 0.5 * Math.sin(phase));
+        }
+      }
+    }
+
+    function applyDistortion(type, drive, range) {
+      const [rStart, rEnd] = range || [0, numSamples()];
+      for (const ch of channels) {
+        for (let i = rStart; i < rEnd; i++) {
+          const x = ch[i] * drive;
+          let y;
+          if (type === "soft") y = Math.tanh(x);
+          else if (type === "hard") y = x > 1 ? 1 : x < -1 ? -1 : x;
+          else {
+            let v = x;
+            while (v > 1 || v < -1) {
+              if (v > 1) v = 2 - v;
+              if (v < -1) v = -2 - v;
+            }
+            y = v;
+          }
+          ch[i] = y;
+        }
+      }
+    }
+
+    function applyBitcrush(bits, downsample, range) {
+      const [rStart, rEnd] = range || [0, numSamples()];
+      bits = Math.max(2, Math.min(16, bits));
+      downsample = Math.max(1, Math.min(64, downsample));
+      const levels = Math.pow(2, bits);
+      for (const ch of channels) {
+        let held = 0;
+        for (let i = 0; i < rEnd; i++) {
+          if (i % downsample === 0) held = Math.round(ch[i] * levels) / levels;
+          if (i >= rStart) ch[i] = held;
+        }
+      }
+    }
+
+    function applyCompressor(thresholdDb, ratio, attackMs, releaseMs, makeupDb, range) {
+      const [rStart, rEnd] = range || [0, numSamples()];
+      const thresh = 10 ** (thresholdDb / 20);
+      const makeup = 10 ** (makeupDb / 20);
+      const aCoef = 1 - Math.exp(-1 / (sampleRate * Math.max(0.001, attackMs / 1000)));
+      const rCoef = 1 - Math.exp(-1 / (sampleRate * Math.max(0.001, releaseMs / 1000)));
+      let env = 0;
+      for (let i = 0; i < rEnd; i++) {
+        let peak = 0;
+        for (const ch of channels) peak = Math.max(peak, Math.abs(ch[i]));
+        const coef = peak > env ? aCoef : rCoef;
+        env += (peak - env) * coef;
+        if (i < rStart) continue;
+        let gain = 1;
+        if (env > thresh) {
+          const overDb = 20 * Math.log10(env / thresh);
+          const reducedDb = overDb * (1 - 1 / ratio);
+          gain = Math.pow(10, -reducedDb / 20);
+        }
+        gain *= makeup;
+        for (const ch of channels) {
+          let v = ch[i] * gain;
+          ch[i] = v > 1 ? 1 : v < -1 ? -1 : v;
+        }
+      }
+    }
+
+    function applyGate(thresholdDb, attackMs, releaseMs, range) {
+      const [rStart, rEnd] = range || [0, numSamples()];
+      const thresh = 10 ** (thresholdDb / 20);
+      const aCoef = 1 - Math.exp(-1 / (sampleRate * Math.max(0.001, attackMs / 1000)));
+      const rCoef = 1 - Math.exp(-1 / (sampleRate * Math.max(0.001, releaseMs / 1000)));
+      let env = 0;
+      for (let i = 0; i < rEnd; i++) {
+        let peak = 0;
+        for (const ch of channels) peak = Math.max(peak, Math.abs(ch[i]));
+        const coef = peak > env ? aCoef : rCoef;
+        env += (peak - env) * coef;
+        if (i < rStart) continue;
+        const gain = env < thresh ? Math.max(0, env / thresh) : 1;
+        for (const ch of channels) ch[i] *= gain;
+      }
+    }
+
+    /* 重新取樣：替換選取範圍，長度會改變 */
+    function applyResample(semitones, range) {
+      const ratio = Math.pow(2, semitones / 12);
+      const [rStart, rEnd] = range || [0, numSamples()];
+      const hadSel = (selStart >= 0 && selEnd > selStart);
+      const selLen = rEnd - rStart;
+      const newSelLen = Math.max(1, Math.round(selLen / ratio));
+      for (let ci = 0; ci < channels.length; ci++) {
+        const src = channels[ci];
+        const seg = new Float32Array(newSelLen);
+        for (let i = 0; i < newSelLen; i++) {
+          const p = rStart + i * ratio;
+          const a = Math.floor(p);
+          const b = Math.min(src.length - 1, a + 1);
+          const t = p - a;
+          seg[i] = src[a] * (1 - t) + src[b] * t;
+        }
+        const out = new Float32Array(src.length - selLen + newSelLen);
+        out.set(src.subarray(0, rStart), 0);
+        out.set(seg, rStart);
+        out.set(src.subarray(rEnd), rStart + newSelLen);
+        channels[ci] = out;
+      }
+      if (hadSel) {
+        selStart = rStart;
+        selEnd = rStart + newSelLen;
+        cursor = selEnd;
+        clampViewAndCursor();
+      } else {
+        viewStart = 0;
+        viewEnd = numSamples();
+      }
+    }
+
+    function removeDC(range) {
+      const [rStart, rEnd] = range || [0, numSamples()];
+      for (const ch of channels) {
+        let sum = 0;
+        for (let i = rStart; i < rEnd; i++) sum += ch[i];
+        const mean = sum / (rEnd - rStart);
+        if (Math.abs(mean) < 1e-7) continue;
+        for (let i = rStart; i < rEnd; i++) ch[i] -= mean;
+      }
+    }
+
+    function applyStereoWiden(amount, range) {
+      if (channels.length < 2) return;
+      const [rStart, rEnd] = range || [0, numSamples()];
+      const L = channels[0], R = channels[1];
+      for (let i = rStart; i < rEnd; i++) {
+        const mid = (L[i] + R[i]) * 0.5;
+        const side = (L[i] - R[i]) * 0.5 * amount;
+        L[i] = mid + side;
+        R[i] = mid - side;
+      }
+    }
+
+    function declick(threshold, range) {
+      const [rStart, rEnd] = range || [0, numSamples()];
+      for (const ch of channels) {
+        const s = Math.max(1, rStart);
+        const e = Math.min(ch.length - 1, rEnd);
+        for (let i = s; i < e; i++) {
+          const expected = (ch[i - 1] + ch[i + 1]) * 0.5;
+          if (Math.abs(ch[i] - expected) > threshold) ch[i] = expected;
+        }
+      }
+    }
+
+    /* 循環接縫：對選取範圍（或整段）做尾端→開頭的交叉淡化 */
+    function loopCrossfade(seconds, range) {
+      const [rStart, rEnd] = range || [0, numSamples()];
+      const n = Math.max(16, Math.round(seconds * sampleRate));
+      const len = rEnd - rStart;
+      if (n * 2 >= len) return false;
+      for (const ch of channels) {
+        for (let i = 0; i < n; i++) {
+          const t = i / (n - 1);
+          const tail = ch[rEnd - n + i];
+          ch[rStart + i] = ch[rStart + i] * (1 - t) + tail * t;
+        }
+      }
+      return true;
+    }
+
+    /* 內部：對指定範圍的尾端做淡出 */
+    function fadeOutRange(range, seconds) {
+      const [a, b] = range || [0, numSamples()];
+      const len = b - a;
+      const n = Math.max(8, Math.min(Math.round(seconds * sampleRate), Math.floor(len / 2)));
+      for (const ch of channels) {
+        for (let i = 0; i < n; i++) {
+          ch[b - n + i] *= 1 - i / (n - 1);
+        }
+      }
+    }
+
+    /* ============================================================
+       7. 效果定義（全部走 getApplyRange()）
+       ============================================================ */
+    const EFFECTS = {
+      lowpass: {
+        name: "低通濾波器",
+        desc: "衰減截止頻率以上的高頻，讓聲音變悶。適合模擬遠處的槍聲、水下、隔牆傳來的聲音。",
+        fields: [
+          { id: "cutoff", label: "截止頻率", type: "range", min: 100, max: 20000, step: 50, def: 3000, unit: " Hz" },
+          { id: "q", label: "共振（Q）", type: "range", min: 0.1, max: 10, step: 0.1, def: 0.707 }
+        ],
+        presets: [
+          { name: "輕微變悶", params: { cutoff: 8000, q: 0.707 } },
+          { name: "遠處槍聲", params: { cutoff: 2000, q: 0.8 } },
+          { name: "隔牆傳音", params: { cutoff: 1200, q: 1.2 } },
+          { name: "水下", params: { cutoff: 500, q: 0.9 } },
+          { name: "極度模糊", params: { cutoff: 250, q: 1.5 } }
+        ],
+        apply: p => applyBiquad("lowpass", p.cutoff, p.q, getApplyRange())
+      },
+      highpass: {
+        name: "高通濾波器",
+        desc: "衰減截止頻率以下的低頻，讓聲音變薄、變清脆。適合去除隆隆聲、風聲或桌面震動。",
+        fields: [
+          { id: "cutoff", label: "截止頻率", type: "range", min: 20, max: 5000, step: 10, def: 200, unit: " Hz" },
+          { id: "q", label: "共振（Q）", type: "range", min: 0.1, max: 10, step: 0.1, def: 0.707 }
+        ],
+        presets: [
+          { name: "去除風聲", params: { cutoff: 80, q: 0.707 } },
+          { name: "輕薄", params: { cutoff: 200, q: 0.707 } },
+          { name: "電話感", params: { cutoff: 400, q: 0.8 } },
+          { name: "極薄", params: { cutoff: 800, q: 1.2 } }
+        ],
+        apply: p => applyBiquad("highpass", p.cutoff, p.q, getApplyRange())
+      },
+      bandpass: {
+        name: "帶通濾波器",
+        desc: "只保留中心頻率附近的範圍，其餘全部衰減。適合電話、對講機、無線電、老舊擴音器。",
+        fields: [
+          { id: "freq", label: "中心頻率", type: "range", min: 100, max: 8000, step: 50, def: 1500, unit: " Hz" },
+          { id: "q", label: "頻寬（Q）", type: "range", min: 0.5, max: 20, step: 0.5, def: 2.0 }
+        ],
+        presets: [
+          { name: "電話", params: { freq: 1000, q: 4 } },
+          { name: "對講機", params: { freq: 1500, q: 3 } },
+          { name: "無線電", params: { freq: 2000, q: 2 } },
+          { name: "老式喇叭", params: { freq: 800, q: 5 } }
+        ],
+        apply: p => applyBiquad("bandpass", p.freq, p.q, getApplyRange())
+      },
+      echo: {
+        name: "回聲",
+        desc: "加入固定延遲的重複音。可以模擬空曠空間、山谷回音、管道或機械重複。",
+        fields: [
+          { id: "delay", label: "延遲時間", type: "range", min: 0.02, max: 1.5, step: 0.01, def: 0.25, unit: " 秒" },
+          { id: "feedback", label: "回饋量", type: "range", min: 0, max: 0.9, step: 0.01, def: 0.35 },
+          { id: "mix", label: "濕／乾比", type: "range", min: 0, max: 1, step: 0.01, def: 0.4 }
+        ],
+        presets: [
+          { name: "管道", params: { delay: 0.08, feedback: 0.5, mix: 0.5 } },
+          { name: "小房間", params: { delay: 0.15, feedback: 0.3, mix: 0.3 } },
+          { name: "空曠", params: { delay: 0.4, feedback: 0.4, mix: 0.4 } },
+          { name: "山谷", params: { delay: 0.8, feedback: 0.55, mix: 0.5 } },
+          { name: "巨大空間", params: { delay: 1.2, feedback: 0.6, mix: 0.55 } }
+        ],
+        apply: p => applyEcho(p.delay, p.feedback, p.mix, getApplyRange())
+      },
+      reverb: {
+        name: "混響",
+        desc: "模擬房間殘響（Schroeder 演算法）。槍聲在室內、走廊、倉庫中會因反射而產生尾巴。",
+        fields: [
+          { id: "room", label: "空間大小", type: "range", min: 0.2, max: 1.2, step: 0.02, def: 0.7 },
+          { id: "mix", label: "濕／乾比", type: "range", min: 0, max: 1, step: 0.01, def: 0.35 }
+        ],
+        presets: [
+          { name: "小房間", params: { room: 0.3, mix: 0.2 } },
+          { name: "辦公室", params: { room: 0.5, mix: 0.25 } },
+          { name: "走廊", params: { room: 0.7, mix: 0.35 } },
+          { name: "大廳", params: { room: 0.9, mix: 0.4 } },
+          { name: "倉庫", params: { room: 1.1, mix: 0.45 } },
+          { name: "教堂", params: { room: 1.2, mix: 0.55 } }
+        ],
+        apply: p => applyReverb(p.room, p.mix, getApplyRange())
+      },
+      chorus: {
+        name: "合唱",
+        desc: "用延遲調變複製聲音，讓單一聲音聽起來像多個來源。適合機械、科幻感或多人同時說話。",
+        fields: [
+          { id: "rate", label: "調變速率", type: "range", min: 0.05, max: 8, step: 0.05, def: 1.2, unit: " Hz" },
+          { id: "depth", label: "調變深度", type: "range", min: 0.5, max: 15, step: 0.5, def: 3, unit: " ms" },
+          { id: "delay", label: "基礎延遲", type: "range", min: 5, max: 40, step: 1, def: 15, unit: " ms" },
+          { id: "mix", label: "濕／乾比", type: "range", min: 0, max: 1, step: 0.01, def: 0.5 }
+        ],
+        presets: [
+          { name: "輕微", params: { rate: 0.8, depth: 2, delay: 12, mix: 0.3 } },
+          { name: "多人", params: { rate: 1.2, depth: 4, delay: 18, mix: 0.5 } },
+          { name: "機械", params: { rate: 5, depth: 6, delay: 20, mix: 0.6 } },
+          { name: "科幻", params: { rate: 2.5, depth: 10, delay: 25, mix: 0.7 } }
+        ],
+        apply: p => applyChorus(p.rate, p.depth, p.delay, p.mix, getApplyRange())
+      },
+      tremolo: {
+        name: "顫音（Tremolo）",
+        desc: "週期性改變音量，產生震動感。適合機械音、警示音、老式電子設備或心跳聲。",
+        fields: [
+          { id: "rate", label: "速率", type: "range", min: 0.5, max: 20, step: 0.1, def: 5, unit: " Hz" },
+          { id: "depth", label: "深度", type: "range", min: 0, max: 1, step: 0.01, def: 0.5 }
+        ],
+        presets: [
+          { name: "輕微", params: { rate: 3, depth: 0.2 } },
+          { name: "警示", params: { rate: 6, depth: 0.6 } },
+          { name: "緊張", params: { rate: 12, depth: 0.5 } },
+          { name: "機械", params: { rate: 8, depth: 0.8 } }
+        ],
+        apply: p => applyTremolo(p.rate, p.depth, getApplyRange())
+      },
+      softclip: {
+        name: "軟削波（Soft Clip）",
+        desc: "用 tanh 曲線輕微飽和聲音，增加溫暖與厚度但不會刺耳。適合讓槍聲聽起來更厚實。",
+        fields: [{ id: "drive", label: "驅動量", type: "range", min: 0.5, max: 20, step: 0.1, def: 2.5 }],
+        presets: [
+          { name: "輕微飽和", params: { drive: 1.5 } },
+          { name: "溫暖", params: { drive: 3 } },
+          { name: "厚實", params: { drive: 5 } },
+          { name: "重壓", params: { drive: 10 } }
+        ],
+        apply: p => applyDistortion("soft", p.drive, getApplyRange())
+      },
+      hardclip: {
+        name: "硬削波（Hard Clip）",
+        desc: "超過門檻的樣本直接切平，產生粗糙破音。適合工業、爆裂、廉價擴音器等粗糙感。",
+        fields: [{ id: "drive", label: "驅動量", type: "range", min: 0.5, max: 20, step: 0.1, def: 3 }],
+        presets: [
+          { name: "輕微破音", params: { drive: 1.5 } },
+          { name: "破音", params: { drive: 3 } },
+          { name: "粗糙", params: { drive: 6 } },
+          { name: "工業感", params: { drive: 10 } }
+        ],
+        apply: p => applyDistortion("hard", p.drive, getApplyRange())
+      },
+      foldback: {
+        name: "摺疊失真（Foldback）",
+        desc: "超過門檻的波形會折返回來，產生金屬、科幻、混亂的音色。適合等離子武器或外星科技感。",
+        fields: [{ id: "drive", label: "驅動量", type: "range", min: 1, max: 15, step: 0.1, def: 3 }],
+        presets: [
+          { name: "輕微", params: { drive: 1.5 } },
+          { name: "金屬", params: { drive: 3 } },
+          { name: "科幻", params: { drive: 5 } },
+          { name: "混亂", params: { drive: 10 } }
+        ],
+        apply: p => applyDistortion("fold", p.drive, getApplyRange())
+      },
+      bitcrush: {
+        name: "位元壓碎（Bitcrush）",
+        desc: "降低位元深度與取樣率，產生復古 8-bit 或數位干擾的聲音。適合老遊戲、無線電或損毀訊號。",
+        fields: [
+          { id: "bits", label: "位元深度", type: "range", min: 2, max: 16, step: 1, def: 8, unit: " bit" },
+          { id: "down", label: "降取樣倍率", type: "range", min: 1, max: 32, step: 1, def: 4, unit: "×" }
+        ],
+        presets: [
+          { name: "輕微", params: { bits: 12, down: 2 } },
+          { name: "復古 8-bit", params: { bits: 8, down: 3 } },
+          { name: "老遊戲", params: { bits: 6, down: 4 } },
+          { name: "無線電干擾", params: { bits: 5, down: 6 } },
+          { name: "損毀訊號", params: { bits: 3, down: 8 } }
+        ],
+        apply: p => applyBitcrush(p.bits, p.down, getApplyRange())
+      },
+      compressor: {
+        name: "壓縮器",
+        desc: "縮小最大聲與最小聲的差距。對於槍聲、爆炸聲特別有用——可以讓音量更平均、更有衝擊力。",
+        fields: [
+          { id: "thresh", label: "門檻", type: "range", min: -60, max: 0, step: 1, def: -18, unit: " dB" },
+          { id: "ratio", label: "壓縮比", type: "range", min: 1, max: 20, step: 0.5, def: 4, unit: ":1" },
+          { id: "attack", label: "啟動時間", type: "range", min: 0.1, max: 100, step: 0.1, def: 5, unit: " ms" },
+          { id: "release", label: "釋放時間", type: "range", min: 10, max: 1000, step: 5, def: 100, unit: " ms" },
+          { id: "makeup", label: "補償增益", type: "range", min: 0, max: 24, step: 0.5, def: 4, unit: " dB" }
+        ],
+        presets: [
+          { name: "輕微", params: { thresh: -12, ratio: 2, attack: 10, release: 150, makeup: 2 } },
+          { name: "標準", params: { thresh: -18, ratio: 4, attack: 5, release: 100, makeup: 4 } },
+          { name: "重壓", params: { thresh: -24, ratio: 8, attack: 1, release: 80, makeup: 6 } },
+          { name: "槍聲衝擊", params: { thresh: -20, ratio: 5, attack: 0.5, release: 60, makeup: 5 } },
+          { name: "爆炸", params: { thresh: -25, ratio: 6, attack: 2, release: 200, makeup: 5 } }
+        ],
+        apply: p => applyCompressor(p.thresh, p.ratio, p.attack, p.release, p.makeup, getApplyRange())
+      },
+      gate: {
+        name: "雜訊閘（Noise Gate）",
+        desc: "低於門檻的音量會被衰減，可去除背景底噪、淡出尾巴、切除不想要的殘響。",
+        fields: [
+          { id: "thresh", label: "門檻", type: "range", min: -80, max: 0, step: 1, def: -40, unit: " dB" },
+          { id: "attack", label: "啟動時間", type: "range", min: 0.1, max: 50, step: 0.1, def: 2, unit: " ms" },
+          { id: "release", label: "釋放時間", type: "range", min: 10, max: 1000, step: 5, def: 150, unit: " ms" }
+        ],
+        presets: [
+          { name: "輕微降噪", params: { thresh: -55, attack: 5, release: 300 } },
+          { name: "標準", params: { thresh: -40, attack: 2, release: 150 } },
+          { name: "強力降噪", params: { thresh: -30, attack: 1, release: 80 } },
+          { name: "剪掉尾巴", params: { thresh: -25, attack: 0.5, release: 30 } }
+        ],
+        apply: p => applyGate(p.thresh, p.attack, p.release, getApplyRange())
+      },
+      resample: {
+        name: "重新取樣（速度／音高）",
+        desc: "同時改變音高與長度。正值 = 變高變短；負值 = 變低變長。\n若在選取範圍套用，只會替換選取範圍；沒選取時替換整段。",
+        fields: [{ id: "semi", label: "半音", type: "range", min: -24, max: 24, step: 1, def: 3, unit: " 半音" }],
+        presets: [
+          { name: "低沉 -12", params: { semi: -12 } },
+          { name: "稍低 -5", params: { semi: -5 } },
+          { name: "稍高 +3", params: { semi: 3 } },
+          { name: "高亢 +7", params: { semi: 7 } },
+          { name: "尖銳 +12", params: { semi: 12 } }
+        ],
+        apply: p => applyResample(p.semi, getApplyRange())
+      },
+      removedc: {
+        name: "移除直流偏移",
+        desc: "修正樣本整體偏向正或負的問題。DC 偏移會讓波形不對稱、產生爆音，並浪費可用振幅。",
+        fields: [],
+        presets: [],
+        apply: () => removeDC(getApplyRange())
+      },
+      stereowiden: {
+        name: "立體聲加寬",
+        desc: "拉開左右聲道的差異，讓聲音聽起來更寬廣。單聲道檔案不受影響。",
+        fields: [{ id: "amount", label: "加寬量", type: "range", min: 0.5, max: 3, step: 0.05, def: 1.5, unit: "×" }],
+        presets: [
+          { name: "輕微", params: { amount: 1.2 } },
+          { name: "標準", params: { amount: 1.5 } },
+          { name: "寬廣", params: { amount: 2.0 } },
+          { name: "極寬", params: { amount: 2.8 } }
+        ],
+        apply: p => applyStereoWiden(p.amount, getApplyRange())
+      },
+      declick: {
+        name: "爆音修復",
+        desc: "偵測並平滑樣本中的突然跳動。常見於剪輯接縫、舊錄音、或格式轉換後的爆裂聲。",
+        fields: [{ id: "thresh", label: "偵測門檻", type: "range", min: 0.05, max: 1, step: 0.01, def: 0.4 }],
+        presets: [
+          { name: "輕微修復", params: { thresh: 0.7 } },
+          { name: "標準", params: { thresh: 0.4 } },
+          { name: "強力修復", params: { thresh: 0.2 } }
+        ],
+        apply: p => declick(p.thresh, getApplyRange())
+      },
+      loopcrossfade: {
+        name: "循環接縫",
+        desc: "將選取範圍（或整段）的尾端交叉淡入到開頭，讓循環播放時沒有接縫爆音。\n提示：先在波形上選出你想循環的區域，再套用，然後按「裁切至選取」即可匯出完美循環。",
+        fields: [{ id: "sec", label: "交叉長度", type: "range", min: 0.005, max: 0.5, step: 0.005, def: 0.03, unit: " 秒" }],
+        presets: [
+          { name: "極短 10ms", params: { sec: 0.01 } },
+          { name: "短 30ms", params: { sec: 0.03 } },
+          { name: "中 80ms", params: { sec: 0.08 } },
+          { name: "長 200ms", params: { sec: 0.2 } }
+        ],
+        apply: p => {
+          const r = getApplyRange();
+          if (!loopCrossfade(p.sec, r)) {
+            throw new Error("選取範圍太短，無法執行循環接縫");
+          }
+        }
+      }
+    };
+
+    /* ============================================================
+       8. 工作流定義（自訂 fn 也走 getApplyRange）
+       ============================================================ */
+    const WORKFLOWS = {
+      gunshot: {
+        name: "🔫 槍聲處理",
+        desc: "手槍、步槍、衝鋒槍的單發音效標準流程：移除 DC → 正規化 → 輕度壓縮 → 淡出。",
+        steps: [
+          { type: "fn", name: "移除 DC 偏移", run: () => removeDC(getApplyRange()) },
+          { type: "fn", name: "正規化到 -1 dB", run: () => normalize(-1, getApplyRange()) },
+          { type: "fx", name: "壓縮（槍聲衝擊）", fx: "compressor", params: { thresh: -20, ratio: 5, attack: 0.5, release: 60, makeup: 5 } },
+          { type: "fn", name: "淡出（5ms 尾端）", run: () => fadeOutRange(getApplyRange(), 0.005) }
+        ]
+      },
+      gunshot_far: {
+        name: "🔫 遠處槍聲",
+        desc: "低通 + 小殘響 + 輕壓縮。遠距離或隔牆傳來的槍聲。",
+        steps: [
+          { type: "fn", name: "移除 DC 偏移", run: () => removeDC(getApplyRange()) },
+          { type: "fn", name: "正規化到 -1 dB", run: () => normalize(-1, getApplyRange()) },
+          { type: "fx", name: "低通 1.8kHz", fx: "lowpass", params: { cutoff: 1800, q: 0.8 } },
+          { type: "fx", name: "小房間殘響", fx: "reverb", params: { room: 0.4, mix: 0.25 } },
+          { type: "fx", name: "輕度壓縮", fx: "compressor", params: { thresh: -18, ratio: 3, attack: 3, release: 100, makeup: 3 } }
+        ]
+      },
+      footstep: {
+        name: "👣 腳步聲循環",
+        desc: "移除 DC → 修剪靜音 → 循環接縫 → 正規化 → 雜訊閘。（修剪靜音會作用於整段，其餘按範圍）",
+        steps: [
+          { type: "fn", name: "移除 DC 偏移", run: () => removeDC(getApplyRange()) },
+          { type: "fn", name: "修剪頭尾靜音", run: () => trimSilence() },
+          { type: "fn", name: "循環接縫（30ms）", run: () => loopCrossfade(0.03, getApplyRange()) },
+          { type: "fn", name: "正規化到 -2 dB", run: () => normalize(-2, getApplyRange()) },
+          { type: "fx", name: "雜訊閘", fx: "gate", params: { thresh: -45, attack: 2, release: 100 } }
+        ]
+      },
+      explosion: {
+        name: "💥 爆炸處理",
+        desc: "移除 DC → 正規化 → 壓縮 → 軟削波 → 淡出。讓爆炸更有衝擊力。",
+        steps: [
+          { type: "fn", name: "移除 DC 偏移", run: () => removeDC(getApplyRange()) },
+          { type: "fn", name: "正規化到 -1 dB", run: () => normalize(-1, getApplyRange()) },
+          { type: "fx", name: "強壓縮", fx: "compressor", params: { thresh: -25, ratio: 6, attack: 2, release: 200, makeup: 5 } },
+          { type: "fx", name: "軟削波", fx: "softclip", params: { drive: 2.5 } },
+          { type: "fn", name: "淡出（10ms 尾端）", run: () => fadeOutRange(getApplyRange(), 0.010) }
+        ]
+      },
+      distant_boom: {
+        name: "💥 遠處爆炸",
+        desc: "低通 + 大廳殘響 + 壓縮。遠方傳來的爆炸聲。",
+        steps: [
+          { type: "fn", name: "移除 DC 偏移", run: () => removeDC(getApplyRange()) },
+          { type: "fn", name: "正規化到 -2 dB", run: () => normalize(-2, getApplyRange()) },
+          { type: "fx", name: "低通 1.2kHz", fx: "lowpass", params: { cutoff: 1200, q: 0.7 } },
+          { type: "fx", name: "大廳殘響", fx: "reverb", params: { room: 0.9, mix: 0.5 } },
+          { type: "fx", name: "壓縮", fx: "compressor", params: { thresh: -20, ratio: 4, attack: 3, release: 150, makeup: 4 } }
+        ]
+      },
+      radio: {
+        name: "📻 對講機",
+        desc: "帶通 → 軟削波 → 位元壓碎 → 高通。老式無線電感。",
+        steps: [
+          { type: "fn", name: "移除 DC 偏移", run: () => removeDC(getApplyRange()) },
+          { type: "fx", name: "帶通 1.5kHz", fx: "bandpass", params: { freq: 1500, q: 3 } },
+          { type: "fx", name: "軟削波", fx: "softclip", params: { drive: 3 } },
+          { type: "fx", name: "位元壓碎", fx: "bitcrush", params: { bits: 8, down: 2 } },
+          { type: "fx", name: "高通 300Hz", fx: "highpass", params: { cutoff: 300, q: 0.707 } },
+          { type: "fn", name: "正規化到 -1 dB", run: () => normalize(-1, getApplyRange()) }
+        ]
+      },
+      underwater: {
+        name: "🌊 水下效果",
+        desc: "低通 + 混響 + 輕微顫音。在水中聽到的聲音。",
+        steps: [
+          { type: "fx", name: "低通 600Hz", fx: "lowpass", params: { cutoff: 600, q: 1 } },
+          { type: "fx", name: "混響", fx: "reverb", params: { room: 0.8, mix: 0.4 } },
+          { type: "fx", name: "輕微顫音", fx: "tremolo", params: { rate: 1.5, depth: 0.15 } },
+          { type: "fn", name: "正規化到 -2 dB", run: () => normalize(-2, getApplyRange()) }
+        ]
+      },
+      horror: {
+        name: "👻 恐怖怪物",
+        desc: "重新取樣（-5 半音）→ 混響 → 軟削波 → 立體聲加寬。",
+        steps: [
+          { type: "fx", name: "降低音高（-5 半音）", fx: "resample", params: { semi: -5 } },
+          { type: "fx", name: "大廳殘響", fx: "reverb", params: { room: 1.0, mix: 0.4 } },
+          { type: "fx", name: "軟削波", fx: "softclip", params: { drive: 2 } },
+          { type: "fx", name: "立體聲加寬", fx: "stereowiden", params: { amount: 2.0 } },
+          { type: "fn", name: "正規化到 -2 dB", run: () => normalize(-2, getApplyRange()) }
+        ]
+      },
+      old_tape: {
+        name: "📼 老舊錄音",
+        desc: "高通 → 軟削波 → 位元壓碎 → 輕微回聲。舊磁帶或老式錄音感。",
+        steps: [
+          { type: "fx", name: "高通 150Hz", fx: "highpass", params: { cutoff: 150, q: 0.707 } },
+          { type: "fx", name: "軟削波", fx: "softclip", params: { drive: 1.8 } },
+          { type: "fx", name: "位元壓碎", fx: "bitcrush", params: { bits: 10, down: 2 } },
+          { type: "fx", name: "輕微回聲", fx: "echo", params: { delay: 0.08, feedback: 0.2, mix: 0.15 } },
+          { type: "fn", name: "正規化到 -2 dB", run: () => normalize(-2, getApplyRange()) }
+        ]
+      },
+      mechanical: {
+        name: "⚙ 機械化",
+        desc: "顫音 → 軟削波 → 立體聲加寬。機械、機器人、科幻設備。",
+        steps: [
+          { type: "fx", name: "機械顫音", fx: "tremolo", params: { rate: 8, depth: 0.5 } },
+          { type: "fx", name: "軟削波", fx: "softclip", params: { drive: 2 } },
+          { type: "fx", name: "立體聲加寬", fx: "stereowiden", params: { amount: 1.6 } },
+          { type: "fn", name: "正規化到 -2 dB", run: () => normalize(-2, getApplyRange()) }
+        ]
+      },
+      clean_up: {
+        name: "✨ 通用清理",
+        desc: "移除 DC → 修剪靜音 → 爆音修復 → 正規化 → 淡出。任何音效都適用。",
+        steps: [
+          { type: "fn", name: "移除 DC 偏移", run: () => removeDC(getApplyRange()) },
+          { type: "fn", name: "修剪頭尾靜音", run: () => trimSilence() },
+          { type: "fx", name: "爆音修復", fx: "declick", params: { thresh: 0.5 } },
+          { type: "fn", name: "正規化到 -1 dB", run: () => normalize(-1, getApplyRange()) },
+          { type: "fn", name: "淡出（5ms 尾端）", run: () => fadeOutRange(getApplyRange(), 0.005) }
+        ]
+      }
+    };
+
+    /* ============================================================
+       9. 效果對話框
+       ============================================================ */
+    let currentEffectKey = null;
+
+    function loadUserPresets() {
+      try { userPresets = JSON.parse(localStorage.getItem(USER_PRESETS_KEY) || "{}"); }
+      catch (e) { userPresets = {}; }
+    }
+    function saveUserPresets() {
+      try { localStorage.setItem(USER_PRESETS_KEY, JSON.stringify(userPresets)); }
+      catch (e) { /* ignore */ }
+    }
+
+    function setFieldValue(field, value) {
+      const input = document.getElementById("fx-" + field.id);
+      if (!input) return;
+      input.value = value;
+      const valEl = document.getElementById("fxv-" + field.id);
+      if (valEl) {
+        const unit = field.unit || "";
+        const v = parseFloat(value);
+        valEl.textContent = (Number.isInteger(field.step) ? v : v.toFixed(2)) + unit;
+      }
+    }
+    function getFieldValue(field) {
+      const input = document.getElementById("fx-" + field.id);
+      return input ? parseFloat(input.value) : field.def;
+    }
+    function setAllFieldsFromParams(params) {
+      const fx = EFFECTS[currentEffectKey];
+      if (!fx) return;
+      for (const f of fx.fields) {
+        if (params[f.id] !== undefined) setFieldValue(f, params[f.id]);
+      }
+    }
+
+    function openEffectModal(key) {
+      const fx = EFFECTS[key];
+      if (!fx) return;
+      if (!channels) { toast("請先載入音訊檔"); return; }
+
+      currentEffectKey = key;
+      document.getElementById("fxTitle").textContent = "◈ " + fx.name;
+      document.getElementById("fxDesc").textContent = fx.desc;
+      document.getElementById("fxPresetName").value = "";
+
+      // 顯示套用範圍
+      const r = getApplyRange();
+      const isSel = hasSelection();
+      document.getElementById("fxRangeTag").textContent = isSel ? "選取" : "整段";
+      document.getElementById("fxRangeText").textContent = describeRange(r);
+      document.getElementById("fxRangeNote").style.borderColor = isSel ? "#e8c86a" : "#3a2e26";
+
+      // 快速預設集
+      const presetsEl = document.getElementById("fxPresets");
+      presetsEl.innerHTML = "";
+      if (!fx.presets || !fx.presets.length) {
+        document.getElementById("fxPresetsSection").style.display = "none";
+      } else {
+        document.getElementById("fxPresetsSection").style.display = "block";
+        for (const p of fx.presets) {
+          const btn = document.createElement("button");
+          btn.textContent = p.name;
+          btn.addEventListener("click", () => {
+            setAllFieldsFromParams(p.params);
+            toast("已套用預設：" + p.name);
+          });
+          presetsEl.appendChild(btn);
+        }
+      }
+
+      // 參數欄位
+      const fieldsEl = document.getElementById("fxFields");
+      fieldsEl.innerHTML = "";
+      if (fx.fields.length === 0) {
+        fieldsEl.innerHTML = '<div style="color:#6a5a44;font-size:10px;padding:4px 0;text-align:center">此效果沒有參數，直接按「套用」即可。</div>';
+      }
+      for (const f of fx.fields) {
+        const row = document.createElement("div");
+        row.className = "fx-field";
+        const unit = f.unit || "";
+        row.innerHTML =
+          '<label>' + f.label + '</label>' +
+          '<input type="range" id="fx-' + f.id + '" min="' + f.min + '" max="' + f.max + '" step="' + f.step + '" value="' + f.def + '">' +
+          '<span class="fx-val" id="fxv-' + f.id + '">' + f.def + unit + '</span>';
+        fieldsEl.appendChild(row);
+        const input = row.querySelector("input");
+        const val = row.querySelector(".fx-val");
+        input.addEventListener("input", () => {
+          const v = parseFloat(input.value);
+          val.textContent = (Number.isInteger(f.step) ? v : v.toFixed(2)) + unit;
+        });
+      }
+
+      refreshUserPresets();
+      document.getElementById("fxModal").classList.add("open");
+    }
+
+    function refreshUserPresets() {
+      const el = document.getElementById("fxUserPresets");
+      el.innerHTML = "";
+      const list = userPresets[currentEffectKey] || {};
+      const names = Object.keys(list);
+      if (!names.length) {
+        el.innerHTML = '<div style="color:#4a3a2a;font-size:10px;padding:2px 0">還沒有儲存的預設集</div>';
+        return;
+      }
+      const row = document.createElement("div");
+      row.className = "presets-row";
+      for (const name of names) {
+        const btn = document.createElement("button");
+        btn.textContent = "★ " + name;
+        btn.style.background = "#1a1a0a";
+        btn.style.borderColor = "#4a5a30";
+        btn.title = "點擊套用 · 右鍵刪除";
+        btn.addEventListener("click", () => {
+          setAllFieldsFromParams(list[name]);
+          toast("已套用 " + name);
+        });
+        btn.addEventListener("contextmenu", e => {
+          e.preventDefault();
+          if (confirm("刪除預設集「" + name + "」？")) {
+            delete userPresets[currentEffectKey][name];
+            saveUserPresets();
+            refreshUserPresets();
+          }
+        });
+        row.appendChild(btn);
+      }
+      el.appendChild(row);
+    }
+
+    function saveCurrentAsPreset() {
+      const name = document.getElementById("fxPresetName").value.trim();
+      if (!name) { toast("請先輸入預設集名稱"); return; }
+      const fx = EFFECTS[currentEffectKey];
+      const params = {};
+      for (const f of fx.fields) params[f.id] = getFieldValue(f);
+      if (!userPresets[currentEffectKey]) userPresets[currentEffectKey] = {};
+      userPresets[currentEffectKey][name] = params;
+      saveUserPresets();
+      refreshUserPresets();
+      document.getElementById("fxPresetName").value = "";
+      toast("已儲存預設：" + name);
+    }
+
+    function getEffectParams() {
+      const fx = EFFECTS[currentEffectKey];
+      const params = {};
+      for (const f of fx.fields) params[f.id] = getFieldValue(f);
+      return params;
+    }
+
+    function applyEffectModal() {
+      const fx = EFFECTS[currentEffectKey];
+      if (!fx) return;
+      const params = getEffectParams();
+      document.getElementById("fxModal").classList.remove("open");
+
+      pushUndo();
+      try {
+        fx.apply(params);
+        toast("已套用「" + fx.name + "」至 " + (hasSelection() ? "選取範圍" : "整段"));
+      } catch (e) {
+        console.error(e);
+        toast("套用失敗：" + e.message);
+        undoStack.pop();
+      }
+      markDirty(); updateStatus(); updateButtons();
+    }
+
+    /* ---- 預覽：只處理範圍，並從範圍起點播放 ---- */
+    function previewEffect() {
+      const fx = EFFECTS[currentEffectKey];
+      if (!fx || !channels) return;
+
+      stopPreview();
+      stopPlayback();
+
+      const backupChannels = channels.map(c => new Float32Array(c));
+      const backupSelStart = selStart;
+      const backupSelEnd = selEnd;
+      const backupCursor = cursor;
+
+      const params = getEffectParams();
+      const r = getApplyRange();
+      try {
+        fx.apply(params);
+      } catch (e) {
+        console.error(e);
+        channels = backupChannels;
+        selStart = backupSelStart; selEnd = backupSelEnd; cursor = backupCursor;
+        toast("預覽失敗：" + e.message);
+        return;
+      }
+
+      const startSample = Math.max(0, Math.min(numSamples() - 1, r[0]));
+      const endSample = Math.max(startSample + 1, Math.min(numSamples(), r[1]));
+
+      const c = audio();
+      if (c.state === "suspended") c.resume();
+
+      const src = c.createBufferSource();
+      src.buffer = rebuildBuffer();
+      // 只播放範圍：設定 offset + duration
+      const startSec = startSample / sampleRate;
+      const durSec = (endSample - startSample) / sampleRate;
+      src.connect(c.destination);
+      src.start(0, startSec, durSec);
+
+      previewSource = {
+        src,
+        backupChannels,
+        backupSelStart,
+        backupSelEnd,
+        backupCursor
+      };
+      document.getElementById("fxPreviewStop").disabled = false;
+
+      src.onended = () => {
+        if (previewSource && previewSource.src === src) {
+          channels = previewSource.backupChannels;
+          selStart = previewSource.backupSelStart;
+          selEnd = previewSource.backupSelEnd;
+          cursor = previewSource.backupCursor;
+          previewSource = null;
+          document.getElementById("fxPreviewStop").disabled = true;
+          markDirty(); updateStatus();
+        }
+      };
+      markDirty();
+    }
+
+    function stopPreview() {
+      if (previewSource) {
+        try { previewSource.src.stop(); } catch (e) { }
+        channels = previewSource.backupChannels;
+        selStart = previewSource.backupSelStart;
+        selEnd = previewSource.backupSelEnd;
+        cursor = previewSource.backupCursor;
+        previewSource = null;
+        document.getElementById("fxPreviewStop").disabled = true;
+        markDirty(); updateStatus();
+      }
+    }
+
+    /* ============================================================
+       10. 工作流執行
+       ============================================================ */
+    let currentWorkflowKey = null;
+    let workflowCancelled = false;
+
+    async function runWorkflow(key) {
+      const wf = WORKFLOWS[key];
+      if (!wf || !channels) return;
+
+      currentWorkflowKey = key;
+      workflowCancelled = false;
+
+      document.getElementById("wfTitle").textContent = "◈ " + wf.name;
+      document.getElementById("wfDesc").textContent = wf.desc;
+
+      const r = getApplyRange();
+      const isSel = hasSelection();
+      document.getElementById("wfRangeTag").textContent = isSel ? "選取" : "整段";
+      document.getElementById("wfRangeText").textContent = describeRange(r);
+      document.getElementById("wfRangeNote").style.borderColor = isSel ? "#e8c86a" : "#3a2e26";
+
+      document.getElementById("wfProgress").innerHTML = "";
+      document.getElementById("wfClose").disabled = true;
+      document.getElementById("wfModal").classList.add("open");
+
+      const progressEl = document.getElementById("wfProgress");
+      for (const step of wf.steps) {
+        const row = document.createElement("div");
+        row.className = "wf-step";
+        row.innerHTML = '<span class="icon">○</span><span class="name">' + step.name + '</span><span class="status">等待中</span>';
+        progressEl.appendChild(row);
+      }
+
+      pushUndo();
+      const stepEls = progressEl.querySelectorAll(".wf-step");
+
+      for (let i = 0; i < wf.steps.length; i++) {
+        if (workflowCancelled) break;
+        const step = wf.steps[i];
+        const el = stepEls[i];
+        el.querySelector(".icon").textContent = "▶";
+        el.querySelector(".status").textContent = "執行中…";
+
+        await new Promise(r => setTimeout(r, 20));
+
+        try {
+          if (step.type === "fn") {
+            step.run();
+          } else if (step.type === "fx") {
+            EFFECTS[step.fx].apply(step.params);
+          }
+          el.classList.add("done");
+          el.querySelector(".icon").textContent = "✓";
+          el.querySelector(".status").textContent = "完成";
+        } catch (e) {
+          console.error(e);
+          el.querySelector(".icon").textContent = "✗";
+          el.querySelector(".status").textContent = "失敗：" + e.message;
+          el.style.color = "#d04030";
+        }
+      }
+
+      document.getElementById("wfClose").disabled = false;
+      markDirty(); updateStatus(); updateButtons();
+
+      if (!workflowCancelled) {
+        toast("工作流「" + wf.name + "」已完成");
+      }
+    }
+
+    /* ============================================================
+       11. 播放
+       ============================================================ */
+    function startPlayback() {
+      if (!channels) return;
+      stopPlayback();
+      const c = audio();
+      if (c.state === "suspended") c.resume();
+
+      const src = c.createBufferSource();
+      src.buffer = rebuildBuffer();
+      src.connect(c.destination);
+
+      let startSample = Math.floor(cursor);
+      if (loopSel && hasSelection()) {
+        src.loop = true;
+        src.loopStart = selStart / sampleRate;
+        src.loopEnd = selEnd / sampleRate;
+        if (startSample < selStart || startSample >= selEnd) startSample = selStart;
+      } else if (startSample >= numSamples()) {
+        startSample = 0;
+      }
+
+      src.start(0, startSample / sampleRate);
+      sourceNode = src;
+      playStartCtx = c.currentTime;
+      playStartSample = startSample;
+      playing = true;
+      src.onended = () => {
+        if (sourceNode !== src) return;
+        playing = false; sourceNode = null;
+        if (!loopSel) cursor = numSamples();
+        markDirty(); updateStatus(); updateButtons();
+      };
+      markDirty(); updateStatus(); updateButtons();
+    }
+
+    function stopPlayback() {
+      if (sourceNode) {
+        try { sourceNode.stop(); } catch (e) { }
+        try { sourceNode.disconnect(); } catch (e) { }
+        sourceNode = null;
+      }
+      playing = false;
+      markDirty(); updateStatus(); updateButtons();
+    }
+
+    /* ============================================================
+       12. 視圖 / 繪製
+       ============================================================ */
+    function clampViewAndCursor() {
+      if (!channels) return;
+      const n = numSamples();
+      cursor = Math.max(0, Math.min(n, cursor));
+      if (selStart >= 0) selStart = Math.max(0, Math.min(n, selStart));
+      if (selEnd >= 0) selEnd = Math.max(0, Math.min(n, selEnd));
+      if (viewEnd <= viewStart) { viewStart = 0; viewEnd = n; }
+      const span = viewEnd - viewStart;
+      if (viewStart < 0) { viewStart = 0; viewEnd = span; }
+      if (viewEnd > n) { viewEnd = n; viewStart = Math.max(0, n - span); }
+    }
+    function markDirty() { needsRedraw = true; }
+
+    const canvas = document.getElementById("wave");
+    function xToSample(x) {
+      const rect = canvas.getBoundingClientRect();
+      return Math.round(viewStart + (x / rect.width) * (viewEnd - viewStart));
+    }
+
+    function draw() {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const W = Math.max(1, Math.floor(rect.width * dpr));
+      const H = Math.max(1, Math.floor(rect.height * dpr));
+      if (canvas.width !== W || canvas.height !== H) {
+        canvas.width = W; canvas.height = H;
+      }
+      const ctx = canvas.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const w = rect.width, h = rect.height;
+
+      ctx.fillStyle = "#05070a";
+      ctx.fillRect(0, 0, w, h);
+
+      if (!channels) {
+        ctx.fillStyle = "#4a3a2a";
+        ctx.font = "13px 'Courier New', 'Microsoft JhengHei', monospace";
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText("拖放音訊檔到此處，或點擊右上角「開啟檔案」", w / 2, h / 2);
+        return;
+      }
+
+      const vs = viewStart, ve = viewEnd;
+      const span = Math.max(1, ve - vs);
+      const spp = span / w;
+
+      const targetTicks = Math.max(2, Math.floor(w / 100));
+      const rawStep = (span / sampleRate) / targetTicks;
+      const magSteps = [0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 30, 60];
+      let stepSec = magSteps[magSteps.length - 1];
+      for (const s of magSteps) if (s >= rawStep) { stepSec = s; break; }
+      const stepSamples = stepSec * sampleRate;
+
+      ctx.strokeStyle = "rgba(43,51,63,.6)";
+      ctx.fillStyle = "#4a3a2a";
+      ctx.font = "9px 'Courier New', monospace";
+      ctx.textAlign = "left"; ctx.textBaseline = "top";
+      ctx.beginPath();
+      const s0 = Math.ceil(vs / stepSamples) * stepSamples;
+      for (let s = s0; s < ve; s += stepSamples) {
+        const x = (s - vs) / spp;
+        ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, h);
+        const sec = s / sampleRate;
+        ctx.fillText(sec.toFixed(sec < 1 ? 3 : 2) + "s", x + 3, 3);
+      }
+      ctx.stroke();
+
+      const ch = channels[0];
+      const mid = h / 2;
+      const maxAmp = mid - 12;
+
+      ctx.fillStyle = "#8a9a50";
+      const stride = Math.max(1, Math.floor(spp / 300));
+      for (let x = 0; x < w; x++) {
+        const a = Math.floor(vs + x * spp);
+        const b = Math.min(ch.length, Math.floor(vs + (x + 1) * spp));
+        if (b <= a) continue;
+        let mn = 1, mx = -1;
+        for (let i = a; i < b; i += stride) {
+          const v = ch[i];
+          if (v < mn) mn = v;
+          if (v > mx) mx = v;
+        }
+        if (mn > mx) { mn = 0; mx = 0; }
+        ctx.fillRect(x, mid - mx * maxAmp, 1, Math.max(1, (mx - mn) * maxAmp));
+      }
+
+      ctx.strokeStyle = "rgba(232,200,106,.15)";
+      ctx.beginPath();
+      ctx.moveTo(0, mid + 0.5); ctx.lineTo(w, mid + 0.5);
+      ctx.stroke();
+
+      if (hasSelection()) {
+        const x0 = (selStart - vs) / spp;
+        const x1 = (selEnd - vs) / spp;
+        if (x1 > 0 && x0 < w) {
+          ctx.fillStyle = "rgba(232,200,106,.14)";
+          ctx.fillRect(x0, 0, x1 - x0, h);
+          ctx.strokeStyle = "rgba(232,200,106,.95)";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(x0 + 0.5, 0); ctx.lineTo(x0 + 0.5, h);
+          ctx.moveTo(x1 - 0.5, 0); ctx.lineTo(x1 - 0.5, h);
+          ctx.stroke();
+        }
+      }
+
+      const px = (cursor - vs) / spp;
+      if (px >= 0 && px <= w) {
+        ctx.strokeStyle = "#ff4a40";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(px + 0.5, 0); ctx.lineTo(px + 0.5, h);
+        ctx.stroke();
+      }
+    }
+
+    /* ============================================================
+       13. 主迴圈
+       ============================================================ */
+    function loop() {
+      requestAnimationFrame(loop);
+      if (playing && actx) {
+        const elapsed = (actx.currentTime - playStartCtx) * sampleRate;
+        let pos = playStartSample + elapsed;
+        if (loopSel && hasSelection()) {
+          const selLen = selEnd - selStart;
+          if (selLen > 0) pos = selStart + ((pos - selStart) % selLen + selLen) % selLen;
+        } else if (pos >= numSamples()) pos = numSamples();
+        cursor = Math.floor(pos);
+        needsRedraw = true;
+        updateStatus();
+      }
+      if (needsRedraw) { needsRedraw = false; draw(); }
+    }
+
+    /* ============================================================
+       14. 狀態 / 按鈕 / 檔名
+       ============================================================ */
+    function updateStatus() {
+      const pos = document.getElementById("stPos");
+      const sel = document.getElementById("stSel");
+      const len = document.getElementById("stLen");
+      const rate = document.getElementById("stRate");
+      const chn = document.getElementById("stCh");
+      const peakEl = document.getElementById("stPeak");
+      const zoomEl = document.getElementById("stZoom");
+
+      if (!channels) {
+        pos.textContent = "0.000 秒"; sel.textContent = "—";
+        len.textContent = "—"; rate.textContent = "—";
+        chn.textContent = "—"; peakEl.textContent = "—";
+        zoomEl.textContent = "1.0×";
+        return;
+      }
+      pos.textContent = (cursor / sampleRate).toFixed(3) + " 秒";
+      if (hasSelection()) {
+        const dur = (selEnd - selStart) / sampleRate;
+        sel.textContent = (selStart / sampleRate).toFixed(3) + " → " +
+          (selEnd / sampleRate).toFixed(3) + "（" + dur.toFixed(3) + " 秒）";
+      } else sel.textContent = "—";
+      len.textContent = (numSamples() / sampleRate).toFixed(3) + " 秒";
+      rate.textContent = sampleRate + " Hz";
+      chn.textContent = numChannels() + " 聲道";
+
+      let peak = 0;
+      for (const c of channels)
+        for (let i = 0; i < c.length; i += 5) peak = Math.max(peak, Math.abs(c[i]));
+      const peakDb = peak > 0 ? (20 * Math.log10(peak)) : -Infinity;
+      peakEl.textContent = (peakDb === -Infinity ? "-∞" : peakDb.toFixed(1)) + " dB";
+
+      const zoom = numSamples() / Math.max(1, viewEnd - viewStart);
+      zoomEl.textContent = zoom.toFixed(1) + "×";
+    }
+
+    function updateButtons() {
+      const hasBuf = !!channels;
+      const hasClip = !!clipboard;
+      const hasSel = hasSelection();
+
+      document.getElementById("btnExportWav").disabled = !hasBuf;
+      document.getElementById("btnExportMp3").disabled = !hasBuf;
+      document.getElementById("btnUndo").disabled = undoStack.length === 0;
+      document.getElementById("btnRedo").disabled = redoStack.length === 0;
+      document.getElementById("btnPlay").disabled = !hasBuf;
+      document.getElementById("btnStop").disabled = !playing;
+      document.getElementById("btnCopy").disabled = !hasBuf;
+      document.getElementById("btnCut").disabled = !hasSel;
+      document.getElementById("btnPaste").disabled = !hasBuf || !hasClip;
+      document.getElementById("btnDelete").disabled = !hasSel;
+      document.getElementById("btnSilence").disabled = !hasSel;
+      document.getElementById("btnTrimSel").disabled = !hasSel;
+      document.getElementById("btnTrimSilence").disabled = !hasBuf;
+      document.getElementById("btnFadeIn").disabled = !hasBuf;
+      document.getElementById("btnFadeOut").disabled = !hasBuf;
+      document.getElementById("btnNormalize").disabled = !hasBuf;
+      document.getElementById("btnAmplify").disabled = !hasBuf;
+      document.getElementById("btnReverse").disabled = !hasBuf;
+      document.getElementById("btnInsertSilence").disabled = !hasBuf;
+
+      document.querySelectorAll("[data-fx]").forEach(b => b.disabled = !hasBuf);
+      document.querySelectorAll("[data-workflow]").forEach(b => b.disabled = !hasBuf);
+
+      document.getElementById("btnPlay").textContent = playing ? "▮ 播放中" : "▶ 播放";
+    }
+
+    function updateFileInfo() {
+      const el = document.getElementById("fileInfo");
+      if (!channels) { el.textContent = "尚未載入檔案"; el.classList.remove("modified"); return; }
+      el.textContent = (modified ? "● " : "") + (fileName || "未命名") + "　·　" +
+        (numSamples() / sampleRate).toFixed(3) + " 秒";
+      el.classList.toggle("modified", modified);
+      document.title = (modified ? "* " : "") + (fileName || "未命名") + " — ARive 音訊編輯器";
+    }
+
+    /* ============================================================
+       15. 匯出
+       ============================================================ */
+    function downloadBlob(blob, name) {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    }
+    function defaultBaseName() { return fileName ? fileName.replace(/\.[^.]+$/, "") : "clip"; }
+
+    function encodeWav(chans, rate) {
+      const numCh = chans.length, len = chans[0].length;
+      const blockAlign = numCh * 2;
+      const byteRate = rate * blockAlign;
+      const dataSize = len * blockAlign;
+      const bufferSize = 44 + dataSize;
+      const ab = new ArrayBuffer(bufferSize);
+      const view = new DataView(ab);
+      let o = 0;
+      const wStr = s => { for (let i = 0; i < s.length; i++) view.setUint8(o++, s.charCodeAt(i)); };
+      const w32 = v => { view.setUint32(o, v, true); o += 4; };
+      const w16 = v => { view.setUint16(o, v, true); o += 2; };
+      wStr("RIFF"); w32(bufferSize - 8); wStr("WAVE");
+      wStr("fmt "); w32(16); w16(1); w16(numCh);
+      w32(rate); w32(byteRate); w16(blockAlign); w16(16);
+      wStr("data"); w32(dataSize);
+      for (let i = 0; i < len; i++) {
+        for (let c = 0; c < numCh; c++) {
+          let s = chans[c][i];
+          if (s > 1) s = 1; else if (s < -1) s = -1;
+          view.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7FFF, true); o += 2;
+        }
+      }
+      return new Blob([ab], { type: "audio/wav" });
+    }
+
+    async function exportWav() {
+      if (!channels) return;
+      downloadBlob(encodeWav(channels, sampleRate), defaultBaseName() + ".wav");
+      toast("已匯出 WAV");
+      modified = false; updateFileInfo();
+    }
+
+    async function ensureLame() {
+      if (window.lamejs) return true;
+      return new Promise(resolve => {
+        const s = document.createElement("script");
+        s.src = "https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js";
+        s.onload = () => resolve(!!window.lamejs);
+        s.onerror = () => resolve(false);
+        document.head.appendChild(s);
+      });
+    }
+
+    async function exportMp3() {
+      if (!channels) return;
+      toast("正在載入 MP3 編碼器…");
+      const ok = await ensureLame();
+      if (!ok) { toast("無法載入 MP3 編碼器，請改用 WAV 匯出"); return; }
+      const numCh = Math.min(2, numChannels());
+      const len = numSamples();
+      const enc = new window.lamejs.Mp3Encoder(numCh, sampleRate, 192);
+      const ints = [];
+      for (let c = 0; c < numCh; c++) {
+        const src = channels[c];
+        const out = new Int16Array(len);
+        for (let i = 0; i < len; i++) {
+          let s = src[i];
+          if (s > 1) s = 1; else if (s < -1) s = -1;
+          out[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+        ints.push(out);
+      }
+      const chunks = [];
+      for (let i = 0; i < len; i += 1152) {
+        const end = Math.min(len, i + 1152);
+        const buf = numCh === 1
+          ? enc.encodeBuffer(ints[0].subarray(i, end))
+          : enc.encodeBuffer(ints[0].subarray(i, end), ints[1].subarray(i, end));
+        if (buf.length) chunks.push(new Uint8Array(buf));
+      }
+      const flush = enc.flush();
+      if (flush.length) chunks.push(new Uint8Array(flush));
+      downloadBlob(new Blob(chunks, { type: "audio/mpeg" }), defaultBaseName() + ".mp3");
+      toast("已匯出 MP3");
+      modified = false; updateFileInfo();
+    }
+
+    /* ============================================================
+       16. 滑鼠 / 鍵盤
+       ============================================================ */
+    canvas.addEventListener("mousedown", e => {
+      if (!channels) return;
+      if (e.button === 1 || e.altKey) {
+        dragging = { mode: "pan", startX: e.clientX, startViewStart: viewStart, startViewEnd: viewEnd };
+        e.preventDefault(); return;
+      }
+      if (e.button !== 0) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const s = xToSample(x);
+      dragStartSample = s;
+      dragStartX = x;
+      if (e.shiftKey && hasSelection()) {
+        if (Math.abs(s - selStart) < Math.abs(s - selEnd))
+          dragging = { mode: "extend-start", anchor: selEnd };
+        else
+          dragging = { mode: "extend-end", anchor: selStart };
+      } else {
+        dragging = { mode: "sel", anchor: s };
+        selStart = selEnd = s;
+      }
+      markDirty(); updateButtons();
+    });
+
+    document.addEventListener("mousemove", e => {
+      if (!dragging || !channels) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      if (dragging.mode === "pan") {
+        const dx = e.clientX - dragging.startX;
+        const span = dragging.startViewEnd - dragging.startViewStart;
+        const shift = Math.round((dx / rect.width) * span);
+        viewStart = dragging.startViewStart - shift;
+        viewEnd = dragging.startViewEnd - shift;
+        clampViewAndCursor(); markDirty();
+        return;
+      }
+      const s = xToSample(x);
+      if (dragging.mode === "sel") {
+        selStart = Math.min(dragging.anchor, s);
+        selEnd = Math.max(dragging.anchor, s);
+      } else if (dragging.mode === "extend-start") {
+        selStart = Math.min(s, dragging.anchor);
+        selEnd = dragging.anchor;
+      } else {
+        selStart = dragging.anchor;
+        selEnd = Math.max(s, dragging.anchor);
+      }
+      clampViewAndCursor(); markDirty(); updateStatus();
+    });
+
+    document.addEventListener("mouseup", e => {
+      if (!dragging) return;
+      if (dragging.mode !== "pan") {
+        const moved = Math.abs(e.clientX - dragStartX);
+        if (moved < 3) {
+          cursor = Math.max(0, Math.min(numSamples(), dragStartSample));
+          selStart = selEnd = -1;
+        } else if (selEnd - selStart < 2) {
+          selStart = selEnd = -1;
+        }
+      }
+      dragging = null;
+      markDirty(); updateStatus(); updateButtons();
+    });
+
+    canvas.addEventListener("wheel", e => {
+      if (!channels) return;
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const frac = x / rect.width;
+      const oldSpan = viewEnd - viewStart;
+      const zf = e.deltaY < 0 ? 1.25 : 1 / 1.25;
+      const newSpan = Math.max(16, Math.min(numSamples(), oldSpan / zf));
+      const anchor = viewStart + frac * oldSpan;
+      let ns = anchor - frac * newSpan;
+      let ne = ns + newSpan;
+      if (ns < 0) { ns = 0; ne = newSpan; }
+      if (ne > numSamples()) { ne = numSamples(); ns = Math.max(0, ne - newSpan); }
+      viewStart = Math.round(ns); viewEnd = Math.round(ne);
+      markDirty(); updateStatus();
+    }, { passive: false });
+
+    document.addEventListener("keydown", e => {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
+      const ctrl = e.ctrlKey || e.metaKey;
+
+      if (e.code === "F1") {
+        e.preventDefault();
+        document.getElementById("helpModal").classList.add("open");
+        return;
+      }
+      if (e.code === "Space") { e.preventDefault(); playing ? stopPlayback() : startPlayback(); return; }
+      if (e.code === "Escape") {
+        e.preventDefault();
+        ["helpModal", "fxModal", "ampModal", "silModal", "wfModal"].forEach(id =>
+          document.getElementById(id).classList.remove("open"));
+        stopPreview();
+        stopPlayback();
+        return;
+      }
+      if (e.code === "Delete" || e.code === "Backspace") { e.preventDefault(); deleteSelection(); return; }
+      if (e.code === "Home") { cursor = 0; markDirty(); updateStatus(); return; }
+      if (e.code === "End") { cursor = numSamples(); markDirty(); updateStatus(); return; }
+      if (ctrl && e.code === "KeyZ" && !e.shiftKey) { e.preventDefault(); undo(); return; }
+      if (ctrl && (e.code === "KeyY" || (e.code === "KeyZ" && e.shiftKey))) { e.preventDefault(); redo(); return; }
+      if (ctrl && e.code === "KeyC") { e.preventDefault(); copySelection(); return; }
+      if (ctrl && e.code === "KeyX") { e.preventDefault(); cutSelection(); return; }
+      if (ctrl && e.code === "KeyV") { e.preventDefault(); pasteAtCursor(); return; }
+      if (ctrl && e.code === "KeyA") {
+        e.preventDefault();
+        if (channels) { selStart = 0; selEnd = numSamples(); markDirty(); updateStatus(); updateButtons(); }
+        return;
+      }
+    });
+
+    /* ============================================================
+       17. UI 綁定
+       ============================================================ */
+    const filePicker = document.getElementById("filePicker");
+    document.getElementById("btnOpen").addEventListener("click", () => filePicker.click());
+    filePicker.addEventListener("change", async () => {
+      const f = filePicker.files[0];
+      if (!f) return;
+      try { await loadFile(f); } catch (e) { toast("載入失敗：" + e.message); }
+      filePicker.value = "";
+    });
+
+    document.getElementById("btnPlay").addEventListener("click", startPlayback);
+    document.getElementById("btnStop").addEventListener("click", stopPlayback);
+    document.getElementById("chkLoop").addEventListener("change", e => loopSel = e.target.checked);
+
+    document.getElementById("btnUndo").addEventListener("click", undo);
+    document.getElementById("btnRedo").addEventListener("click", redo);
+
+    document.getElementById("btnCopy").addEventListener("click", copySelection);
+    document.getElementById("btnCut").addEventListener("click", cutSelection);
+    document.getElementById("btnPaste").addEventListener("click", pasteAtCursor);
+    document.getElementById("btnDelete").addEventListener("click", deleteSelection);
+    document.getElementById("btnSilence").addEventListener("click", silenceSelection);
+    document.getElementById("btnTrimSel").addEventListener("click", trimToSelection);
+    document.getElementById("btnTrimSilence").addEventListener("click", () => {
+      pushUndo();
+      if (!trimSilence()) { toast("整段皆為無聲"); undoStack.pop(); }
+      markDirty(); updateStatus(); updateButtons();
+    });
+    document.getElementById("btnFadeIn").addEventListener("click", () => {
+      pushUndo(); applyFade(true); markDirty(); updateStatus();
+      toast("已淡入" + (hasSelection() ? "選取範圍" : "整段"));
+    });
+    document.getElementById("btnFadeOut").addEventListener("click", () => {
+      pushUndo(); applyFade(false); markDirty(); updateStatus();
+      toast("已淡出" + (hasSelection() ? "選取範圍" : "整段"));
+    });
+    document.getElementById("btnNormalize").addEventListener("click", () => {
+      pushUndo(); normalize(-1); markDirty(); updateStatus();
+      toast("已正規化" + (hasSelection() ? "選取範圍" : "整段"));
+    });
+    document.getElementById("btnReverse").addEventListener("click", () => {
+      pushUndo(); reverse(); markDirty(); updateStatus();
+    });
+
+    /* 增幅 */
+    const ampModal = document.getElementById("ampModal");
+    const ampSlider = document.getElementById("ampSlider");
+    const ampVal = document.getElementById("ampVal");
+    document.getElementById("btnAmplify").addEventListener("click", () => {
+      ampSlider.value = 0; ampVal.textContent = "0.0";
+      ampModal.classList.add("open");
+    });
+    ampSlider.addEventListener("input", () => ampVal.textContent = parseFloat(ampSlider.value).toFixed(1));
+    document.getElementById("ampCancel").addEventListener("click", () => ampModal.classList.remove("open"));
+    document.getElementById("ampApply").addEventListener("click", () => {
+      const db = parseFloat(ampSlider.value);
+      ampModal.classList.remove("open");
+      if (Math.abs(db) < 0.05) return;
+      pushUndo();
+      amplify(db);
+      markDirty(); updateStatus();
+      toast("已增幅 " + (db >= 0 ? "+" : "") + db.toFixed(1) + " dB" +
+        (hasSelection() ? "（選取範圍）" : "（整段）"));
+    });
+
+    /* 插入靜音 */
+    const silModal = document.getElementById("silModal");
+    document.getElementById("btnInsertSilence").addEventListener("click", () => {
+      silModal.classList.add("open");
+      document.getElementById("silSecs").focus();
+    });
+    document.getElementById("silCancel").addEventListener("click", () => silModal.classList.remove("open"));
+    document.getElementById("silApply").addEventListener("click", () => {
+      const s = parseFloat(document.getElementById("silSecs").value);
+      silModal.classList.remove("open");
+      if (!isFinite(s) || s <= 0) return;
+      insertSilence(s);
+    });
+
+    /* 效果按鈕 */
+    document.querySelectorAll("[data-fx]").forEach(btn => {
+      btn.addEventListener("click", () => openEffectModal(btn.dataset.fx));
+    });
+    document.getElementById("fxCancel").addEventListener("click", () => {
+      stopPreview();
+      document.getElementById("fxModal").classList.remove("open");
+    });
+    document.getElementById("fxApply").addEventListener("click", () => {
+      stopPreview();
+      applyEffectModal();
+    });
+    document.getElementById("fxPreview").addEventListener("click", previewEffect);
+    document.getElementById("fxPreviewStop").addEventListener("click", stopPreview);
+    document.getElementById("fxSavePreset").addEventListener("click", saveCurrentAsPreset);
+
+    /* 工作流按鈕 */
+    document.querySelectorAll("[data-workflow]").forEach(btn => {
+      btn.addEventListener("click", () => runWorkflow(btn.dataset.workflow));
+    });
+    document.getElementById("wfCancel").addEventListener("click", () => {
+      workflowCancelled = true;
+      document.getElementById("wfClose").disabled = false;
+    });
+    document.getElementById("wfClose").addEventListener("click", () => {
+      document.getElementById("wfModal").classList.remove("open");
+    });
+
+    /* 說明 */
+    document.getElementById("btnHelp").addEventListener("click", () => {
+      document.getElementById("helpModal").classList.add("open");
+    });
+    document.getElementById("helpClose").addEventListener("click", () => {
+      document.getElementById("helpModal").classList.remove("open");
+    });
+
+    /* 匯出 */
+    document.getElementById("btnExportWav").addEventListener("click", exportWav);
+    document.getElementById("btnExportMp3").addEventListener("click", exportMp3);
+
+    /* ============================================================
+       18. 懸停說明列
+       ============================================================ */
+    const descText = document.getElementById("descText");
+    document.addEventListener("mouseover", e => {
+      const btn = e.target.closest("[data-desc]");
+      if (!btn) return;
+      const key = btn.dataset.key;
+      descText.innerHTML =
+        "<b>" + escapeHtml(btn.textContent.trim()) + "</b> ── " +
+        escapeHtml(btn.dataset.desc) +
+        (key ? '  <span class="key">' + escapeHtml(key) + "</span>" : "");
+    });
+    document.addEventListener("mouseout", e => {
+      if (!e.target.closest("[data-desc]")) return;
+      descText.textContent = "將滑鼠移到任何按鈕上，這裡會顯示該功能的說明。";
+    });
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    /* ============================================================
+       19. 拖放
+       ============================================================ */
+    const dropOverlay = document.getElementById("dropOverlay");
+    let dragCounter = 0;
+    window.addEventListener("dragenter", e => {
+      e.preventDefault(); dragCounter++;
+      if (e.dataTransfer && e.dataTransfer.types.includes("Files"))
+        dropOverlay.classList.add("show");
+    });
+    window.addEventListener("dragover", e => e.preventDefault());
+    window.addEventListener("dragleave", e => {
+      e.preventDefault(); dragCounter--;
+      if (dragCounter <= 0) { dragCounter = 0; dropOverlay.classList.remove("show"); }
+    });
+    window.addEventListener("drop", async e => {
+      e.preventDefault();
+      dragCounter = 0; dropOverlay.classList.remove("show");
+      const f = e.dataTransfer.files[0];
+      if (!f) return;
+      try { await loadFile(f); } catch (err) { toast("載入失敗：" + err.message); }
+    });
+
+    /* ============================================================
+       20. 小提示 / 啟動
+       ============================================================ */
+    let toastTimer = null;
+    function toast(msg) {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.classList.remove("show"), 1800);
+    }
+
+    window.addEventListener("beforeunload", e => {
+      if (modified) { e.preventDefault(); e.returnValue = ""; }
+    });
+
+    loadUserPresets();
+    updateStatus();
+    updateButtons();
+    updateFileInfo();
+    requestAnimationFrame(loop);
+  </script>
+</body>
+
+</html>

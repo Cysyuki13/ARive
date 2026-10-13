@@ -14,6 +14,12 @@
   "recoilKick": 0.042,
   "scopeFov": 60,
   "scopeSens": 0.72,
+  "inspectDur": 1.6,
+  "inspectLift": 0.08,
+  "inspectPull": 0.05,
+  "inspectSpin": 6.28,
+  "inspectRoll": 0.85,
+  "inspectPitch": 0.10,
   "muzzleLocal": [
     0,
     0.076,
@@ -75,9 +81,22 @@
     0.05
   ],
   "anim": {
-    "swing": 0.1,
-    "kick": 0.085
+    "swing": 0.10,
+    "kick": 0.085,
+    "recoilTravel": 0.035,
+    "aimTravelMul": 2.0
   },
+  "iconR": [
+    -0.08,
+    -0.68,
+    0.68
+  ],
+  "iconP": [
+    0,
+    0,
+    0
+  ],
+  "iconScale": 2.1,
   "model": [
     {
       "p": [

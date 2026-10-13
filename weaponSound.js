@@ -38,6 +38,27 @@
             fire: { url: 'assets/sounds/smg_loop.mp3', volume: 0.40, loop: true },
             empty: { url: 'assets/sounds/gun_empty.mp3', volume: 0.45 },
             reload: { url: 'assets/sounds/smg_reload.mp3', volume: 0.50 }
+        },
+
+        /* ---- Rifles — every weapon with weaponType:"rifle" routes here ----
+           One-shot per shot.  Auto rifles retrigger this sample every
+           fireRate seconds (M4: 0.09 s ≈ 11 rounds/s), giving a natural
+           rapid-fire cadence from a single recording. */
+        rifle: {
+            fire: { url: 'assets/sounds/rifle_fire.mp3', volume: 0.45 },
+            empty: { url: 'assets/sounds/gun_empty.mp3', volume: 0.45 },
+            reload: { url: 'assets/sounds/rifle_reload.mp3', volume: 0.55 }
+        },
+
+        shotgun: {
+            fire: { url: 'assets/sounds/shotgun_fire.mp3', volume: 0.65 },
+            empty: { url: 'assets/sounds/gun_empty.mp3', volume: 0.45 },
+            reload: { url: 'assets/sounds/shotgun_relaod.mp3', volume: 0.55 }
+        },
+        sniper: {
+            fire: { url: 'assets/sounds/sniper_fire.mp3', volume: 0.70 },
+            empty: { url: 'assets/sounds/gun_empty.mp3', volume: 0.45 },
+            reload: { url: 'assets/sounds/sniper_reload.mp3', volume: 0.55 }
         }
     };
 })();

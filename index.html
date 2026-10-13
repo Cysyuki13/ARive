@@ -59,43 +59,6 @@
         <div id="hint">1/2 gun &nbsp;·&nbsp; 3-7 tool &nbsp;·&nbsp; LMB fire/use &nbsp;·&nbsp; RMB scope &nbsp;·&nbsp; R
             reload &nbsp;·&nbsp; E pick up &nbsp;·&nbsp; TAB bag &nbsp;·&nbsp; ESC menu</div>
 
-        <!-- NEW: dev tools panel (sandbox map only) -->
-        <div id="devMenu" class="hidden">
-            <div class="dev-title">◈ DEV TOOLS ◈</div>
-            <div class="dev-hint">Press <b>G</b> to interact</div>
-
-            <div class="dev-section">BLOCKS</div>
-            <div class="dev-grid">
-                <button data-dev="cube-wood">Wood</button>
-                <button data-dev="cube-concrete">Concrete</button>
-                <button data-dev="cube-metal">Metal</button>
-                <button data-dev="cube-glass">Glass</button>
-                <button data-dev="barrel">Barrel</button>
-                <button data-dev="rubble">Rubble</button>
-            </div>
-
-            <div class="dev-section">STRUCTURES</div>
-            <div class="dev-grid">
-                <button data-dev="wall">Wall</button>
-                <button data-dev="pillar">Pillar</button>
-                <button data-dev="house">House</button>
-                <button data-dev="stairs">Stairs</button>
-            </div>
-
-            <div class="dev-section">ENTITIES</div>
-            <div class="dev-grid">
-                <button data-dev="spawn-zombie">Zombie</button>
-                <button data-dev="spawn-alien">Alien</button>
-            </div>
-
-            <div class="dev-section">ACTIONS</div>
-            <div class="dev-grid">
-                <button data-dev="carve">Carve</button>
-                <button data-dev="boom">Boom</button>
-                <button data-dev="clear-enemies">Clear Foes</button>
-                <button data-dev="heal">Heal Self</button>
-            </div>
-        </div>
     </div>
 
     <div id="loading" class="screen hidden">
@@ -111,6 +74,64 @@
     <!-- NEW: map selection screen (shown first) -->
     <div id="mapSelect" class="screen">
         <div class="panel">
+            <!-- Google 登入區塊 -->
+            <div id="authBox" style="
+            display: flex; align-items: center; gap: 12px;
+            background: #12161d; border: 2px solid #2b333f;
+            padding: 10px 14px; margin-bottom: 20px;
+            font-family: 'Courier New', monospace;
+        ">
+                <!-- 未登入 -->
+                <div id="authGuest" style="display: flex; align-items: center; gap: 12px; width: 100%;">
+                    <span style="color: #7a6e5e; font-size: 11px; letter-spacing: 2px;">
+                        NOT SIGNED IN
+                    </span>
+                    <button id="authSignInBtn" style="
+                    margin-left: auto;
+                    background: transparent;
+                    border: 2px solid #e8c86a;
+                    color: #e8c86a;
+                    font: bold 11px 'Courier New', monospace;
+                    letter-spacing: 2px;
+                    padding: 6px 14px;
+                    cursor: pointer;
+                ">🔓 SIGN IN WITH GOOGLE</button>
+                </div>
+
+                <!-- 已登入 -->
+                <div id="authUser" style="display: none; align-items: center; gap: 12px; width: 100%;">
+                    <img id="authAvatar" src="" alt="" style="
+                    width: 36px; height: 36px;
+                    border: 2px solid #e8c86a;
+                    border-radius: 50%;
+                    background: #05070a;
+                    object-fit: cover;
+                ">
+                    <div style="display: flex; flex-direction: column; min-width: 0;">
+                        <span id="authName" style="
+                        color: #f6dd8b; font: bold 12px 'Courier New', monospace;
+                        letter-spacing: 1px;
+                        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                    ">—</span>
+                        <span id="authEmail" style="
+                        color: #7a6e5e; font: 10px 'Courier New', monospace;
+                        letter-spacing: 1px;
+                        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                    ">—</span>
+                    </div>
+                    <button id="authSignOutBtn" style="
+                    margin-left: auto;
+                    background: transparent;
+                    border: 2px solid #6a5a44;
+                    color: #a89a84;
+                    font: bold 10px 'Courier New', monospace;
+                    letter-spacing: 1px;
+                    padding: 5px 10px;
+                    cursor: pointer;
+                ">SIGN OUT</button>
+                </div>
+            </div>
+
             <h1 class="glow">ARive</h1>
             <p class="sub">Choose your arena</p>
 
@@ -212,13 +233,12 @@
         <div class="panel">
             <h1 class="glow">MULTIPLAYER</h1>
 
-            <!-- ================= PICKER (not connected) ================= -->
             <div id="mpPicker">
-                <p class="sub">Host a world or join a friend's</p>
-
-                <div class="mp-field">
-                    <label for="mpName">YOUR NAME</label>
-                    <input type="text" id="mpName" maxlength="16" placeholder="Survivor" autocomplete="off" />
+                <div id="mpNameField">
+                    <div class="mp-field">
+                        <label for="mpName">YOUR NAME</label>
+                        <input type="text" id="mpName" maxlength="16" placeholder="Survivor" autocomplete="off" />
+                    </div>
                 </div>
 
                 <div id="mpActions" class="mp-actions">
@@ -226,9 +246,28 @@
                     <button id="mpJoinBtn" class="btn">JOIN WORLD</button>
                 </div>
 
-                <!-- HOST: choose which world to host -->
+                <!-- ============ HOST ============ -->
                 <div id="mpHostPanel" class="hidden">
-                    <p class="sub" style="margin-top:18px;">Choose a world to host:</p>
+                    <p class="sub" style="margin-top:18px;">Configure your room</p>
+
+                    <div class="mp-field">
+                        <label for="mpRoomName">ROOM NAME</label>
+                        <input type="text" id="mpRoomName" maxlength="32" placeholder="My World" autocomplete="off" />
+                    </div>
+
+                    <div class="mp-field">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                            <input type="checkbox" id="mpRoomPrivate" />
+                            <span>PASSWORD PROTECTED</span>
+                        </label>
+                    </div>
+
+                    <div class="mp-field hidden" id="mpPasswordField">
+                        <label for="mpRoomPassword">PASSWORD</label>
+                        <input type="password" id="mpRoomPassword" maxlength="32" autocomplete="new-password" />
+                    </div>
+
+                    <p class="sub" style="margin-top:18px;">Choose a world:</p>
                     <div class="map-grid" style="margin-bottom:18px;">
                         <button class="map-card" data-host-map="city">
                             <div class="map-icon">🏙</div>
@@ -245,23 +284,32 @@
                     <button id="mpHostBack" class="btn btn-secondary">BACK</button>
                 </div>
 
-                <!-- JOIN: enter a room code -->
+                <!-- ============ JOIN (room list) ============ -->
                 <div id="mpJoinPanel" class="hidden">
+                    <p class="sub" style="margin-top:18px;">Live rooms</p>
+                    <div id="mpRoomList" class="mp-room-list">
+                        <div class="mp-room-empty">Loading rooms…</div>
+                    </div>
+                    <button id="mpJoinBack" class="btn btn-secondary" style="margin-top:14px;">BACK</button>
+                    <div class="mp-status" id="mpJoinStatus"></div>
+                </div>
+
+                <!-- ============ Password prompt ============ -->
+                <div id="mpPasswordPrompt" class="hidden" style="margin-top:18px;">
+                    <p class="sub" id="mpPasswordRoomName">This room is password protected</p>
                     <div class="mp-field">
-                        <label for="mpCode">ROOM CODE</label>
-                        <input type="text" id="mpCode" maxlength="4" placeholder="ABCD" autocomplete="off"
-                            style="text-transform:uppercase;letter-spacing:10px;text-align:center;" />
+                        <label for="mpJoinPassword">PASSWORD</label>
+                        <input type="password" id="mpJoinPassword" maxlength="32" autocomplete="off" />
                     </div>
                     <div class="mp-copy-row">
-                        <button id="mpJoinConfirm" class="btn">CONNECT</button>
-                        <button id="mpJoinBack" class="btn btn-secondary">BACK</button>
+                        <button id="mpPasswordConfirm" class="btn">JOIN</button>
+                        <button id="mpPasswordCancel" class="btn btn-secondary">CANCEL</button>
                     </div>
-                    <div class="mp-status" id="mpJoinStatus"></div>
                 </div>
             </div>
 
             <button id="mpBackBtn" class="btn btn-secondary" style="margin-top:14px;">BACK TO MENU</button>
-            <p class="note">Multiplayer requires HTTPS or localhost (WebRTC).</p>
+            <p class="note">Rooms sync via Firestore · gameplay syncs P2P over WebRTC</p>
         </div>
     </div>
 
@@ -278,6 +326,8 @@
     <script src="assets/model/weaponModel.js"></script>
     <script src="assets/model/weaponModel/index.js"></script>
 
+    <script src="weaponSkins.js"></script>
+
     <script src="assets/model/structureModel.js"></script>
     <script src="assets/model/structureModel/index.js"></script>
 
@@ -286,6 +336,9 @@
 
     <!-- Main.js -->
 
+    <script src="multiplayer/auth.js"></script>
+    <script src="multiplayer/authUI.js"></script>
+
     <script src="sfx.js"></script>
     <script src="weaponSound.js"></script>
     <script src="weapons.js"></script>
@@ -293,8 +346,11 @@
     <script src="inventory.js"></script>
     <script src="map.js"></script>
     <script src="game.js"></script>
+    <script src="enemy.js"></script>
+    <script src="sandboxMenu.js"></script>
 
-    <script src="multiplayer.js"></script>
+    <script src="multiplayer/roomRegistry.js"></script>
+    <script src="multiplayer/multiplayer.js"></script>
 
 </body>
 
