@@ -1,0 +1,2330 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="utf-8">
+    <title>ARive — 武器編輯器</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            height: 100%;
+            background: #080b10;
+            color: #c8b88a;
+            font: 12px "Courier New", monospace;
+            overflow: hidden;
+        }
+
+        #wrap {
+            display: grid;
+            grid-template-columns: 340px 1fr 360px;
+            height: 100vh;
+        }
+
+        .col {
+            overflow-y: auto;
+            padding: 14px;
+            background: #0e1219;
+            border-right: 1px solid #1c232d;
+            scrollbar-width: thin;
+            scrollbar-color: #2b333f #0e1219;
+        }
+
+        .col:last-child {
+            border-right: none;
+            border-left: 1px solid #1c232d;
+        }
+
+        .col::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .col::-webkit-scrollbar-thumb {
+            background: #2b333f;
+        }
+
+        .col::-webkit-scrollbar-track {
+            background: #0e1219;
+        }
+
+        h1 {
+            font-size: 13px;
+            letter-spacing: 3px;
+            color: #e8c86a;
+            margin: 0 0 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        h1::before {
+            content: "◈";
+            color: #6ac8e8;
+        }
+
+        h2 {
+            font-size: 10px;
+            letter-spacing: 2px;
+            color: #8fa8c8;
+            margin: 14px 0 6px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #1c232d;
+            text-transform: uppercase;
+        }
+
+        h3 {
+            font-size: 9px;
+            letter-spacing: 1.5px;
+            color: #6ac8e8;
+            margin: 10px 0 4px;
+            text-transform: uppercase;
+        }
+
+        label {
+            display: block;
+            font-size: 9px;
+            color: #7a889a;
+            letter-spacing: 1px;
+            margin-top: 6px;
+            text-transform: uppercase;
+        }
+
+        input,
+        select,
+        textarea,
+        button {
+            width: 100%;
+            background: #161b23;
+            color: #e8c86a;
+            border: 1px solid #2b333f;
+            padding: 5px 7px;
+            font: 11px "Courier New", monospace;
+            border-radius: 2px;
+            transition: border-color .12s, background .12s;
+        }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #6ac8e8;
+        }
+
+        button {
+            cursor: pointer;
+            letter-spacing: 1px;
+            background: #1a2029;
+        }
+
+        button:hover {
+            background: #20272f;
+            border-color: #3a4450;
+        }
+
+        button.active {
+            background: #e8c86a;
+            color: #0b0e13;
+            border-color: #f6e2a6;
+            font-weight: bold;
+        }
+
+        .row {
+            display: flex;
+            gap: 6px;
+        }
+
+        .row>* {
+            flex: 1;
+        }
+
+        /* ---- tabs ---- */
+        .tabs {
+            display: flex;
+            gap: 2px;
+            margin: 0 0 12px;
+            background: #0a0d12;
+            padding: 3px;
+            border-radius: 3px;
+            border: 1px solid #1c232d;
+        }
+
+        .tabs button {
+            flex: 1;
+            padding: 7px 4px;
+            font-size: 9px;
+            letter-spacing: 1.5px;
+            background: transparent;
+            border: none;
+            color: #6a7a8a;
+        }
+
+        .tabs button.active {
+            background: #e8c86a;
+            color: #0b0e13;
+            font-weight: bold;
+        }
+
+        .tab-pane {
+            display: none;
+        }
+
+        .tab-pane.active {
+            display: block;
+        }
+
+        /* ---- groups ---- */
+        .grp {
+            background: #0a0d12;
+            border: 1px solid #1c232d;
+            padding: 8px 10px 10px;
+            margin-bottom: 8px;
+            border-radius: 3px;
+        }
+
+        /* ---- slider rows ---- */
+        .vec-row {
+            display: grid;
+            grid-template-columns: 22px 1fr 64px;
+            gap: 5px;
+            align-items: center;
+            margin-top: 3px;
+        }
+
+        .vec-row>span:first-child {
+            font-size: 9px;
+            color: #5a6a7a;
+            text-align: center;
+            letter-spacing: 1px;
+        }
+
+        .vec-row input[type="range"] {
+            width: 100%;
+            height: 3px;
+            background: #1a2028;
+            appearance: none;
+            -webkit-appearance: none;
+            outline: none;
+            cursor: pointer;
+            border-radius: 2px;
+        }
+
+        .vec-row input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 12px;
+            height: 12px;
+            background: #6ac8e8;
+            border: 1px solid #0a0d12;
+            cursor: grab;
+            border-radius: 50%;
+        }
+
+        .vec-row input[type="range"]::-moz-range-thumb {
+            width: 12px;
+            height: 12px;
+            background: #6ac8e8;
+            border: 1px solid #0a0d12;
+            cursor: grab;
+            border-radius: 50%;
+        }
+
+        .vec-row input[type="range"]:disabled {
+            opacity: .3;
+            cursor: not-allowed;
+        }
+
+        .vec-row input[type="number"] {
+            padding: 3px 5px;
+            font-size: 10px;
+            text-align: right;
+            font-family: "Courier New", monospace;
+        }
+
+        .vec-row input[type="number"]:disabled {
+            opacity: .3;
+        }
+
+        /* ---- viewport ---- */
+        #viewport {
+            position: relative;
+            background: #05070a;
+            min-width: 0;
+        }
+
+        #viewport canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        #hud {
+            position: absolute;
+            top: 10px;
+            left: 12px;
+            font-size: 9px;
+            color: #5a6a7a;
+            letter-spacing: 1px;
+            pointer-events: none;
+            line-height: 1.7;
+            background: rgba(10, 14, 20, .6);
+            padding: 6px 9px;
+            border: 1px solid #1c232d;
+            border-radius: 3px;
+        }
+
+        #hud b {
+            font-weight: bold;
+        }
+
+        #camPresets {
+            position: absolute;
+            top: 10px;
+            right: 12px;
+            display: flex;
+            gap: 4px;
+        }
+
+        #camPresets button {
+            width: auto;
+            padding: 5px 10px;
+            font-size: 9px;
+            letter-spacing: 1px;
+            background: rgba(16, 22, 30, .85);
+            border-color: #2a3441;
+        }
+
+        #camPresets button.active {
+            background: #e8c86a;
+            color: #0b0e13;
+            border-color: #f6e2a6;
+        }
+
+        #readout {
+            position: absolute;
+            bottom: 10px;
+            left: 12px;
+            font-size: 10px;
+            color: #6ac8e8;
+            letter-spacing: 1px;
+            background: rgba(10, 14, 20, .78);
+            border: 1px solid #1c232d;
+            padding: 6px 10px;
+            line-height: 1.6;
+            pointer-events: none;
+            border-radius: 3px;
+        }
+
+        #viewTabs {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 4px;
+            z-index: 3;
+        }
+
+        #viewTabs button {
+            width: auto;
+            padding: 6px 14px;
+            font-size: 9px;
+            letter-spacing: 1.5px;
+            background: rgba(16, 22, 30, .85);
+            border-color: #2a3441;
+        }
+
+        #viewTabs button.active {
+            background: #e8c86a;
+            color: #0b0e13;
+            border-color: #f6e2a6;
+        }
+
+        #viewTabs button.scope {
+            color: #6ac8e8;
+        }
+
+        #viewTabs button.scope.active {
+            background: #6ac8e8;
+            color: #0b0e13;
+            border-color: #a0e0ff;
+        }
+
+        #scopeBanner {
+            position: absolute;
+            top: 52px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 10px;
+            letter-spacing: 3px;
+            color: #6ac8e8;
+            background: rgba(10, 14, 20, .85);
+            border: 1px solid #6ac8e8;
+            padding: 4px 14px;
+            border-radius: 3px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity .2s;
+        }
+
+        #scopeBanner.on {
+            opacity: 1;
+        }
+
+        /* ---- parts ---- */
+        .part {
+            background: #0a0d12;
+            border: 1px solid #1c232d;
+            padding: 7px 9px;
+            margin-bottom: 6px;
+            border-radius: 3px;
+            transition: border-color .12s;
+        }
+
+        .part:hover {
+            border-color: #2b333f;
+        }
+
+        .part.sel {
+            border-color: #e8c86a;
+            background: #0e121a;
+        }
+
+        .part .hd {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            color: #c8b88a;
+            margin-bottom: 5px;
+            cursor: pointer;
+        }
+
+        .part .hd .idx {
+            color: #6ac8e8;
+            font-weight: bold;
+        }
+
+        .part .hd .badges {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+        }
+
+        .part .hd .badge {
+            font-size: 8px;
+            letter-spacing: 1px;
+            padding: 1px 5px;
+            border-radius: 2px;
+            background: #6ac8e8;
+            color: #0b0e13;
+            font-weight: bold;
+        }
+
+        .part .hd .sw {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+            border: 1px solid #2b333f;
+        }
+
+        .part .body {
+            display: none;
+        }
+
+        .part.open .body {
+            display: block;
+        }
+
+        .part .sec {
+            font-size: 8px;
+            color: #6ac8e8;
+            letter-spacing: 2px;
+            margin: 8px 0 3px;
+            padding-bottom: 2px;
+            border-bottom: 1px dashed #1c232d;
+            text-transform: uppercase;
+        }
+
+        .chk {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 10px;
+            color: #8a9aaa;
+            margin-top: 5px;
+            cursor: pointer;
+            letter-spacing: 1px;
+        }
+
+        .chk input {
+            width: auto;
+            flex: none;
+            cursor: pointer;
+        }
+
+        #status {
+            font-size: 10px;
+            color: #7ad07a;
+            height: 14px;
+            margin-top: 8px;
+            letter-spacing: 1px;
+        }
+
+        /* ---- icon preview ---- */
+        #iconPreviewWrap {
+            background: #06090d;
+            border: 1px solid #1c232d;
+            padding: 8px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 40px;
+            overflow: hidden;
+            border-radius: 3px;
+        }
+
+        #iconPreview {
+            display: block;
+            image-rendering: pixelated;
+        }
+
+        .icon-info {
+            font-size: 9px;
+            color: #5a6a7a;
+            letter-spacing: 1px;
+            text-align: center;
+            margin-bottom: 6px;
+        }
+
+        .hint {
+            font-size: 9px;
+            color: #5a6a7a;
+            letter-spacing: .5px;
+            margin-top: 8px;
+            line-height: 1.6;
+            background: #0a0d12;
+            padding: 6px 8px;
+            border-left: 2px solid #6ac8e8;
+            border-radius: 2px;
+        }
+
+        .hint b {
+            color: #c8b88a;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="wrap">
+
+        <!-- ================= LEFT COLUMN ================= -->
+        <div class="col">
+            <h1>武器編輯器</h1>
+
+            <!-- TABS -->
+            <div class="tabs">
+                <button class="active" data-tab="stats">武器</button>
+                <button data-tab="pose">姿態</button>
+                <button data-tab="scope">瞄準鏡</button>
+                <button data-tab="icon">圖示</button>
+            </div>
+
+            <!-- ============ TAB: STATS ============ -->
+            <div class="tab-pane active" data-pane="stats">
+                <h2>基本資訊</h2>
+                <label>識別碼</label> <input id="wKey">
+                <label>名稱</label> <input id="wName">
+                <label>圖示（文字）</label> <input id="wIcon">
+                <label>顏色</label> <input id="wColor">
+
+                <h2>彈藥 / 傷害</h2>
+                <div class="row">
+                    <div><label>彈藥類型</label>
+                        <select id="wAmmo">
+                            <option>9mm</option>
+                        </select>
+                    </div>
+                    <div><label>彈匣</label><input id="wMag" type="number" step="1"></div>
+                </div>
+                <div class="row">
+                    <div><label>射速</label><input id="wRate" type="number" step="0.01"></div>
+                    <div><label>裝填</label><input id="wRel" type="number" step="0.05"></div>
+                </div>
+                <div class="row">
+                    <div><label>傷害</label><input id="wDmg" type="number" step="1"></div>
+                    <div><label>全自動？</label>
+                        <select id="wAuto">
+                            <option value="0">半自動</option>
+                            <option value="1">全自動</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div><label>散佈</label><input id="wSpread" type="number" step="0.001"></div>
+                    <div><label>後座力</label><input id="wRecoil" type="number" step="0.005"></div>
+                </div>
+
+                <h2>子彈</h2>
+                <div class="row">
+                    <div><label>速度</label><input id="wBSpeed" type="number" step="5"></div>
+                    <div><label>大小</label><input id="wBSize" type="number" step="0.002"></div>
+                </div>
+                <label>顏色</label> <input id="wBColor">
+
+                <h2>動畫</h2>
+                <div class="vec-row"><span>擺動</span><input id="wAnimSw" type="number" step="0.01"></div>
+                <div class="vec-row"><span>後衝</span><input id="wAnimKc" type="number" step="0.005"></div>
+            </div>
+
+            <!-- ============ TAB: POSE ============ -->
+            <div class="tab-pane" data-pane="pose">
+                <h2>姿態預覽</h2>
+                <div class="tabs" style="margin-bottom:8px">
+                    <button class="active" data-view="hip">腰射</button>
+                    <button data-view="ads">瞄準</button>
+                    <button data-view="blend">混合</button>
+                </div>
+                <label>混合比 <span id="blendVal">0.00</span></label>
+                <input type="range" id="blend" min="0" max="1" step="0.01" value="0">
+
+                <div class="grp">
+                    <h3>腰射姿態（fpRoot 座標系）</h3>
+                    <label>位置 (x, y, z)</label>
+                    <div class="vec-row"><span>X</span><input id="hipP0" type="number" step="0.005"></div>
+                    <div class="vec-row"><span>Y</span><input id="hipP1" type="number" step="0.005"></div>
+                    <div class="vec-row"><span>Z</span><input id="hipP2" type="number" step="0.005"></div>
+                    <label>旋轉 (弧度)</label>
+                    <div class="vec-row"><span>X</span><input id="hipR0" type="number" step="0.01"></div>
+                    <div class="vec-row"><span>Y</span><input id="hipR1" type="number" step="0.01"></div>
+                    <div class="vec-row"><span>Z</span><input id="hipR2" type="number" step="0.01"></div>
+                </div>
+
+                <div class="grp">
+                    <h3>瞄準姿態</h3>
+                    <label class="chk"><input type="checkbox" id="adsAuto"> 自動（依準心）</label>
+                    <label>位置</label>
+                    <div class="vec-row"><span>X</span><input id="adsP0" type="number" step="0.005"></div>
+                    <div class="vec-row"><span>Y</span><input id="adsP1" type="number" step="0.005"></div>
+                    <div class="vec-row"><span>Z</span><input id="adsP2" type="number" step="0.005"></div>
+                    <label>旋轉</label>
+                    <div class="vec-row"><span>X</span><input id="adsR0" type="number" step="0.01"></div>
+                    <div class="vec-row"><span>Y</span><input id="adsR1" type="number" step="0.01"></div>
+                    <div class="vec-row"><span>Z</span><input id="adsR2" type="number" step="0.01"></div>
+                </div>
+
+                <div class="grp">
+                    <h3>準心 / 槍口（武器本地）</h3>
+                    <label>準心位置</label>
+                    <div class="vec-row"><span>X</span><input id="sightP0" type="number" step="0.005"></div>
+                    <div class="vec-row"><span>Y</span><input id="sightP1" type="number" step="0.005"></div>
+                    <div class="vec-row"><span>Z</span><input id="sightP2" type="number" step="0.005"></div>
+                    <label>槍口位置</label>
+                    <div class="vec-row"><span>X</span><input id="muzzleLocal0" type="number" step="0.005"></div>
+                    <div class="vec-row"><span>Y</span><input id="muzzleLocal1" type="number" step="0.005"></div>
+                    <div class="vec-row"><span>Z</span><input id="muzzleLocal2" type="number" step="0.005"></div>
+                </div>
+
+                <div class="grp">
+                    <h3>右手握把</h3>
+                    <div class="vec-row"><span>X</span><input id="gripRP0" type="number" step="0.005"></div>
+                    <div class="vec-row"><span>Y</span><input id="gripRP1" type="number" step="0.005"></div>
+                    <div class="vec-row"><span>Z</span><input id="gripRP2" type="number" step="0.005"></div>
+                    <div class="vec-row"><span>RX</span><input id="gripRR0" type="number" step="0.01"></div>
+                    <div class="vec-row"><span>RY</span><input id="gripRR1" type="number" step="0.01"></div>
+                    <div class="vec-row"><span>RZ</span><input id="gripRR2" type="number" step="0.01"></div>
+                </div>
+
+                <div class="grp">
+                    <h3>左手握把</h3>
+                    <div class="vec-row"><span>X</span><input id="gripLP0" type="number" step="0.005"></div>
+                    <div class="vec-row"><span>Y</span><input id="gripLP1" type="number" step="0.005"></div>
+                    <div class="vec-row"><span>Z</span><input id="gripLP2" type="number" step="0.005"></div>
+                    <div class="vec-row"><span>RX</span><input id="gripLR0" type="number" step="0.01"></div>
+                    <div class="vec-row"><span>RY</span><input id="gripLR1" type="number" step="0.01"></div>
+                    <div class="vec-row"><span>RZ</span><input id="gripLR2" type="number" step="0.01"></div>
+                </div>
+
+                <div class="grp">
+                    <h3>肩膀（手臂骨骼）</h3>
+                    <label>左肩</label>
+                    <div class="vec-row"><span>X</span><input id="shoulderL0" type="number" step="0.01"></div>
+                    <div class="vec-row"><span>Y</span><input id="shoulderL1" type="number" step="0.01"></div>
+                    <div class="vec-row"><span>Z</span><input id="shoulderL2" type="number" step="0.01"></div>
+                    <label>右肩</label>
+                    <div class="vec-row"><span>X</span><input id="shoulderR0" type="number" step="0.01"></div>
+                    <div class="vec-row"><span>Y</span><input id="shoulderR1" type="number" step="0.01"></div>
+                    <div class="vec-row"><span>Z</span><input id="shoulderR2" type="number" step="0.01"></div>
+                </div>
+            </div>
+
+            <!-- ============ TAB: SCOPE ============ -->
+            <div class="tab-pane" data-pane="scope">
+                <h2>瞄準鏡模式</h2>
+                <select id="wScopeMode">
+                    <option value="none">無瞄準鏡（腰射準心）</option>
+                    <option value="sniper">狙擊鏡（全螢幕，可隱藏槍枝）</option>
+                    <option value="inline">內嵌鏡（僅鏡片放大）</option>
+                </select>
+
+                <h2>顯示選項</h2>
+                <label class="chk"><input type="checkbox" id="wHideWeaponOnAds">
+                    全槍於瞄準時隱藏（適用狙擊鏡）</label>
+                <label class="chk"><input type="checkbox" id="wHideScopeOnAds">
+                    瞄準鏡零件於瞄準時隱藏（內嵌鏡）</label>
+
+                <div id="scopeSniperFields" style="display:none;margin-top:10px">
+                    <h2>狙擊鏡設定</h2>
+                    <div class="row">
+                        <div><label>視野角</label><input id="wScopeFov" type="number"></div>
+                        <div><label>靈敏度 ×</label><input id="wScopeSens" type="number" step="0.05"></div>
+                    </div>
+                </div>
+
+                <div id="scopeInlineFields" style="display:none;margin-top:10px">
+                    <h2>內嵌鏡設定</h2>
+                    <div class="vec-row"><span>FOV</span><input id="wInlineFov" type="number" step="0.5"></div>
+                    <div class="vec-row"><span>R</span><input id="wInlineRadius" type="number" step="0.001"></div>
+                    <label>鏡片位置（武器本地）</label>
+                    <div class="vec-row"><span>X</span><input id="inlineLensP0" type="number" step="0.005"></div>
+                    <div class="vec-row"><span>Y</span><input id="inlineLensP1" type="number" step="0.005"></div>
+                    <div class="vec-row"><span>Z</span><input id="inlineLensP2" type="number" step="0.005"></div>
+                </div>
+
+                <div class="hint">
+                    <b>瞄準鏡零件</b> 需在右側零件列表中勾選 <b>SCOPE</b> 標記。<br>
+                    <b>內嵌鏡</b> 使用 <b>SCOPE VIEW</b> 按鈕預覽隱藏效果。<br>
+                    <b>狙擊鏡</b> 於遊戲中全螢幕顯示，透過 vignette 遮罩。
+                </div>
+            </div>
+
+            <!-- ============ TAB: ICON ============ -->
+            <div class="tab-pane" data-pane="icon">
+                <div class="icon-info" id="iconInfo">武器格：3×1</div>
+                <div id="iconPreviewWrap">
+                    <canvas id="iconPreview"></canvas>
+                </div>
+                <button id="btnIconReset" style="margin-bottom:10px">重設為自動</button>
+
+                <label>旋轉 (弧度)</label>
+                <div class="vec-row"><span>X</span><input id="iconR0" type="number" step="0.05"></div>
+                <div class="vec-row"><span>Y</span><input id="iconR1" type="number" step="0.05"></div>
+                <div class="vec-row"><span>Z</span><input id="iconR2" type="number" step="0.05"></div>
+
+                <label>偏移 (公尺)</label>
+                <div class="vec-row"><span>X</span><input id="iconP0" type="number" step="0.01"></div>
+                <div class="vec-row"><span>Y</span><input id="iconP1" type="number" step="0.01"></div>
+                <div class="vec-row"><span>Z</span><input id="iconP2" type="number" step="0.01"></div>
+
+                <label>縮放</label>
+                <div class="vec-row"><span>S</span><input id="iconScale" type="number" step="0.05"></div>
+
+                <div class="hint">
+                    <b>Z 旋轉 = 0</b> 啟用自動貼合（模型自動轉正）。<br>
+                    <b>旋轉 ≠ 0</b> 停用自動旋轉。<br>
+                    <b>偏移</b>與<b>縮放</b>作用於鏡頭對焦後。
+                </div>
+            </div>
+
+            <!-- VIEW OPTIONS -->
+            <h2 style="margin-top:18px">檢視</h2>
+            <label>背景顏色</label>
+            <input type="color" id="bgColor" value="#05070a">
+            <div class="hint" style="margin-top:8px">
+                <b>Shift / Ctrl + 點擊</b> 零件列可多選。<br>
+                <b>左鍵拖曳</b> 旋轉 · <b>右鍵拖曳</b> 平移 · 滾輪縮放。
+            </div>
+
+            <!-- FILE ACTIONS -->
+            <h2 style="margin-top:18px">檔案</h2>
+            <div class="row">
+                <button id="btnNew">新增</button>
+                <button id="btnSave">儲存</button>
+                <button id="btnLoadSaved">載入…</button>
+            </div>
+            <div class="row" style="margin-top:6px">
+                <button id="btnImport">匯入 JSON</button>
+                <button id="btnExport">匯出 JSON</button>
+            </div>
+            <div class="row" style="margin-top:6px">
+                <button id="btnCopy">複製設定</button>
+            </div>
+            <textarea id="jsonOut" rows="5" style="margin-top:8px"
+                placeholder="武器 JSON 預覽 — 使用「匯出 JSON」下載檔案。"></textarea>
+            <div id="status"></div>
+        </div>
+
+        <!-- ================= MIDDLE: 3D viewport ================= -->
+        <div id="viewport">
+            <div id="viewTabs">
+                <button data-tab="hands" class="active">雙手 + 槍</button>
+                <button data-tab="gun">僅槍枝</button>
+                <button data-tab="scope" class="scope">SCOPE VIEW</button>
+            </div>
+            <div id="scopeBanner">◈ 瞄準鏡檢視 ◈</div>
+
+            <div id="hud">
+                <b style="color:#e8c86a">黃色</b> = 眼睛 / 位置箭頭<br>
+                <b style="color:#ff60c0">洋紅</b> = 準心 / 旋轉箭頭<br>
+                <b style="color:#60ff60">綠色</b> = 肩膀<br>
+                <b style="color:#6ac8e8">青色</b> = 尺寸箭頭<br>
+                拖曳 = 旋轉 · 滾輪 = 縮放
+            </div>
+            <div id="camPresets">
+                <button data-cam="fp" class="active">第一人視角</button>
+                <button data-cam="side">側視</button>
+                <button data-cam="top">俯視</button>
+            </div>
+            <div id="readout">準心於 fpRoot：—</div>
+        </div>
+
+        <!-- ================= RIGHT: parts ================= -->
+        <div class="col">
+            <h1>模型零件</h1>
+
+            <div id="selInfo" style="font-size:10px;color:#6ac8e8;margin-bottom:8px;letter-spacing:1px;">
+                已選 <b>1</b> 個零件
+            </div>
+
+            <div class="row">
+                <button id="btnSelAll">全選</button>
+                <button id="btnSelNone">取消全選</button>
+            </div>
+
+            <div class="row" style="margin-top:6px">
+                <button id="btnAddPart">+ 零件</button>
+                <button id="btnDupPart">複製</button>
+                <button id="btnDelPart">刪除</button>
+            </div>
+
+            <div style="margin-top:10px" id="partsList"></div>
+        </div>
+
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        (function () {
+            'use strict';
+
+            /* ============================================================
+               DEFAULT WEAPON
+               ============================================================ */
+            const DEFAULT_W = {
+                key: 'pistol', name: 'M9 PISTOL', icon: '⌐', color: '#6a6a72',
+                ammoType: '9mm', magSize: 12, fireRate: 0.16, reloadTime: 1.35,
+                damage: 24, bulletSpeed: 130, spread: 0.006, auto: false,
+                recoilKick: 0.028, scopeFov: 62, scopeSens: 0.72,
+                scopeMode: 'none',
+                hideWeaponOnAds: false,
+                hideScopeOnAds: false,
+                inlineFov: 8,
+                inlineLensLocal: [0, 0.150, -0.100],
+                inlineLensRadius: 0.0095,
+                muzzleLocal: [0, 0.055, -0.30],
+                bulletColor: 0xffd8a0, bulletSize: 0.034,
+                sightLocal: [0, 0.078, -0.10],
+                hipPose: { p: [0.14, -0.16, -0.24], r: [0.10, 0.20, -0.04] },
+                adsPose: { p: [0, 0, -0.02], r: [0, 0, 0] },
+                adsAuto: true,
+                gripR: { p: [0.000, -0.030, 0.020], r: [0.10, 0.00, 0.00] },
+                gripL: { p: [-0.035, -0.030, -0.010], r: [0.10, 0.20, 0.15] },
+                shoulderL: [-0.18, -0.06, 0.04],
+                shoulderR: [0.18, -0.06, 0.04],
+                anim: { swing: 0.14, kick: 0.055 },
+                iconR: [0, 0, 0],
+                iconP: [0, 0, 0],
+                iconScale: 1,
+                model: [
+                    { p: [0, 0.050, -0.16], s: [0.045, 0.048, 0.26], c: 0x505058 },
+                    { p: [0, -0.010, -0.02], s: [0.040, 0.110, 0.06], c: 0x2c2c34 },
+                    { p: [0, 0.020, -0.06], s: [0.035, 0.030, 0.06], c: 0x303038 },
+                    { p: [0, 0.055, -0.30], s: [0.030, 0.030, 0.03], c: 0x181820 },
+                    { p: [0, 0.030, 0.02], s: [0.035, 0.040, 0.04], c: 0x303038 },
+                    { p: [0, -0.075, -0.01], s: [0.035, 0.060, 0.04], c: 0x1c1c22 },
+                    { p: [0, 0.076, -0.16], s: [0.020, 0.010, 0.24], c: 0x2a2a32 },
+                    { p: [0, 0.079, -0.24], s: [0.030, 0.012, 0.020], c: 0x1a1a1e },
+                    { p: [0, 0.078, -0.08], s: [0.030, 0.012, 0.020], c: 0x1a1a1e }
+                ]
+            };
+
+            const STORAGE_KEY = 'arive-weapons-v1';
+
+            let W = JSON.parse(JSON.stringify(DEFAULT_W));
+            const selectedParts = new Set([0]);
+            let selectedPart = 0;      // anchor / primary
+            let blendT = 0;
+
+            /* Centralised selection setter.  `additive` = shift/ctrl click. */
+            function setSelected(idx, additive) {
+                if (idx < 0 || idx >= W.model.length) return;
+                if (additive) {
+                    if (selectedParts.has(idx)) {
+                        if (selectedParts.size > 1) {
+                            selectedParts.delete(idx);
+                            if (selectedPart === idx) {
+                                selectedPart = selectedParts.values().next().value;
+                            }
+                        }
+                    } else {
+                        selectedParts.add(idx);
+                        selectedPart = idx;
+                    }
+                } else {
+                    selectedParts.clear();
+                    selectedParts.add(idx);
+                    selectedPart = idx;
+                }
+                rebuildPartsList();
+                updateSelectedHighlight();
+                updateSelInfo();
+            }
+
+            function updateSelInfo() {
+                const el = document.getElementById('selInfo');
+                if (!el) return;
+                const n = selectedParts.size;
+                el.innerHTML = '已選 <b>' + n + '</b> 個零件' +
+                    (n > 1 ? '（多選）' : '');
+            }
+
+            let activeView = 'hip';
+            let viewTab = 'hands';           // 'hands' | 'gun' | 'scope'
+            let scopePreview = false;         // true when SCOPE VIEW is active
+
+            /* ============================================================
+               THREE SETUP
+               ============================================================ */
+            const wrap = document.getElementById('viewport');
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+            renderer.setClearColor(0x05070a, 1);
+            wrap.appendChild(renderer.domElement);
+
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 50);
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+            const keyLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            keyLight.position.set(1.2, 1.8, 1.0); scene.add(keyLight);
+            const fillL = new THREE.DirectionalLight(0x8899bb, 0.5);
+            fillL.position.set(-1.0, 0.5, -1.2); scene.add(fillL);
+
+            const grid = new THREE.GridHelper(4, 40, 0x223040, 0x141c26);
+            grid.position.y = -0.6;
+            scene.add(grid);
+
+            /* ============================================================
+               RIG
+               ============================================================ */
+            const fpRoot = new THREE.Group();
+            scene.add(fpRoot);
+
+            const weaponRig = new THREE.Group();
+            fpRoot.add(weaponRig);
+
+            let weaponMesh = null;         // group holding regular parts
+            let scopePartsGroup = null;    // group holding scope-tagged parts
+            let sightMarker = null;
+            let muzzleMarker = null;
+
+            /* Selection highlight — a group of box outlines, one per selected part */
+            const selectedHighlightGroup = new THREE.Group();
+            selectedHighlightGroup.visible = false;
+            weaponRig.add(selectedHighlightGroup);
+
+            const highlightGeometry =
+                new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
+            const highlightMaterial = new THREE.LineBasicMaterial({
+                color: 0xe8c86a, transparent: true, opacity: 0.95,
+                depthTest: false, depthWrite: false, fog: false
+            });
+
+            function updateSelectedHighlight() {
+                /* Detach existing boxes (geometry/material are shared, don't dispose) */
+                while (selectedHighlightGroup.children.length > 0) {
+                    selectedHighlightGroup.remove(selectedHighlightGroup.children[0]);
+                }
+                let any = false;
+                for (const idx of selectedParts) {
+                    const p = W.model[idx];
+                    if (!p || !p.p || !p.s) continue;
+                    const h = new THREE.LineSegments(highlightGeometry, highlightMaterial);
+                    h.position.set(p.p[0], p.p[1], p.p[2]);
+                    if (p.r) h.rotation.set(p.r[0], p.r[1], p.r[2]);
+                    else h.rotation.set(0, 0, 0);
+                    h.scale.set(p.s[0] * 1.10, p.s[1] * 1.10, p.s[2] * 1.10);
+                    h.renderOrder = 250;
+                    selectedHighlightGroup.add(h);
+                    any = true;
+                }
+                selectedHighlightGroup.visible = any;
+            }
+
+            /* Hands */
+            const SKIN_MAT = new THREE.MeshLambertMaterial({ color: 0xd4a686 });
+            const SLEEVE_MAT = new THREE.MeshLambertMaterial({ color: 0x3a4a30 });
+
+            const HAND = {
+                palmW: 0.065, palmH: 0.13, palmD: 0.14,
+                thumbW: 0.04, thumbH: 0.05, thumbD: 0.07,
+                thumbX: -0.03, thumbY: 0.06, thumbZ: 0.02,
+            };
+
+            function buildPalm(side) {
+                const g = new THREE.Group();
+                const palm = new THREE.Mesh(
+                    new THREE.BoxGeometry(HAND.palmW, HAND.palmH, HAND.palmD),
+                    SKIN_MAT);
+                palm.position.set(0, 0, -HAND.palmD * 0.5);
+                g.add(palm);
+                const thumb = new THREE.Mesh(
+                    new THREE.BoxGeometry(HAND.thumbW, HAND.thumbH, HAND.thumbD),
+                    SKIN_MAT);
+                thumb.position.set(HAND.thumbX * side, HAND.thumbY,
+                    HAND.thumbZ - HAND.palmD * 0.5);
+                g.add(thumb);
+                return g;
+            }
+            const handR = buildPalm(+1); fpRoot.add(handR);
+            const handL = buildPalm(-1); fpRoot.add(handL);
+
+            const ARM_SEG_W = 0.10;
+            const UPPER_ARM_BASE_LEN = 0.26;
+            const FOREARM_BASE_LEN = 0.28;
+            function buildBone(baseLen) {
+                const m = new THREE.Mesh(
+                    new THREE.BoxGeometry(ARM_SEG_W, baseLen, ARM_SEG_W), SLEEVE_MAT);
+                fpRoot.add(m);
+                return m;
+            }
+            const armRUpper = buildBone(UPPER_ARM_BASE_LEN);
+            const armRFore = buildBone(FOREARM_BASE_LEN);
+            const armLUpper = buildBone(UPPER_ARM_BASE_LEN);
+            const armLFore = buildBone(FOREARM_BASE_LEN);
+
+            const eyeMarker = new THREE.Mesh(
+                new THREE.SphereGeometry(0.022, 12, 8),
+                new THREE.MeshBasicMaterial({ color: 0xffe060 }));
+            fpRoot.add(eyeMarker);
+
+            function buildShoulderMarker() {
+                const m = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.016, 10, 8),
+                    new THREE.MeshBasicMaterial({ color: 0x60ff60 }));
+                fpRoot.add(m);
+                return m;
+            }
+            const shoulderMarkerL = buildShoulderMarker();
+            const shoulderMarkerR = buildShoulderMarker();
+
+            /* ============================================================
+               DIRECTION ARROW (position / size / rotation indicators)
+               ============================================================ */
+            const dirArrow = new THREE.Group();
+            dirArrow.visible = false;
+            weaponRig.add(dirArrow);
+            const _arrowUp = new THREE.Vector3(0, 1, 0);
+            const _arrowAxes = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)];
+            const ARROW_MAT = new THREE.MeshBasicMaterial({
+                color: 0xffe060, transparent: true, opacity: 0.85,
+                depthTest: false, depthWrite: false, fog: false
+            });
+            const arrowShaft = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.0035, 0.0035, 0.11, 8), ARROW_MAT);
+            arrowShaft.position.y = 0.055; dirArrow.add(arrowShaft);
+            const arrowHead = new THREE.Mesh(
+                new THREE.ConeGeometry(0.014, 0.032, 12), ARROW_MAT);
+            arrowHead.position.y = 0.126; dirArrow.add(arrowHead);
+            const arrowOrigin = new THREE.Mesh(
+                new THREE.SphereGeometry(0.008, 8, 6), ARROW_MAT);
+            dirArrow.add(arrowOrigin);
+            dirArrow.traverse(o => { o.renderOrder = 200; });
+
+            const backArrow = new THREE.Group();
+            backArrow.visible = false;
+            weaponRig.add(backArrow);
+            const backShaft = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.0025, 0.0025, 0.08, 8), ARROW_MAT);
+            backShaft.position.y = -0.04; backArrow.add(backShaft);
+            const backHead = new THREE.Mesh(
+                new THREE.ConeGeometry(0.011, 0.024, 12), ARROW_MAT);
+            backHead.position.y = -0.092; backHead.rotation.z = Math.PI;
+            backArrow.add(backHead);
+
+            function showDirArrow(partIdx, axisIdx, kind) {
+                const part = W.model[partIdx];
+                if (!part) { hideDirArrow(); return; }
+                const s = part.s;
+                const halfAx = s[axisIdx] * 0.5;
+                if (kind === 'size') {
+                    dirArrow.position.set(
+                        part.p[0] + (axisIdx === 0 ? halfAx + 0.015 : 0),
+                        part.p[1] + (axisIdx === 1 ? halfAx + 0.015 : 0),
+                        part.p[2] + (axisIdx === 2 ? halfAx + 0.015 : 0));
+                    ARROW_MAT.color.setHex(0x6ac8e8);
+                } else if (kind === 'rot') {
+                    dirArrow.position.set(part.p[0], part.p[1], part.p[2]);
+                    ARROW_MAT.color.setHex(0xff60c0);
+                } else {
+                    dirArrow.position.set(part.p[0], part.p[1], part.p[2]);
+                    ARROW_MAT.color.setHex(0xffe060);
+                }
+                dirArrow.quaternion.setFromUnitVectors(_arrowUp, _arrowAxes[axisIdx]);
+                dirArrow.visible = true;
+                backArrow.position.copy(dirArrow.position);
+                backArrow.quaternion.copy(dirArrow.quaternion);
+                backArrow.visible = (kind === 'size');
+            }
+            function hideDirArrow() {
+                dirArrow.visible = false;
+                backArrow.visible = false;
+            }
+
+            /* ============================================================
+               VIEW TAB SWITCHING
+               ============================================================ */
+            const scopeBanner = document.getElementById('scopeBanner');
+
+            function applyViewTab() {
+                const showRig = (viewTab === 'hands');
+                handL.visible = showRig;
+                handR.visible = showRig;
+                armLUpper.visible = showRig;
+                armLFore.visible = showRig;
+                armRUpper.visible = showRig;
+                armRFore.visible = showRig;
+                shoulderMarkerL.visible = showRig;
+                shoulderMarkerR.visible = showRig;
+                eyeMarker.visible = showRig;
+
+                /* Highlight is meaningless in scope view when parts are hidden */
+                if (scopePreview) {
+                    selectedHighlightGroup.visible = false;
+                    hideDirArrow();
+                }
+
+                scopeBanner.classList.toggle('on', scopePreview);
+                applyWeaponVisibility();
+            }
+
+            /* ============================================================
+               WEAPON VISIBILITY — driven by SCOPE VIEW + flags
+               ============================================================ */
+            function applyWeaponVisibility() {
+                if (!weaponMesh) return;
+
+                const hideGun = scopePreview && W.hideWeaponOnAds === true;
+                const hideScope =
+                    scopePreview &&
+                    W.hideScopeOnAds === true &&
+                    (W.scopeMode === 'inline' || W.scopeMode === 'sniper');
+
+                weaponMesh.visible = !hideGun;
+                if (scopePartsGroup) scopePartsGroup.visible = !hideGun && !hideScope;
+            }
+
+            /* ============================================================
+               BUILD WEAPON MESH
+               ============================================================ */
+            function disposeRecursive(o) {
+                o.traverse(x => {
+                    if (x.geometry) x.geometry.dispose();
+                    if (x.material) {
+                        const ms = Array.isArray(x.material) ? x.material : [x.material];
+                        ms.forEach(m => m.dispose());
+                    }
+                });
+            }
+
+            function rebuildWeapon() {
+                if (weaponMesh) {
+                    weaponRig.remove(weaponMesh);
+                    disposeRecursive(weaponMesh);
+                }
+                weaponMesh = new THREE.Group();
+                weaponRig.add(weaponMesh);
+
+                scopePartsGroup = new THREE.Group();
+                weaponMesh.add(scopePartsGroup);
+
+                for (const part of W.model) {
+                    const geo = new THREE.BoxGeometry(part.s[0], part.s[1], part.s[2]);
+                    const mat = new THREE.MeshLambertMaterial({ color: part.c | 0 });
+                    const m = new THREE.Mesh(geo, mat);
+                    m.position.set(part.p[0], part.p[1], part.p[2]);
+                    if (part.r) m.rotation.set(part.r[0], part.r[1], part.r[2]);
+                    if (part.scope === true) scopePartsGroup.add(m);
+                    else weaponMesh.add(m);
+                }
+
+                muzzleMarker = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.014, 10, 8),
+                    new THREE.MeshBasicMaterial({ color: 0xff4060 }));
+                muzzleMarker.position.fromArray(W.muzzleLocal);
+                weaponMesh.add(muzzleMarker);
+
+                sightMarker = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.010, 10, 8),
+                    new THREE.MeshBasicMaterial({ color: 0xff60c0 }));
+                sightMarker.position.fromArray(W.sightLocal);
+                weaponMesh.add(sightMarker);
+
+                applyWeaponVisibility();
+            }
+
+            /* ============================================================
+               POSE / GRIP / BONES
+               ============================================================ */
+            function computeAdsPose() {
+                if (!W.adsAuto) return W.adsPose;
+                const s = W.sightLocal;
+                return { p: [-s[0], -s[1], -0.02 - s[2]], r: [0, 0, 0] };
+            }
+
+            const _tmpV = new THREE.Vector3();
+            const _tmpE = new THREE.Euler();
+            const _tmpQ = new THREE.Quaternion();
+            const _up = new THREE.Vector3(0, 1, 0);
+
+            function applyGrip(hand, grip, rig) {
+                _tmpV.set(grip.p[0], grip.p[1], grip.p[2]);
+                _tmpV.applyQuaternion(rig.quaternion);
+                hand.position.copy(rig.position).add(_tmpV);
+                _tmpE.set(grip.r[0], grip.r[1], grip.r[2]);
+                _tmpQ.setFromEuler(_tmpE);
+                hand.quaternion.copy(rig.quaternion).multiply(_tmpQ);
+            }
+
+            const _elbow = new THREE.Vector3();
+            const _dir = new THREE.Vector3();
+            const _mid = new THREE.Vector3();
+
+            function updateBone(upper, fore, shoulder, handPos, side) {
+                _mid.copy(shoulder).add(handPos).multiplyScalar(0.5);
+                _elbow.set(_mid.x + side * 0.075, _mid.y - 0.09, _mid.z + 0.09);
+                _dir.copy(_elbow).sub(shoulder);
+                const upLen = _dir.length();
+                upper.position.copy(shoulder).add(_elbow).multiplyScalar(0.5);
+                upper.quaternion.setFromUnitVectors(_up, _dir.normalize());
+                upper.scale.set(1, upLen / UPPER_ARM_BASE_LEN, 1);
+                _dir.copy(handPos).sub(_elbow);
+                const foreLen = _dir.length();
+                fore.position.copy(_elbow).add(handPos).multiplyScalar(0.5);
+                fore.quaternion.setFromUnitVectors(_up, _dir.normalize());
+                fore.scale.set(1, foreLen / FOREARM_BASE_LEN, 1);
+            }
+
+            function updateRig() {
+                const hip = W.hipPose;
+                const ads = computeAdsPose();
+
+                /* In scope view force blend to 1 (full ADS). */
+                const t = scopePreview ? 1 : blendT;
+
+                weaponRig.position.set(
+                    hip.p[0] + (ads.p[0] - hip.p[0]) * t,
+                    hip.p[1] + (ads.p[1] - hip.p[1]) * t,
+                    hip.p[2] + (ads.p[2] - hip.p[2]) * t);
+                weaponRig.rotation.set(
+                    hip.r[0] + (ads.r[0] - hip.r[0]) * t,
+                    hip.r[1] + (ads.r[1] - hip.r[1]) * t,
+                    hip.r[2] + (ads.r[2] - hip.r[2]) * t);
+
+                applyGrip(handR, W.gripR, weaponRig);
+                applyGrip(handL, W.gripL, weaponRig);
+
+                const shoulderL = new THREE.Vector3().fromArray(W.shoulderL);
+                const shoulderR = new THREE.Vector3().fromArray(W.shoulderR);
+                shoulderMarkerL.position.copy(shoulderL);
+                shoulderMarkerR.position.copy(shoulderR);
+
+                updateBone(armLUpper, armLFore, shoulderL, handL.position, -1);
+                updateBone(armRUpper, armRFore, shoulderR, handR.position, +1);
+
+                if (sightMarker) {
+                    const p = new THREE.Vector3().copy(sightMarker.position);
+                    p.applyQuaternion(weaponRig.quaternion);
+                    p.add(weaponRig.position);
+                    document.getElementById('readout').textContent =
+                        '準心於 fpRoot：(' +
+                        p.x.toFixed(3) + ', ' + p.y.toFixed(3) + ', ' + p.z.toFixed(3) + ')';
+                }
+
+                applyWeaponVisibility();
+                updateSelectedHighlight();
+                requestIconRedraw();
+            }
+
+            /* ============================================================
+               UI HELPERS
+               ============================================================ */
+            const $ = id => document.getElementById(id);
+            function colorHex(n) { return '#' + (n | 0).toString(16).padStart(6, '0'); }
+            function colorInt(s) {
+                const v = String(s).trim().replace(/^#/, '').replace(/^0x/i, '');
+                const n = parseInt(v, 16);
+                return Number.isFinite(n) ? n : 0xff00ff;
+            }
+
+            /* Slider upgrade */
+            const SLIDER_SPECS = [
+                ['hipP0', -0.5, 0.5, 0.005], ['hipP1', -0.5, 0.5, 0.005], ['hipP2', -0.5, 0.5, 0.005],
+                ['hipR0', -1.6, 1.6, 0.01], ['hipR1', -1.6, 1.6, 0.01], ['hipR2', -1.6, 1.6, 0.01],
+                ['adsP0', -0.5, 0.5, 0.005], ['adsP1', -0.5, 0.5, 0.005], ['adsP2', -0.5, 0.5, 0.005],
+                ['adsR0', -1.6, 1.6, 0.01], ['adsR1', -1.6, 1.6, 0.01], ['adsR2', -1.6, 1.6, 0.01],
+                ['sightP0', -0.5, 0.5, 0.005], ['sightP1', -0.5, 0.5, 0.005], ['sightP2', -0.5, 0.5, 0.005],
+                ['gripRP0', -0.5, 0.5, 0.005], ['gripRP1', -0.5, 0.5, 0.005], ['gripRP2', -0.5, 0.5, 0.005],
+                ['gripRR0', -1.6, 1.6, 0.01], ['gripRR1', -1.6, 1.6, 0.01], ['gripRR2', -1.6, 1.6, 0.01],
+                ['gripLP0', -0.5, 0.5, 0.005], ['gripLP1', -0.5, 0.5, 0.005], ['gripLP2', -0.5, 0.5, 0.005],
+                ['gripLR0', -1.6, 1.6, 0.01], ['gripLR1', -1.6, 1.6, 0.01], ['gripLR2', -1.6, 1.6, 0.01],
+                ['shoulderL0', -0.5, 0.5, 0.005], ['shoulderL1', -0.5, 0.5, 0.005], ['shoulderL2', -0.5, 0.5, 0.005],
+                ['shoulderR0', -0.5, 0.5, 0.005], ['shoulderR1', -0.5, 0.5, 0.005], ['shoulderR2', -0.5, 0.5, 0.005],
+                ['wAnimSw', -1.5, 1.5, 0.01],
+                ['wAnimKc', -0.2, 0.2, 0.005],
+                ['muzzleLocal0', -0.5, 0.5, 0.005],
+                ['muzzleLocal1', -0.5, 0.5, 0.005],
+                ['muzzleLocal2', -0.5, 0.5, 0.005],
+                ['iconR0', -3.2, 3.2, 0.02], ['iconR1', -3.2, 3.2, 0.02], ['iconR2', -3.2, 3.2, 0.02],
+                ['iconP0', -0.5, 0.5, 0.005], ['iconP1', -0.5, 0.5, 0.005], ['iconP2', -0.5, 0.5, 0.005],
+                ['iconScale', 0.1, 5.0, 0.05],
+                ['wInlineFov', 2, 40, 0.5],
+                ['wInlineRadius', 0.002, 0.03, 0.001],
+                ['inlineLensP0', -0.5, 0.5, 0.005],
+                ['inlineLensP1', -0.5, 0.5, 0.005],
+                ['inlineLensP2', -0.5, 0.5, 0.005],
+            ];
+            function upgradeSliders() {
+                for (const [id, min, max, step] of SLIDER_SPECS) {
+                    const num = $(id);
+                    if (!num) continue;
+                    const sld = document.createElement('input');
+                    sld.type = 'range';
+                    sld.id = id + 'Sld';
+                    sld.min = min; sld.max = max; sld.step = step;
+                    sld.value = num.value || 0;
+                    num.parentElement.insertBefore(sld, num);
+                }
+            }
+            function bindPair(id, onChange) {
+                const num = $(id);
+                const sld = $(id + 'Sld');
+                const commit = (raw) => {
+                    const v = parseFloat(raw);
+                    if (!isFinite(v)) return;
+                    if (num) num.value = v;
+                    if (sld) sld.value = v;
+                    onChange(v);
+                };
+                if (num) num.addEventListener('input', () => commit(num.value));
+                if (sld) sld.addEventListener('input', () => commit(sld.value));
+            }
+            function setValue(id, v) {
+                const num = $(id); const sld = $(id + 'Sld');
+                if (num) num.value = v; if (sld) sld.value = v;
+            }
+            function setVec(pfx, arr) {
+                for (let i = 0; i < 3; i++) setValue(pfx + i, arr[i]);
+            }
+
+            /* ============================================================
+               TABS
+               ============================================================ */
+            document.querySelectorAll('.tabs button[data-tab]').forEach(b => {
+                b.addEventListener('click', () => {
+                    const tab = b.dataset.tab;
+                    document.querySelectorAll('.tabs button[data-tab]')
+                        .forEach(x => x.classList.toggle('active', x === b));
+                    document.querySelectorAll('.tab-pane').forEach(p => {
+                        p.classList.toggle('active', p.dataset.pane === tab);
+                    });
+                });
+            });
+
+            /* ============================================================
+               SCALAR BINDINGS
+               ============================================================ */
+            const scalarBindings = [
+                ['wKey', 'key', v => String(v)],
+                ['wName', 'name', v => String(v)],
+                ['wIcon', 'icon', v => String(v)],
+                ['wColor', 'color', v => String(v)],
+                ['wAmmo', 'ammoType', v => String(v)],
+                ['wMag', 'magSize', v => parseFloat(v)],
+                ['wRate', 'fireRate', v => parseFloat(v)],
+                ['wRel', 'reloadTime', v => parseFloat(v)],
+                ['wDmg', 'damage', v => parseFloat(v)],
+                ['wAuto', 'auto', v => v === '1'],
+                ['wSpread', 'spread', v => parseFloat(v)],
+                ['wRecoil', 'recoilKick', v => parseFloat(v)],
+                ['wBSpeed', 'bulletSpeed', v => parseFloat(v)],
+                ['wBSize', 'bulletSize', v => parseFloat(v)],
+                ['wBColor', 'bulletColor', v => colorInt(v)],
+                ['wScopeFov', 'scopeFov', v => parseFloat(v)],
+                ['wScopeSens', 'scopeSens', v => parseFloat(v)],
+            ];
+            function setNested(path, val) {
+                const parts = path.split('.');
+                let o = W;
+                for (let i = 0; i < parts.length - 1; i++) o = o[parts[i]];
+                o[parts[parts.length - 1]] = val;
+            }
+            for (const [id, key, cast] of scalarBindings) {
+                const el = $(id); if (!el) continue;
+                el.addEventListener('input', e => {
+                    const v = cast(e.target.value);
+                    if (v === v) setNested(key, v);
+                });
+            }
+
+            function bindPoseVec(pfx, poseKey, field) {
+                for (let i = 0; i < 3; i++) {
+                    bindPair(pfx + i, v => {
+                        W[poseKey][field][i] = v;
+                        updateRig();
+                    });
+                }
+            }
+            function bindArrayVec(pfx, arrayKey) {
+                for (let i = 0; i < 3; i++) {
+                    bindPair(pfx + i, v => {
+                        W[arrayKey][i] = v;
+                        if (arrayKey === 'sightLocal' && sightMarker)
+                            sightMarker.position.fromArray(W.sightLocal);
+                        if (arrayKey === 'muzzleLocal' && muzzleMarker)
+                            muzzleMarker.position.fromArray(W.muzzleLocal);
+                        updateRig();
+                    });
+                }
+            }
+
+            bindPair('wAnimSw', v => { W.anim.swing = v; });
+            bindPair('wAnimKc', v => { W.anim.kick = v; });
+
+            upgradeSliders();
+
+            bindPoseVec('hipP', 'hipPose', 'p');
+            bindPoseVec('hipR', 'hipPose', 'r');
+            bindPoseVec('adsP', 'adsPose', 'p');
+            bindPoseVec('adsR', 'adsPose', 'r');
+            bindPoseVec('gripRP', 'gripR', 'p');
+            bindPoseVec('gripRR', 'gripR', 'r');
+            bindPoseVec('gripLP', 'gripL', 'p');
+            bindPoseVec('gripLR', 'gripL', 'r');
+
+            bindArrayVec('sightP', 'sightLocal');
+            bindArrayVec('muzzleLocal', 'muzzleLocal');
+            bindArrayVec('inlineLensP', 'inlineLensLocal');
+            bindPair('wInlineFov', v => { W.inlineFov = v; });
+            bindPair('wInlineRadius', v => { if (v > 0) W.inlineLensRadius = v; });
+
+            $('adsAuto').addEventListener('change', e => {
+                W.adsAuto = e.target.checked;
+                toggleAdsInputs();
+                updateRig();
+            });
+
+            $('wScopeMode').addEventListener('change', e => {
+                W.scopeMode = e.target.value;
+                updateScopeModeVisibility();
+                applyWeaponVisibility();
+                requestIconRedraw();
+            });
+
+            $('wHideWeaponOnAds').addEventListener('change', e => {
+                W.hideWeaponOnAds = e.target.checked;
+                applyWeaponVisibility();
+            });
+            $('wHideScopeOnAds').addEventListener('change', e => {
+                W.hideScopeOnAds = e.target.checked;
+                applyWeaponVisibility();
+            });
+
+            function updateScopeModeVisibility() {
+                const m = W.scopeMode || 'none';
+                const s = $('scopeSniperFields');
+                const i = $('scopeInlineFields');
+                if (s) s.style.display = (m === 'sniper') ? 'block' : 'none';
+                if (i) i.style.display = (m === 'inline') ? 'block' : 'none';
+            }
+            function toggleAdsInputs() {
+                const dis = W.adsAuto;
+                for (let i = 0; i < 3; i++) {
+                    const ids = ['adsP' + i, 'adsR' + i];
+                    for (const id of ids) {
+                        const n = $(id); const s = $(id + 'Sld');
+                        if (n) n.disabled = dis;
+                        if (s) s.disabled = dis;
+                    }
+                }
+            }
+
+            $('blend').addEventListener('input', e => {
+                blendT = parseFloat(e.target.value);
+                $('blendVal').textContent = blendT.toFixed(2);
+                updateRig();
+            });
+
+            document.querySelectorAll('.posetabs button, .tabs button[data-view]').forEach(b => {
+                b.addEventListener('click', () => {
+                    const v = b.dataset.view;
+                    activeView = v;
+                    document.querySelectorAll('.posetabs button, .tabs button[data-view]')
+                        .forEach(x => x.classList.toggle('active', x === b));
+                    let t = 0;
+                    if (v === 'ads') t = 1;
+                    else if (v === 'blend') t = blendT;
+                    if (v !== 'blend') {
+                        blendT = t;
+                        $('blend').value = t;
+                        $('blendVal').textContent = t.toFixed(2);
+                    }
+                    updateRig();
+                });
+            });
+
+            /* View tabs */
+            document.querySelectorAll('#viewTabs button').forEach(b => {
+                b.addEventListener('click', () => {
+                    const t = b.dataset.tab;
+                    viewTab = t;
+                    scopePreview = (t === 'scope');
+                    document.querySelectorAll('#viewTabs button')
+                        .forEach(x => x.classList.toggle('active', x === b));
+
+                    /* gunOnly and scope both hide hands; hands shows them. */
+                    applyViewTab();
+                    if (scopePreview) {
+                        applyCameraPreset('gunOnly');
+                    } else if (viewTab === 'gun') {
+                        applyCameraPreset('gunOnly');
+                    } else {
+                        applyCameraPreset('fp');
+                    }
+                    document.querySelectorAll('#camPresets button')
+                        .forEach(x => x.classList.toggle('active', false));
+                    updateRig();
+                });
+            });
+
+            /* ============================================================
+               CAMERA PRESETS
+               ============================================================ */
+            let camYaw = 0, camPitch = 0, camDist = 0.5;
+            let orbitTarget = { x: 0, y: 0, z: -0.05 };
+
+            function applyCameraPreset(name) {
+                if (name === 'fp') {
+                    camYaw = 0; camPitch = 0; camDist = 0.5;
+                    orbitTarget = { x: 0, y: 0, z: -0.5 };
+                } else if (name === 'side') {
+                    camYaw = Math.PI / 2; camPitch = 0.1; camDist = 0.55;
+                    orbitTarget = { x: 0, y: -0.05, z: -0.15 };
+                } else if (name === 'top') {
+                    camYaw = 0; camPitch = 1.3; camDist = 0.55;
+                    orbitTarget = { x: 0, y: -0.05, z: -0.15 };
+                } else if (name === 'gunOnly') {
+                    camYaw = 0.9; camPitch = 0.3; camDist = 0.9;
+                    orbitTarget = { x: 0, y: -0.02, z: -0.22 };
+                }
+                updateCamera();
+            }
+
+            document.querySelectorAll('#camPresets button').forEach(b => {
+                b.addEventListener('click', () => {
+                    document.querySelectorAll('#camPresets button')
+                        .forEach(x => x.classList.toggle('active', x === b));
+                    applyCameraPreset(b.dataset.cam);
+                });
+            });
+
+            function updateCamera() {
+                const t = orbitTarget;
+                camera.position.set(
+                    t.x + Math.sin(camYaw) * Math.cos(camPitch) * camDist,
+                    t.y + Math.sin(camPitch) * camDist,
+                    t.z + Math.cos(camYaw) * Math.cos(camPitch) * camDist);
+                camera.lookAt(t.x, t.y, t.z);
+            }
+
+            let dragging = false, panning = false, lastX = 0, lastY = 0;
+
+            renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
+
+            renderer.domElement.addEventListener('mousedown', e => {
+                if (e.button === 0) {
+                    dragging = true;
+                    lastX = e.clientX; lastY = e.clientY;
+                    document.querySelectorAll('#camPresets button')
+                        .forEach(x => x.classList.remove('active'));
+                } else if (e.button === 2) {
+                    panning = true;
+                    lastX = e.clientX; lastY = e.clientY;
+                    e.preventDefault();
+                    document.querySelectorAll('#camPresets button')
+                        .forEach(x => x.classList.remove('active'));
+                }
+            });
+
+            window.addEventListener('mousemove', e => {
+                const dx = e.clientX - lastX;
+                const dy = e.clientY - lastY;
+
+                if (dragging) {
+                    camYaw -= dx * 0.006;
+                    camPitch += dy * 0.006;
+                    camPitch = Math.max(-1.5, Math.min(1.5, camPitch));
+                    lastX = e.clientX; lastY = e.clientY;
+                    updateCamera();
+                } else if (panning) {
+                    /* Pan the orbit target in the camera's local right / up axes.
+                       Scale by camDist so the drag feels consistent at any zoom. */
+                    const factor = camDist * 0.0018;
+                    const right = new THREE.Vector3();
+                    const up = new THREE.Vector3();
+                    const fwd = new THREE.Vector3();
+                    camera.matrixWorld.extractBasis(right, up, fwd);
+
+                    orbitTarget.x -= (right.x * dx - up.x * dy) * factor;
+                    orbitTarget.y -= (right.y * dx - up.y * dy) * factor;
+                    orbitTarget.z -= (right.z * dx - up.z * dy) * factor;
+
+                    lastX = e.clientX; lastY = e.clientY;
+                    updateCamera();
+                }
+            });
+
+            window.addEventListener('mouseup', () => {
+                dragging = false;
+                panning = false;
+            });
+
+            renderer.domElement.addEventListener('wheel', e => {
+                e.preventDefault();
+                camDist *= (e.deltaY > 0 ? 1.08 : 0.92);
+                camDist = Math.max(0.15, Math.min(3.0, camDist));
+                updateCamera();
+            }, { passive: false });
+
+            function resize() {
+                const w = wrap.clientWidth, h = wrap.clientHeight;
+                renderer.setSize(w, h, false);
+                camera.aspect = w / h;
+                camera.updateProjectionMatrix();
+            }
+            window.addEventListener('resize', resize);
+
+            /* ============================================================
+               PARTS PANEL
+               ============================================================ */
+            const partsList = $('partsList');
+            const PART_POS_MIN = -0.5, PART_POS_MAX = 0.5, PART_POS_STEP = 0.005;
+            const PART_SIZE_MIN = 0.005, PART_SIZE_MAX = 0.5, PART_SIZE_STEP = 0.005;
+            const PART_ROT_MIN = -1.6, PART_ROT_MAX = 1.6, PART_ROT_STEP = 0.01;
+            const AXIS_LABELS = ['X', 'Y', 'Z'];
+            const SIZE_LABELS = ['寬', '高', '深'];
+            const ROT_LABELS = ['RX', 'RY', 'RZ'];
+
+            function partRow(idx, group, axis, label, value, min, max, step) {
+                return '' +
+                    '<div class="vec-row">' +
+                    '<span>' + label + '</span>' +
+                    '<input type="range" data-part="' + idx + '" data-group="' + group +
+                    '" data-axis="' + axis + '" min="' + min + '" max="' + max +
+                    '" step="' + step + '" value="' + value + '">' +
+                    '<input type="number" data-part="' + idx + '" data-group="' + group +
+                    '" data-axis="' + axis + '" min="' + min + '" max="' + max +
+                    '" step="' + step + '" value="' + value + '">' +
+                    '</div>';
+            }
+
+            function rebuildPartsList() {
+                partsList.innerHTML = '';
+                W.model.forEach((part, i) => {
+                    if (!part.r) part.r = [0, 0, 0];
+
+                    const el = document.createElement('div');
+                    const isSel = selectedParts.has(i);
+                    el.className = 'part' + (isSel ? ' sel open' : '');
+
+                    let html = '' +
+                        '<div class="hd">' +
+                        '<span><span class="idx">#' + i + '</span></span>' +
+                        '<div class="badges">' +
+                        (part.scope ? '<span class="badge">SCOPE</span>' : '') +
+                        '<span class="sw" style="background:' + colorHex(part.c | 0) + '"></span>' +
+                        '</div>' +
+                        '</div>' +
+                        '<div class="body">';
+
+                    html += '<div class="sec">位置</div>';
+                    for (let a = 0; a < 3; a++)
+                        html += partRow(i, 'p', a, AXIS_LABELS[a], part.p[a],
+                            PART_POS_MIN, PART_POS_MAX, PART_POS_STEP);
+
+                    html += '<div class="sec">尺寸</div>';
+                    for (let a = 0; a < 3; a++)
+                        html += partRow(i, 's', a, SIZE_LABELS[a], part.s[a],
+                            PART_SIZE_MIN, PART_SIZE_MAX, PART_SIZE_STEP);
+
+                    html += '<div class="sec">旋轉</div>';
+                    for (let a = 0; a < 3; a++)
+                        html += partRow(i, 'r', a, ROT_LABELS[a], part.r[a],
+                            PART_ROT_MIN, PART_ROT_MAX, PART_ROT_STEP);
+
+                    html += '<div class="sec">顏色 / 標記</div>' +
+                        '<input data-part="' + i + '" data-f="color" type="color" value="' +
+                        colorHex(part.c | 0) + '">' +
+                        '<label class="chk"><input type="checkbox" data-part="' + i +
+                        '" data-f="scope"' + (part.scope ? ' checked' : '') +
+                        '> 標記為瞄準鏡零件</label>';
+
+                    html += '</div>';
+
+                    el.innerHTML = html;
+
+                    el.querySelector('.hd').addEventListener('click', (ev) => {
+                        if (ev.target.closest('input,label')) return;
+                        const additive = ev.shiftKey || ev.ctrlKey || ev.metaKey;
+                        setSelected(i, additive);
+                    });
+
+                    el.querySelectorAll('[data-part]').forEach(inp => {
+                        const partIdx = parseInt(inp.dataset.part, 10);
+                        const group = inp.dataset.group;
+                        const axis = inp.dataset.axis !== undefined
+                            ? parseInt(inp.dataset.axis, 10) : -1;
+
+                        if (inp.dataset.f === 'color') {
+                            inp.addEventListener('input', ev => {
+                                const v = colorInt(ev.target.value);
+                                W.model[partIdx].c = v;
+                                const sw = el.querySelector('.hd .sw');
+                                if (sw) sw.style.background = colorHex(v);
+                                rebuildWeapon(); updateRig();
+                            });
+                            return;
+                        }
+                        if (inp.dataset.f === 'scope') {
+                            inp.addEventListener('change', ev => {
+                                W.model[partIdx].scope = ev.target.checked;
+                                rebuildWeapon();
+                                /* refresh badge */
+                                rebuildPartsList();
+                                updateRig();
+                            });
+                            return;
+                        }
+
+                        inp.addEventListener('input', () => {
+                            const v = parseFloat(inp.value);
+                            if (!isFinite(v)) return;
+                            const p = W.model[partIdx];
+
+                            /* Snapshot the anchor's old value BEFORE writing — that gives us
+                               the delta to push onto every OTHER selected part. */
+                            let oldV;
+                            if (group === 'p') oldV = p.p[axis];
+                            else if (group === 's') oldV = p.s[axis];
+                            else oldV = p.r[axis];
+                            const delta = v - oldV;
+
+                            /* Write the anchor. */
+                            if (group === 'p') p.p[axis] = v;
+                            else if (group === 's') p.s[axis] = v;
+                            else p.r[axis] = v;
+
+                            /* Multi-edit: shift every other selected part by the same delta. */
+                            const multi = selectedParts.size > 1 && delta !== 0;
+                            if (multi) {
+                                for (const idx of selectedParts) {
+                                    if (idx === partIdx) continue;
+                                    const op = W.model[idx];
+                                    if (!op) continue;
+                                    if (group === 'p') op.p[axis] += delta;
+                                    else if (group === 's') op.s[axis] += delta;
+                                    else op.r[axis] += delta;
+                                }
+                            }
+
+                            /* Sync the mirrored slider / number input on EVERY affected row. */
+                            const affected = multi ? Array.from(selectedParts) : [partIdx];
+                            for (const idx of affected) {
+                                const ip = W.model[idx];
+                                if (!ip) continue;
+                                const iv = group === 'p' ? ip.p[axis]
+                                    : group === 's' ? ip.s[axis]
+                                        : ip.r[axis];
+                                partsList.querySelectorAll(
+                                    '[data-part="' + idx + '"]' +
+                                    '[data-group="' + group + '"]' +
+                                    '[data-axis="' + axis + '"]'
+                                ).forEach(sib => { sib.value = iv; });
+                            }
+
+                            rebuildWeapon(); updateRig();
+
+                            if (document.activeElement === inp) {
+                                showDirArrow(partIdx, axis,
+                                    group === 's' ? 'size' : group === 'r' ? 'rot' : 'pos');
+                            }
+                        });
+
+                        inp.addEventListener('focus', () => {
+                            if (group && axis >= 0) {
+                                showDirArrow(partIdx, axis,
+                                    group === 's' ? 'size' : group === 'r' ? 'rot' : 'pos');
+                            }
+                        });
+                    });
+
+                    el.addEventListener('focusout', () => {
+                        setTimeout(() => {
+                            if (!el.contains(document.activeElement)) hideDirArrow();
+                        }, 30);
+                    });
+
+                    partsList.appendChild(el);
+                });
+            }
+
+            $('btnAddPart').onclick = () => {
+                W.model.push({
+                    p: [0, 0, 0], s: [0.05, 0.05, 0.05], r: [0, 0, 0], c: 0x808080
+                });
+                selectedParts.clear();
+                selectedParts.add(W.model.length - 1);
+                selectedPart = W.model.length - 1;
+                rebuildPartsList(); rebuildWeapon(); updateRig(); updateSelInfo();
+            };
+
+            $('btnDupPart').onclick = () => {
+                const indices = Array.from(selectedParts).sort((a, b) => a - b);
+                if (!indices.length) return;
+                const newIndices = [];
+                for (const idx of indices) {
+                    const p = W.model[idx]; if (!p) continue;
+                    const copy = {
+                        p: [...p.p], s: [...p.s],
+                        r: p.r ? [...p.r] : [0, 0, 0], c: p.c
+                    };
+                    if (p.scope) copy.scope = true;
+                    W.model.push(copy);
+                    newIndices.push(W.model.length - 1);
+                }
+                selectedParts.clear();
+                for (const i of newIndices) selectedParts.add(i);
+                selectedPart = newIndices[newIndices.length - 1];
+                rebuildPartsList(); rebuildWeapon(); updateRig(); updateSelInfo();
+            };
+
+            $('btnDelPart').onclick = () => {
+                if (selectedParts.size === 0) return;
+                /* Never let the model end up empty. */
+                if (W.model.length <= selectedParts.size) return;
+                const indices = Array.from(selectedParts).sort((a, b) => b - a);
+                for (const i of indices) W.model.splice(i, 1);
+                const keep = Math.max(0,
+                    Math.min(indices[indices.length - 1], W.model.length - 1));
+                selectedParts.clear();
+                selectedParts.add(keep);
+                selectedPart = keep;
+                rebuildPartsList(); rebuildWeapon(); updateRig(); updateSelInfo();
+                hideDirArrow();
+            };
+
+            $('btnSelAll').onclick = () => {
+                selectedParts.clear();
+                for (let i = 0; i < W.model.length; i++) selectedParts.add(i);
+                selectedPart = 0;
+                rebuildPartsList(); updateSelectedHighlight(); updateSelInfo();
+            };
+
+            $('btnSelNone').onclick = () => {
+                selectedParts.clear();
+                selectedParts.add(0);
+                selectedPart = 0;
+                rebuildPartsList(); updateSelectedHighlight(); updateSelInfo();
+            };
+
+            /* ============================================================
+               EXPORT / LOAD
+               ============================================================ */
+            function buildExportJSON() {
+                const out = {
+                    key: W.key, name: W.name, icon: W.icon, color: W.color,
+                    scopeMode: W.scopeMode,
+                    hideWeaponOnAds: !!W.hideWeaponOnAds,
+                    hideScopeOnAds: !!W.hideScopeOnAds,
+                    ammoType: W.ammoType, magSize: W.magSize,
+                    fireRate: W.fireRate, reloadTime: W.reloadTime,
+                    damage: W.damage, bulletSpeed: W.bulletSpeed,
+                    spread: W.spread, auto: W.auto,
+                    recoilKick: W.recoilKick, scopeFov: W.scopeFov,
+                    scopeSens: W.scopeSens,
+                    muzzleLocal: W.muzzleLocal.slice(),
+                    bulletColor: W.bulletColor, bulletSize: W.bulletSize,
+                    sightLocal: W.sightLocal.slice(),
+                    hipPose: { p: W.hipPose.p.slice(), r: W.hipPose.r.slice() },
+                    adsPose: W.adsAuto ? null
+                        : { p: W.adsPose.p.slice(), r: W.adsPose.r.slice() },
+                    adsAuto: !!W.adsAuto,
+                    gripR: { p: W.gripR.p.slice(), r: W.gripR.r.slice() },
+                    gripL: { p: W.gripL.p.slice(), r: W.gripL.r.slice() },
+                    shoulderL: W.shoulderL.slice(),
+                    shoulderR: W.shoulderR.slice(),
+                    anim: { swing: W.anim.swing, kick: W.anim.kick },
+                    iconR: W.iconR.slice(),
+                    iconP: W.iconP.slice(),
+                    iconScale: W.iconScale,
+                    model: W.model.map(m => {
+                        const hasRot = m.r && (m.r[0] || m.r[1] || m.r[2]);
+                        const o = { p: m.p.slice(), s: m.s.slice(), c: m.c };
+                        if (hasRot) o.r = m.r.slice();
+                        if (m.scope) o.scope = true;
+                        return o;
+                    })
+                };
+                /* Inline scope block */
+                if (W.scopeMode === 'inline') {
+                    out.inlineFov = W.inlineFov;
+                    out.inlineLensLocal = W.inlineLensLocal.slice();
+                    out.inlineLensRadius = W.inlineLensRadius;
+                }
+                return JSON.stringify(out, null, 4);
+            }
+
+            function getSaved() {
+                try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+                catch (e) { return []; }
+            }
+            function setSaved(a) {
+                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(a)); }
+                catch (e) { }
+            }
+
+            function loadFromObject(def) {
+                if (def.heldPose && !def.hipPose) def.hipPose = def.heldPose;
+                if (def.scopePose && !def.adsPose) def.adsPose = def.scopePose;
+
+                W = Object.assign(JSON.parse(JSON.stringify(DEFAULT_W)), def);
+
+                if (!W.hipPose || !Array.isArray(W.hipPose.p)) {
+                    W.hipPose = { p: [0.14, -0.16, -0.24], r: [0.10, 0.20, -0.04] };
+                }
+                if (!W.adsPose || !Array.isArray(W.adsPose.p)) {
+                    W.adsPose = { p: [0, 0, -0.02], r: [0, 0, 0] };
+                }
+                if (!W.gripR || !Array.isArray(W.gripR.p)) {
+                    W.gripR = { p: [0, -0.03, 0.02], r: [0.10, 0, 0] };
+                }
+                if (!W.gripL || !Array.isArray(W.gripL.p)) {
+                    W.gripL = { p: [-0.035, -0.03, -0.01], r: [0.10, 0.20, 0.15] };
+                }
+                if (!Array.isArray(W.sightLocal)) W.sightLocal = [0, 0.078, -0.10];
+                if (!Array.isArray(W.muzzleLocal)) W.muzzleLocal = [0, 0.055, -0.30];
+                if (!Array.isArray(W.shoulderL)) W.shoulderL = [-0.18, -0.06, 0.04];
+                if (!Array.isArray(W.shoulderR)) W.shoulderR = [0.18, -0.06, 0.04];
+
+                if (!W.anim || typeof W.anim.swing !== 'number')
+                    W.anim = { swing: 0.10, kick: 0.04 };
+
+                if (typeof W.adsAuto !== 'boolean') W.adsAuto = !def.adsPose;
+                if (typeof W.scopeMode !== 'string') {
+                    W.scopeMode = def.hasScope === true ? 'sniper'
+                        : (def.inlineFov ? 'inline' : 'none');
+                }
+                if (typeof W.hideWeaponOnAds !== 'boolean')
+                    W.hideWeaponOnAds = false;
+                if (typeof W.hideScopeOnAds !== 'boolean')
+                    W.hideScopeOnAds = (W.scopeMode === 'inline'); // sensible default
+                if (typeof W.inlineFov !== 'number') W.inlineFov = 8;
+                if (!Array.isArray(W.inlineLensLocal)) W.inlineLensLocal = [0, 0.150, -0.100];
+                if (typeof W.inlineLensRadius !== 'number') W.inlineLensRadius = 0.0095;
+
+                if (!Array.isArray(W.iconR)) W.iconR = [0, 0, 0];
+                if (!Array.isArray(W.iconP)) W.iconP = [0, 0, 0];
+                if (typeof W.iconScale !== 'number' || W.iconScale <= 0) W.iconScale = 1;
+
+                if (!Array.isArray(W.model)) W.model = [];
+                W.model.forEach(p => {
+                    if (!Array.isArray(p.p)) p.p = [0, 0, 0];
+                    if (!Array.isArray(p.s)) p.s = [0.05, 0.05, 0.05];
+                    if (!Array.isArray(p.r)) p.r = [0, 0, 0];
+                });
+
+                selectedParts.clear();
+                selectedParts.add(0);
+                selectedPart = 0;
+                syncUI();
+                rebuildWeapon();
+                rebuildPartsList();
+                updateRig();
+            }
+
+            $('btnNew').onclick = () => {
+                if (W.model.length && !confirm('放棄目前的武器？')) return;
+                W = JSON.parse(JSON.stringify(DEFAULT_W));
+                W.model.forEach(p => { if (!p.r) p.r = [0, 0, 0]; });
+                syncUI(); rebuildWeapon(); rebuildPartsList(); updateRig();
+                setStatus('新武器');
+            };
+
+            $('btnSave').onclick = () => {
+                const obj = JSON.parse(buildExportJSON());
+                const list = getSaved();
+                const i = list.findIndex(o => o.key === obj.key);
+                if (i >= 0) list[i] = obj; else list.push(obj);
+                setSaved(list);
+                setStatus('已儲存：' + obj.key);
+            };
+
+            $('btnLoadSaved').onclick = () => {
+                const list = getSaved();
+                if (!list.length) { setStatus('沒有已儲存的武器'); return; }
+                const keys = list.map(o => o.key);
+                const pick = prompt('要載入哪一個？\n' + keys.join('\n'), keys[0]);
+                if (!pick) return;
+                const found = list.find(o => o.key === pick);
+                if (found) { loadFromObject(found); setStatus('已載入：' + pick); }
+            };
+
+            $('btnImport').onclick = () => {
+                const inp = document.createElement('input');
+                inp.type = 'file';
+                inp.accept = '.json,application/json';
+                inp.onchange = () => {
+                    const f = inp.files[0]; if (!f) return;
+                    const r = new FileReader();
+                    r.onload = () => {
+                        try { loadFromObject(JSON.parse(r.result)); setStatus('已匯入：' + f.name); }
+                        catch (e) { setStatus('匯入失敗：' + e.message); }
+                    };
+                    r.readAsText(f);
+                };
+                inp.click();
+            };
+
+            $('btnExport').onclick = () => {
+                const obj = JSON.parse(buildExportJSON());
+                $('jsonOut').value = buildExportJSON();
+                const blob = new Blob([JSON.stringify(obj, null, 2)],
+                    { type: 'application/json' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = obj.key + '.json';
+                a.click();
+                URL.revokeObjectURL(a.href);
+                setStatus('已匯出：' + obj.key + '.json → 放入 weaponModel/');
+            };
+
+            $('btnCopy').onclick = () => {
+                const out = buildExportJSON();
+                navigator.clipboard.writeText(out).then(
+                    () => setStatus('已複製 ✓'),
+                    () => {
+                        $('jsonOut').value = out; $('jsonOut').select();
+                        document.execCommand('copy');
+                        setStatus('已複製（備援）✓');
+                    });
+            };
+
+            let statusTimer = 0;
+            function setStatus(msg) {
+                $('status').textContent = msg;
+                clearTimeout(statusTimer);
+                statusTimer = setTimeout(() => $('status').textContent = '', 2400);
+            }
+
+            /* ============================================================
+               SYNC UI
+               ============================================================ */
+            function syncUI() {
+                $('wKey').value = W.key;
+                $('wName').value = W.name;
+                $('wIcon').value = W.icon;
+                $('wColor').value = W.color;
+                $('wAmmo').value = W.ammoType;
+                $('wMag').value = W.magSize;
+                $('wRate').value = W.fireRate;
+                $('wRel').value = W.reloadTime;
+                $('wDmg').value = W.damage;
+                $('wAuto').value = W.auto ? '1' : '0';
+                $('wSpread').value = W.spread;
+                $('wRecoil').value = W.recoilKick;
+                $('wBSpeed').value = W.bulletSpeed;
+                $('wBSize').value = W.bulletSize;
+                $('wBColor').value = colorHex(W.bulletColor);
+                $('wScopeFov').value = W.scopeFov;
+                $('wScopeSens').value = W.scopeSens;
+
+                $('wScopeMode').value = W.scopeMode || 'none';
+                $('wHideWeaponOnAds').checked = !!W.hideWeaponOnAds;
+                $('wHideScopeOnAds').checked = !!W.hideScopeOnAds;
+
+                setVec('hipP', W.hipPose.p); setVec('hipR', W.hipPose.r);
+                setVec('adsP', W.adsPose.p); setVec('adsR', W.adsPose.r);
+                setVec('sightP', W.sightLocal);
+                setVec('muzzleLocal', W.muzzleLocal);
+                setVec('gripRP', W.gripR.p); setVec('gripRR', W.gripR.r);
+                setVec('gripLP', W.gripL.p); setVec('gripLR', W.gripL.r);
+                setVec('shoulderL', W.shoulderL); setVec('shoulderR', W.shoulderR);
+
+                setValue('wAnimSw', W.anim.swing);
+                setValue('wAnimKc', W.anim.kick);
+
+                $('adsAuto').checked = !!W.adsAuto;
+                toggleAdsInputs();
+
+                setValue('wInlineFov', W.inlineFov);
+                setValue('wInlineRadius', W.inlineLensRadius);
+                setVec('inlineLensP', W.inlineLensLocal);
+                updateScopeModeVisibility();
+
+                if (!Array.isArray(W.iconR)) W.iconR = [0, 0, 0];
+                if (!Array.isArray(W.iconP)) W.iconP = [0, 0, 0];
+                if (typeof W.iconScale !== 'number' || W.iconScale <= 0) W.iconScale = 1;
+                setVec('iconR', W.iconR);
+                setVec('iconP', W.iconP);
+                setValue('iconScale', W.iconScale);
+            }
+
+            /* ============================================================
+               ICON PREVIEW
+               ============================================================ */
+            const ICON_TILE_W = 3;
+            const ICON_TILE_H = 1;
+            const ICON_CELL = 44;
+            const ICON_INSET_X = 4;
+            const ICON_INSET_TOP = 4;
+            const ICON_INSET_BOTTOM = 14;
+            const ICON_PREVIEW_W = 300;
+
+            function iconInnerSize() {
+                const innerW = Math.max(8, ICON_TILE_W * ICON_CELL - 2 * ICON_INSET_X);
+                const innerH = Math.max(8, ICON_TILE_H * ICON_CELL - ICON_INSET_TOP - ICON_INSET_BOTTOM);
+                return { innerW, innerH, aspect: innerW / innerH };
+            }
+
+            const iconCanvasEl = document.getElementById('iconPreview');
+            const iconRenderer = new THREE.WebGLRenderer({
+                canvas: iconCanvasEl, antialias: true, alpha: true,
+                preserveDrawingBuffer: true
+            });
+            iconRenderer.setPixelRatio(1);
+            iconRenderer.setClearColor(0x000000, 0);
+
+            const iconScene = new THREE.Scene();
+            const iconCamera = new THREE.PerspectiveCamera(32, 1, 0.01, 20);
+            {
+                const k = new THREE.DirectionalLight(0xffffff, 1.15);
+                k.position.set(1.2, 2.0, 1.5); iconScene.add(k);
+                const f = new THREE.DirectionalLight(0x8899bb, 0.55);
+                f.position.set(-1.5, 0.5, -1.0); iconScene.add(f);
+                iconScene.add(new THREE.AmbientLight(0xffffff, 0.55));
+            }
+
+            let iconMesh = null;
+            let iconPivot = null;
+
+            function buildIconMesh() {
+                if (iconMesh) {
+                    iconScene.remove(iconMesh);
+                    disposeRecursive(iconMesh);
+                    iconMesh = null;
+                }
+                if (!Array.isArray(W.model) || !W.model.length) return;
+
+                let mnX = Infinity, mnY = Infinity, mnZ = Infinity;
+                let mxX = -Infinity, mxY = -Infinity, mxZ = -Infinity;
+                for (const b of W.model) {
+                    if (b.p[0] - b.s[0] * 0.5 < mnX) mnX = b.p[0] - b.s[0] * 0.5;
+                    if (b.p[0] + b.s[0] * 0.5 > mxX) mxX = b.p[0] + b.s[0] * 0.5;
+                    if (b.p[1] - b.s[1] * 0.5 < mnY) mnY = b.p[1] - b.s[1] * 0.5;
+                    if (b.p[1] + b.s[1] * 0.5 > mxY) mxY = b.p[1] + b.s[1] * 0.5;
+                    if (b.p[2] - b.s[2] * 0.5 < mnZ) mnZ = b.p[2] - b.s[2] * 0.5;
+                    if (b.p[2] + b.s[2] * 0.5 > mxZ) mxZ = b.p[2] + b.s[2] * 0.5;
+                }
+                const cx = (mnX + mxX) * 0.5;
+                const cy = (mnY + mxY) * 0.5;
+                const cz = (mnZ + mxZ) * 0.5;
+
+                const inner = new THREE.Group();
+                for (const part of W.model) {
+                    const geo = new THREE.BoxGeometry(part.s[0], part.s[1], part.s[2]);
+                    const mat = new THREE.MeshLambertMaterial({ color: part.c | 0 });
+                    const m = new THREE.Mesh(geo, mat);
+                    m.position.set(part.p[0] - cx, part.p[1] - cy, part.p[2] - cz);
+                    if (part.r) m.rotation.set(part.r[0], part.r[1], part.r[2]);
+                    inner.add(m);
+                }
+
+                const { aspect } = iconInnerSize();
+                const baseRz = (W.iconR && W.iconR[2]) || 0;
+                const autoEnabled = Math.abs(baseRz) < 0.01;
+                let autoZ = 0;
+                if (autoEnabled) {
+                    const sx = mxX - mnX, sy = mxY - mnY;
+                    if (sy > 1e-4) {
+                        const modelAspect = sx / sy;
+                        if (aspect > 1.1 && modelAspect < 0.9) autoZ = Math.PI / 2;
+                        else if (aspect < 0.9 && modelAspect > 1.1) autoZ = Math.PI / 2;
+                    }
+                }
+
+                const r = W.iconR || [0, 0, 0];
+                const p = W.iconP || [0, 0, 0];
+                const s = (typeof W.iconScale === 'number' && W.iconScale > 0)
+                    ? W.iconScale : 1;
+
+                const pivot = new THREE.Group();
+                pivot.rotation.set(r[0], r[1], r[2] + autoZ);
+                pivot.position.set(p[0], p[1], p[2]);
+                pivot.scale.setScalar(s);
+                pivot.add(inner);
+
+                iconMesh = new THREE.Group();
+                iconMesh.add(pivot);
+                iconScene.add(iconMesh);
+                iconPivot = pivot;
+            }
+
+            function fitIconCamera(aspect, padding) {
+                if (!iconMesh) return;
+                iconMesh.updateMatrixWorld(true);
+                const box = new THREE.Box3().setFromObject(iconMesh);
+                if (box.isEmpty()) return;
+
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+                const dirV = new THREE.Vector3(0.62, 0.55, 0.62).normalize();
+                const dist = size.length() * 2 + 0.2;
+
+                iconCamera.position.copy(center).addScaledVector(dirV, dist);
+                iconCamera.up.set(0, 1, 0);
+                iconCamera.lookAt(center);
+                iconCamera.updateMatrixWorld(true);
+                iconCamera.matrixWorldInverse.copy(iconCamera.matrixWorld).invert();
+
+                let maxTanX = 0, maxTanY = 0;
+                const v = new THREE.Vector3();
+                for (let i = 0; i < 8; i++) {
+                    v.set(
+                        (i & 1) ? box.max.x : box.min.x,
+                        (i & 2) ? box.max.y : box.min.y,
+                        (i & 4) ? box.max.z : box.min.z);
+                    v.applyMatrix4(iconCamera.matrixWorldInverse);
+                    const depth = -v.z;
+                    if (depth <= 1e-3) continue;
+                    const tx = Math.abs(v.x) / depth;
+                    const ty = Math.abs(v.y) / depth;
+                    if (tx > maxTanX) maxTanX = tx;
+                    if (ty > maxTanY) maxTanY = ty;
+                }
+                const needTan = Math.max(maxTanY, maxTanX / aspect);
+                const vFOV = 2 * Math.atan(needTan * padding);
+                iconCamera.fov = vFOV * 180 / Math.PI;
+                iconCamera.aspect = aspect;
+                iconCamera.updateProjectionMatrix();
+            }
+
+            function renderIconPreview() {
+                const { aspect, innerW, innerH } = iconInnerSize();
+                const w = ICON_PREVIEW_W;
+                const h = Math.max(20, Math.round(w / aspect));
+
+                iconCanvasEl.width = w;
+                iconCanvasEl.height = h;
+                iconCanvasEl.style.width = w + 'px';
+                iconCanvasEl.style.height = h + 'px';
+
+                const infoEl = document.getElementById('iconInfo');
+                if (infoEl) {
+                    infoEl.textContent = '武器格：' + ICON_TILE_W + '×' + ICON_TILE_H +
+                        '（' + innerW + '×' + innerH + ' 縮圖）';
+                }
+
+                buildIconMesh();
+
+                if (iconPivot) {
+                    const savedPos = iconPivot.position.clone();
+                    const savedScale = iconPivot.scale.clone();
+                    iconPivot.position.set(0, 0, 0);
+                    iconPivot.scale.setScalar(1);
+                    fitIconCamera(aspect, 1.06);
+                    iconPivot.position.copy(savedPos);
+                    iconPivot.scale.copy(savedScale);
+                } else {
+                    fitIconCamera(aspect, 1.06);
+                }
+
+                iconRenderer.setSize(w, h, false);
+                iconRenderer.render(iconScene, iconCamera);
+            }
+
+            let iconDirty = true;
+            function requestIconRedraw() { iconDirty = true; }
+
+            bindPair('iconR0', v => { W.iconR[0] = v; requestIconRedraw(); });
+            bindPair('iconR1', v => { W.iconR[1] = v; requestIconRedraw(); });
+            bindPair('iconR2', v => { W.iconR[2] = v; requestIconRedraw(); });
+            bindPair('iconP0', v => { W.iconP[0] = v; requestIconRedraw(); });
+            bindPair('iconP1', v => { W.iconP[1] = v; requestIconRedraw(); });
+            bindPair('iconP2', v => { W.iconP[2] = v; requestIconRedraw(); });
+            bindPair('iconScale', v => { if (v > 0) W.iconScale = v; requestIconRedraw(); });
+
+            $('btnIconReset').addEventListener('click', () => {
+                W.iconR = [0, 0, 0];
+                W.iconP = [0, 0, 0];
+                W.iconScale = 1;
+                setVec('iconR', W.iconR); setVec('iconP', W.iconP);
+                setValue('iconScale', W.iconScale);
+                requestIconRedraw();
+                setStatus('圖示已重設為自動');
+            });
+
+            /* ============================================================
+               BOOT
+               ============================================================ */
+            syncUI();
+            rebuildWeapon();
+            rebuildPartsList();
+            updateRig();
+            resize();
+            applyViewTab();
+            applyCameraPreset('fp');
+
+            /* ---- Background colour picker ---- */
+            const bgColorEl = document.getElementById('bgColor');
+            if (bgColorEl) {
+                bgColorEl.addEventListener('input', e => {
+                    const c = colorInt(e.target.value);
+                    renderer.setClearColor(c, 1);
+                });
+            }
+
+            $('blend').value = 0;
+            $('blendVal').textContent = '0.00';
+            document.querySelector('.tabs button[data-view="hip"]').classList.add('active');
+
+            updateSelInfo();
+
+            (function loop() {
+                requestAnimationFrame(loop);
+                renderer.render(scene, camera);
+                if (iconDirty) {
+                    iconDirty = false;
+                    try { renderIconPreview(); }
+                    catch (e) { console.warn('[icon preview]', e); }
+                }
+            })();
+
+            requestIconRedraw();
+        })();
+    </script>
+</body>
+
+</html>

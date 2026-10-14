@@ -1,0 +1,2523 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Item Model Editor — Ruin City</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #0a0d12;
+            color: #dfe4ea;
+            font-family: "Courier New", Courier, monospace;
+            font-size: 12px;
+        }
+
+        #app {
+            display: flex;
+            height: 100vh;
+        }
+
+        #viewport {
+            flex: 1;
+            position: relative;
+            background: #10141a;
+            overflow: hidden;
+        }
+
+        #viewport canvas {
+            display: block;
+        }
+
+        /* ---------- Toolbar ---------- */
+        #toolbar {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            right: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: rgba(10, 14, 20, 0.85);
+            border: 2px solid #232b36;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+            font-size: 11px;
+            flex-wrap: wrap;
+            z-index: 10;
+        }
+
+        #toolbar button {
+            font-family: inherit;
+            font-size: 11px;
+            padding: 5px 12px;
+            letter-spacing: 1px;
+            color: #b8c8d8;
+            background: #141c26;
+            border: 1px solid #2a3a4a;
+            cursor: pointer;
+        }
+
+        #toolbar button.active {
+            background: #2a3a4a;
+            color: #e8c86a;
+            border-color: #e8c86a;
+        }
+
+        #toolbar button:hover {
+            background: #1a2530;
+        }
+
+        #toolbar .spacer {
+            flex: 1;
+        }
+
+        #lockHint {
+            font-size: 10px;
+            color: #5a6a7a;
+            letter-spacing: 0.5px;
+        }
+
+        /* ---------- Bag-icon preview ---------- */
+        #thumbBox {
+            position: absolute;
+            right: 14px;
+            bottom: 14px;
+            padding: 6px 6px 4px;
+            background: rgba(10, 14, 20, 0.9);
+            border: 2px solid #232b36;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+            z-index: 10;
+            pointer-events: none;
+            text-align: center;
+        }
+
+        #thumbBox .thumb-title {
+            font-size: 9px;
+            letter-spacing: 2px;
+            color: #5a6a7a;
+            margin-bottom: 4px;
+        }
+
+        /* The tile is the coloured inventory slot, sized by JS to w×h cells. */
+        #thumbTile {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #12161d;
+            border: 1px solid #2a3a4a;
+            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.55);
+            transition: width .15s, height .15s, background-color .15s;
+            /* Faint cell grid — same visual idea as the live inventory grid. */
+            background-image:
+                linear-gradient(to right, rgba(255, 255, 255, 0.07) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+
+        /* The 128×128 render, scaled by JS to fit the tile as a square —
+           this mirrors how .inv-item-img uses object-fit: contain in-game. */
+        #thumbCanvas {
+            display: block;
+            background: transparent;
+            pointer-events: none;
+        }
+
+        /* ---------- Side panel ---------- */
+        #panel {
+            width: 420px;
+            background: #0e1116;
+            border-left: 2px solid #232b36;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        #panel header {
+            padding: 14px 18px 12px;
+            border-bottom: 2px solid #232b36;
+            background: #0a0d12;
+        }
+
+        #panel header h1 {
+            font-size: 14px;
+            letter-spacing: 4px;
+            color: #e8c86a;
+            text-shadow: 2px 2px 0 #05070a;
+        }
+
+        #panel header .sub {
+            font-size: 10px;
+            color: #5a6a7a;
+            margin-top: 4px;
+            letter-spacing: 1px;
+        }
+
+        /* Item tabs */
+        #itemTabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            padding: 10px 14px;
+            border-bottom: 2px solid #232b36;
+            background: #0a0d12;
+            max-height: 132px;
+            overflow-y: auto;
+        }
+
+        #itemTabs::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #itemTabs::-webkit-scrollbar-thumb {
+            background: #2a3a4a;
+        }
+
+        #itemTabs button {
+            font-family: inherit;
+            font-size: 10px;
+            padding: 5px 9px;
+            letter-spacing: 1px;
+            color: #b8c8d8;
+            background: #141c26;
+            border: 1px solid #2a3a4a;
+            cursor: pointer;
+        }
+
+        #itemTabs button.active {
+            background: #2a3a4a;
+            color: #e8c86a;
+            border-color: #e8c86a;
+        }
+
+        #itemTabs button:hover {
+            background: #1a2530;
+        }
+
+        #controls {
+            flex: 1;
+            overflow-y: auto;
+            padding-bottom: 12px;
+        }
+
+        #controls::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #controls::-webkit-scrollbar-thumb {
+            background: #2a3a4a;
+        }
+
+        #controls::-webkit-scrollbar-track {
+            background: #0a0d12;
+        }
+
+        details {
+            border-bottom: 1px solid #1a2028;
+        }
+
+        details[open] summary {
+            background: #121820;
+        }
+
+        summary {
+            padding: 10px 18px;
+            font-size: 10px;
+            letter-spacing: 3px;
+            color: #6ac8e8;
+            cursor: pointer;
+            list-style: none;
+            user-select: none;
+            border-left: 3px solid transparent;
+            transition: border-color .1s, background .1s;
+        }
+
+        summary::-webkit-details-marker {
+            display: none;
+        }
+
+        summary::before {
+            content: "▸ ";
+            color: #5a6a7a;
+        }
+
+        details[open] summary::before {
+            content: "▾ ";
+            color: #6ac8e8;
+        }
+
+        summary:hover {
+            border-left-color: #6ac8e8;
+        }
+
+        .entry {
+            display: grid;
+            grid-template-columns: 100px 1fr 62px;
+            gap: 8px;
+            align-items: center;
+            padding: 4px 18px;
+        }
+
+        .entry .lbl {
+            font-size: 10px;
+            color: #8a96a4;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .entry input[type="range"] {
+            width: 100%;
+            height: 3px;
+            background: #1a2028;
+            appearance: none;
+            -webkit-appearance: none;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .entry input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 12px;
+            height: 12px;
+            background: #6ac8e8;
+            border: 1px solid #0a0d12;
+            cursor: grab;
+        }
+
+        .entry input[type="range"]::-moz-range-thumb {
+            width: 12px;
+            height: 12px;
+            background: #6ac8e8;
+            border: 1px solid #0a0d12;
+            cursor: grab;
+        }
+
+        .entry input[type="number"] {
+            width: 100%;
+            font-family: inherit;
+            font-size: 10px;
+            padding: 3px 4px;
+            background: #141c26;
+            border: 1px solid #2a3a4a;
+            color: #dfe4ea;
+            outline: none;
+            text-align: right;
+        }
+
+        .entry input[type="number"]:focus {
+            border-color: #6ac8e8;
+        }
+
+        .entry input[type="text"] {
+            width: 100%;
+            font-family: inherit;
+            font-size: 11px;
+            letter-spacing: 1px;
+            padding: 4px 6px;
+            background: #141c26;
+            border: 1px solid #2a3a4a;
+            color: #dfe4ea;
+            outline: none;
+            text-transform: uppercase;
+        }
+
+        .entry input[type="text"]:focus {
+            border-color: #6ac8e8;
+        }
+
+        /* ---------- Color row ---------- */
+        .color-row {
+            padding: 6px 18px 8px;
+            border-bottom: 1px solid #131820;
+        }
+
+        .color-row .color-head {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 5px;
+        }
+
+        .color-row .color-head .lbl {
+            font-size: 10px;
+            color: #8a96a4;
+            letter-spacing: 0.5px;
+            flex: 1;
+        }
+
+        .color-row .swatch {
+            width: 26px;
+            height: 14px;
+            border: 1px solid #2a3a4a;
+            background: #000;
+        }
+
+        .color-row .hex {
+            font-size: 10px;
+            color: #6ac8e8;
+            letter-spacing: 1px;
+        }
+
+        .channel {
+            display: grid;
+            grid-template-columns: 14px 1fr 32px;
+            gap: 6px;
+            align-items: center;
+            margin: 2px 0;
+        }
+
+        .channel .ch-name {
+            font-size: 10px;
+            font-weight: bold;
+        }
+
+        .channel.r .ch-name {
+            color: #e05a5a;
+        }
+
+        .channel.g .ch-name {
+            color: #7ad07a;
+        }
+
+        .channel.b .ch-name {
+            color: #6ab8e8;
+        }
+
+        .channel input[type="range"] {
+            width: 100%;
+            height: 3px;
+            background: #1a2028;
+            appearance: none;
+            -webkit-appearance: none;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .channel input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 11px;
+            height: 11px;
+            background: currentColor;
+            border: 1px solid #0a0d12;
+        }
+
+        .channel.r input[type="range"]::-webkit-slider-thumb {
+            background: #e05a5a;
+        }
+
+        .channel.g input[type="range"]::-webkit-slider-thumb {
+            background: #7ad07a;
+        }
+
+        .channel.b input[type="range"]::-webkit-slider-thumb {
+            background: #6ab8e8;
+        }
+
+        .channel .ch-val {
+            font-size: 10px;
+            color: #b8c8d8;
+            text-align: right;
+        }
+
+        /* ---------- Part list ---------- */
+        .part-list {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            padding: 6px 18px 10px;
+        }
+
+        .part-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+            background: #12161d;
+            border: 1px solid #2a3a4a;
+            cursor: pointer;
+            font-size: 10px;
+            letter-spacing: 0.5px;
+        }
+
+        .part-item:hover {
+            background: #1a2530;
+            border-color: #3a4a5a;
+        }
+
+        .part-item.sel {
+            background: #1a2530;
+            border-color: #e8c86a;
+        }
+
+        .part-item .part-swatch {
+            width: 14px;
+            height: 14px;
+            border: 1px solid #0a0d12;
+            flex-shrink: 0;
+        }
+
+        .part-item .part-name {
+            flex: 1;
+            color: #b8c8d8;
+        }
+
+        .part-item .part-size {
+            color: #5a6a7a;
+            font-size: 9px;
+        }
+
+        .part-item .part-glow {
+            color: #e8c86a;
+            font-size: 9px;
+        }
+
+        .part-item .part-rotated {
+            color: #6ac8e8;
+            font-size: 9px;
+        }
+
+        /* ---------- Buttons ---------- */
+        .row-buttons {
+            display: flex;
+            gap: 6px;
+            padding: 6px 18px 10px;
+        }
+
+        .row-buttons button {
+            flex: 1;
+            font-family: inherit;
+            font-size: 10px;
+            padding: 7px 8px;
+            letter-spacing: 1px;
+            cursor: pointer;
+            border: 1px solid #2a3a4a;
+            background: #141c26;
+            color: #b8c8d8;
+        }
+
+        .row-buttons button:hover {
+            background: #1a2530;
+            color: #e8f2ff;
+            border-color: #6ac8e8;
+        }
+
+        .row-buttons button.danger {
+            color: #e08a8a;
+            border-color: #4a2a2a;
+        }
+
+        .row-buttons button.danger:hover {
+            background: #2a1418;
+            border-color: #e05a5a;
+        }
+
+        .row-buttons button.primary {
+            background: #e8c86a;
+            color: #0b0f14;
+            border-color: #f6e2a6;
+            font-weight: bold;
+        }
+
+        .row-buttons button.primary:hover {
+            background: #f6dd8b;
+        }
+
+        /* ---------- Quick-snap row ---------- */
+        .snap-row {
+            display: flex;
+            gap: 4px;
+            padding: 4px 18px 10px;
+        }
+
+        .snap-row button {
+            flex: 1;
+            font-family: inherit;
+            font-size: 9px;
+            padding: 5px 4px;
+            letter-spacing: 1px;
+            cursor: pointer;
+            border: 1px solid #2a3a4a;
+            background: #141c26;
+            color: #8a96a4;
+        }
+
+        .snap-row button:hover {
+            background: #1a2530;
+            color: #e8c86a;
+            border-color: #e8c86a;
+        }
+
+        /* ---------- Footer ---------- */
+        #panel footer {
+            padding: 12px 18px;
+            border-top: 2px solid #232b36;
+            background: #0a0d12;
+            display: flex;
+            gap: 8px;
+        }
+
+        #panel footer button {
+            font-family: inherit;
+            font-size: 11px;
+            padding: 9px 14px;
+            letter-spacing: 2px;
+            cursor: pointer;
+            border: 2px solid #2a3a4a;
+            background: #141c26;
+            color: #b8c8d8;
+        }
+
+        #panel footer button.primary {
+            flex: 1;
+            background: #e8c86a;
+            color: #0b0f14;
+            border-color: #f6e2a6;
+            font-weight: bold;
+        }
+
+        #panel footer button.primary:hover {
+            background: #f6dd8b;
+        }
+
+        #panel footer button:hover:not(.primary) {
+            background: #1a2530;
+            color: #e8f2ff;
+            border-color: #6ac8e8;
+        }
+
+        #panel footer button:active {
+            transform: translateY(1px);
+        }
+
+        /* ---------- Toast ---------- */
+        #toast {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(60px);
+            padding: 10px 20px;
+            background: #e8c86a;
+            color: #0b0f14;
+            font-weight: bold;
+            letter-spacing: 2px;
+            font-size: 11px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            transition: transform .25s cubic-bezier(.34, 1.56, .64, 1);
+            pointer-events: none;
+            z-index: 20;
+        }
+
+        #toast.show {
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .hint-box {
+            margin: 10px 18px;
+            padding: 8px 10px;
+            background: #10141a;
+            border-left: 2px solid #6ac8e8;
+            font-size: 10px;
+            line-height: 1.6;
+            color: #7a8a9a;
+            letter-spacing: 0.3px;
+        }
+
+        .hint-box b {
+            color: #e8c86a;
+        }
+
+        .hint-box code {
+            color: #6ac8e8;
+            font-family: inherit;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="app">
+
+        <div id="viewport">
+            <div id="toolbar">
+                <button id="viewFP" class="active">◉ FP VIEW</button>
+                <button id="viewOrbit">⟳ ORBIT</button>
+                <button id="spinBtn">↻ SPIN</button>
+                <span class="spacer"></span>
+                <span id="lockHint">Click viewport to look · ESC to release</span>
+            </div>
+
+            <div id="thumbBox">
+                <div class="thumb-title" id="thumbTitle">BAG ICON</div>
+                <div id="thumbTile">
+                    <canvas id="thumbCanvas" width="128" height="128"></canvas>
+                </div>
+            </div>
+
+            <div id="toast"></div>
+        </div>
+
+        <aside id="panel">
+            <header>
+                <h1>ITEM MODELS</h1>
+                <div class="sub">edit · preview · export</div>
+            </header>
+            <div id="itemTabs"></div>
+            <div id="controls"></div>
+            <footer>
+                <button id="resetBtn">RESET ITEM</button>
+                <button id="downloadBtn">⬇ SAVE ASSET</button>
+                <button id="loadBtn">⬆ LOAD ASSET</button>
+                <button id="copyBtn" class="primary">COPY CONFIG</button>
+            </footer>
+
+            <!-- hidden file picker for LOAD ASSET -->
+            <input type="file" id="loadFile" accept=".js,.json" hidden>
+        </aside>
+
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="assets/model/itemModels.js"></script>
+    <script>
+        (function () {
+            'use strict';
+
+            const PI = Math.PI;
+            const DEG = PI / 180;
+
+            /* ============================================================
+               FALLBACK — mirrors ITEM_DEFS in game.js.
+               Used only if assets/model/itemModels.js failed to load.
+               ============================================================ */
+            const FALLBACK = [
+                {
+                    key: 'sledge', name: 'SLEDGE', w: 3, h: 1, color: '#7a5a2a',
+                    model: [
+                        { p: [0.00, 0.35, 0.00], s: [0.05, 0.70, 0.05], c: 0x5a3a18 },
+                        { p: [0.12, 0.68, 0.00], s: [0.32, 0.14, 0.10], c: 0x808890 }
+                    ]
+                },
+                {
+                    key: 'rifle', name: 'RIFLE', w: 4, h: 1, color: '#46505c',
+                    model: [
+                        { p: [0.00, 0.25, 0.00], s: [0.80, 0.06, 0.05], c: 0x30353a },
+                        { p: [-0.35, 0.22, 0.00], s: [0.18, 0.18, 0.08], c: 0x4a3820 },
+                        { p: [0.05, 0.14, 0.00], s: [0.10, 0.14, 0.07], c: 0x4a3820 },
+                        { p: [0.28, 0.31, 0.00], s: [0.14, 0.05, 0.05], c: 0x505860 }
+                    ]
+                },
+                {
+                    key: 'charge', name: 'CHARGE', w: 2, h: 1, color: '#8a2a1a',
+                    model: [
+                        { p: [0, 0.12, 0], s: [0.20, 0.24, 0.20], c: 0xa04028 },
+                        { p: [0, 0.27, 0], s: [0.06, 0.07, 0.06], c: 0x404040 }
+                    ]
+                },
+                {
+                    key: 'flare', name: 'FLARE', w: 1, h: 1, color: '#a0601a',
+                    model: [
+                        { p: [0, 0.18, 0], s: [0.05, 0.36, 0.05], c: 0xd0d0c0 },
+                        { p: [0, 0.38, 0], s: [0.06, 0.06, 0.06], c: 0xd04020 }
+                    ]
+                },
+                {
+                    key: 'medkit', name: 'MEDKIT', w: 2, h: 2, color: '#a03a48',
+                    model: [
+                        { p: [0, 0.13, 0], s: [0.26, 0.26, 0.18], c: 0xd0d0c8 },
+                        { p: [0, 0.13, 0.10], s: [0.14, 0.05, 0.02], c: 0xc02020 },
+                        { p: [0, 0.13, 0.10], s: [0.05, 0.14, 0.02], c: 0xc02020 }
+                    ]
+                },
+                {
+                    key: 'ration', name: 'RATION', w: 2, h: 2, color: '#4a6a2a',
+                    model: [
+                        { p: [0, 0.11, 0], s: [0.22, 0.22, 0.14], c: 0x6a7a4a },
+                        { p: [0, 0.23, 0], s: [0.22, 0.02, 0.14], c: 0x4a5a2a }
+                    ]
+                },
+                {
+                    key: 'water', name: 'WATER', w: 1, h: 2, color: '#2a5a9a',
+                    model: [
+                        { p: [0, 0.18, 0], s: [0.13, 0.36, 0.13], c: 0x3a7ab0 },
+                        { p: [0, 0.38, 0], s: [0.07, 0.05, 0.07], c: 0x203040 }
+                    ]
+                },
+                {
+                    key: 'bandage', name: 'BANDAGE', w: 1, h: 1, color: '#a06a6a',
+                    model: [
+                        { p: [0, 0.09, 0], s: [0.18, 0.18, 0.18], c: 0xd0c8b8 },
+                        { p: [0, 0.18, 0], s: [0.10, 0.02, 0.10], c: 0xb0a898 }
+                    ]
+                },
+                {
+                    key: 'battery', name: 'BATTERY', w: 1, h: 1, color: '#5a5a2a',
+                    model: [
+                        { p: [0, 0.10, 0], s: [0.11, 0.20, 0.11], c: 0x404040 },
+                        { p: [0, 0.21, 0], s: [0.05, 0.03, 0.05], c: 0xb0a040 }
+                    ]
+                },
+                {
+                    key: 'wire', name: 'WIRE', w: 2, h: 1, color: '#6a5a4a',
+                    model: [
+                        { p: [0, 0.07, 0], s: [0.20, 0.14, 0.20], c: 0x4a3a2a },
+                        { p: [0, 0.07, 0], s: [0.05, 0.16, 0.05], c: 0x808080 }
+                    ]
+                },
+                {
+                    key: 'canned', name: 'CANNED', w: 1, h: 1, color: '#7a6a3a',
+                    model: [
+                        { p: [0, 0.10, 0], s: [0.16, 0.20, 0.16], c: 0x808890 },
+                        { p: [0, 0.21, 0], s: [0.16, 0.02, 0.16], c: 0xa0a8b0 }
+                    ]
+                },
+                {
+                    key: 'canister', name: 'CANISTER', w: 2, h: 2, color: '#5a6a5a',
+                    model: [
+                        { p: [0, 0.22, 0], s: [0.28, 0.44, 0.28], c: 0x5a7a5a },
+                        { p: [0, 0.46, 0], s: [0.10, 0.05, 0.10], c: 0x404040 }
+                    ]
+                }
+            ];
+
+            /* NEW — sanitise a per-orientation icon transform (or return null) */
+            function normaliseIconTx(t) {
+                if (!t || typeof t !== 'object') return null;
+                const r = Array.isArray(t.r)
+                    ? [Number(t.r[0]) || 0, Number(t.r[1]) || 0, Number(t.r[2]) || 0]
+                    : [0, 0, 0];
+                const p = Array.isArray(t.p)
+                    ? [Number(t.p[0]) || 0, Number(t.p[1]) || 0, Number(t.p[2]) || 0]
+                    : [0, 0, 0];
+                const s = (typeof t.s === 'number' && t.s > 0) ? t.s : 1;
+                return { r, p, s };
+            }
+
+            function normalise(list) {
+                const out = [];
+                for (const raw of list) {
+                    if (!raw || !raw.model) continue;
+                    const it = JSON.parse(JSON.stringify(raw));
+                    delete it.iconImage;
+                    if (typeof it.key !== 'string') it.key = 'item' + out.length;
+                    if (typeof it.name !== 'string') it.name = it.key.toUpperCase();
+                    it.w = Math.max(1, it.w | 0 || 1);
+                    it.h = Math.max(1, it.h | 0 || 1);
+                    if (typeof it.color !== 'string') it.color = '#4a5a6a';
+                    for (const part of it.model) {
+                        if (!part.r) part.r = [0, 0, 0];
+                    }
+
+                    /* Base icon transform (fallback for square tiles / no override) */
+                    if (!Array.isArray(it.iconR)) it.iconR = [0, 0, 0];
+                    if (!Array.isArray(it.iconP)) it.iconP = [0, 0, 0];
+                    if (typeof it.iconScale !== 'number') it.iconScale = 1;
+
+                    /* NEW — per-orientation overrides (null = not set) */
+                    it.iconPortrait = normaliseIconTx(it.iconPortrait);
+                    it.iconLandscape = normaliseIconTx(it.iconLandscape);
+
+                    out.push(it);
+                }
+                return out.length ? out : JSON.parse(JSON.stringify(FALLBACK));
+            }
+
+            const DEFAULTS = (function () {
+                const src = window.ITEM_DEFS_DATA;
+                const list = (Array.isArray(src) && src.length) ? src : FALLBACK;
+                return normalise(list);
+            })();
+
+            const STORAGE_KEY = 'ruincity-item-editor-v1';
+
+            let CFG = loadCfg() || JSON.parse(JSON.stringify(DEFAULTS));
+
+            function loadCfg() {
+                try {
+                    const s = localStorage.getItem(STORAGE_KEY);
+                    if (!s) return null;
+                    const parsed = JSON.parse(s);
+                    if (!Array.isArray(parsed) || !parsed.length) return null;
+                    return normalise(parsed);
+                } catch (e) { return null; }
+            }
+            function saveCfg() {
+                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(CFG)); } catch (e) { }
+            }
+
+            /* ============================================================
+               2. THREE.JS SCENE
+               ============================================================ */
+            const viewportEl = document.getElementById('viewport');
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setClearColor(0x10141a, 1);
+            viewportEl.appendChild(renderer.domElement);
+
+            const scene = new THREE.Scene();
+            scene.fog = new THREE.Fog(0x10141a, 6, 18);
+
+            scene.add(new THREE.AmbientLight(0xa8b0c0, 0.55));
+            const key = new THREE.DirectionalLight(0xffe0b0, 0.85);
+            key.position.set(2, 4, 2);
+            scene.add(key);
+            const fill = new THREE.DirectionalLight(0x8090b0, 0.35);
+            fill.position.set(-2, 1, -2);
+            scene.add(fill);
+            const rim = new THREE.DirectionalLight(0xc0d8ff, 0.25);
+            rim.position.set(0, 1, -3);
+            scene.add(rim);
+
+            const grid = new THREE.GridHelper(10, 20, 0x2a3a4a, 0x1a2028);
+            grid.position.y = 0.001;
+            scene.add(grid);
+
+            const floor = new THREE.Mesh(
+                new THREE.PlaneGeometry(20, 20),
+                new THREE.MeshLambertMaterial({ color: 0x14191f })
+            );
+            floor.rotation.x = -Math.PI / 2;
+            scene.add(floor);
+
+            const fpCamera = new THREE.PerspectiveCamera(76, 1, 0.04, 200);
+            fpCamera.rotation.order = 'YXZ';
+            scene.add(fpCamera);
+
+            const orbitCamera = new THREE.PerspectiveCamera(45, 1, 0.01, 200);
+
+            /* ============================================================
+               3. PLAYER RIG — hands only (items float between them)
+               ============================================================ */
+            const PM_FALLBACK = {
+                body: { eyeX: 0.01, eyeY: 1.27, eyeZ: -0.15 },
+                hands: {
+                    L: { x: -0.32, y: -0.30, z: -0.34, rx: -0.22, ry: 0, rz: 0.16 },
+                    R: { x: 0.28, y: -0.28, z: -0.32, rx: -0.26, ry: 0, rz: -0.14 },
+                    sleeveW: 0.11, sleeveH: 0.11, sleeveL: 0.30,
+                    palmW: 0.12, palmH: 0.13, palmD: 0.14,
+                    thumbW: 0.04, thumbH: 0.05, thumbD: 0.07
+                }
+            };
+
+            const PM = (function () {
+                const src = window.PLAYER_MODEL_DATA;
+                if (!src) return PM_FALLBACK;
+                return {
+                    body: Object.assign({}, PM_FALLBACK.body, src.body || {}),
+                    hands: Object.assign({}, PM_FALLBACK.hands, src.hands || {})
+                };
+            })();
+
+            const SKIN_MAT = new THREE.MeshLambertMaterial({ color: 0xd4a686, fog: true });
+            const SLEEVE_MAT = new THREE.MeshLambertMaterial({ color: 0x3a4a30, fog: true });
+
+            const fpRoot = new THREE.Group();
+            fpCamera.add(fpRoot);
+
+            function buildHand(side) {
+                const group = new THREE.Group();
+
+                const sleeve = new THREE.Mesh(
+                    new THREE.BoxGeometry(PM.hands.sleeveW, PM.hands.sleeveH, PM.hands.sleeveL),
+                    SLEEVE_MAT
+                );
+                sleeve.position.set(0, 0, PM.hands.sleeveL * 0.5);
+                group.add(sleeve);
+
+                const palm = new THREE.Mesh(
+                    new THREE.BoxGeometry(PM.hands.palmW, PM.hands.palmH, PM.hands.palmD),
+                    SKIN_MAT
+                );
+                palm.position.set(0, 0, -PM.hands.palmD * 0.5);
+                group.add(palm);
+
+                const thumb = new THREE.Mesh(
+                    new THREE.BoxGeometry(PM.hands.thumbW, PM.hands.thumbH, PM.hands.thumbD),
+                    SKIN_MAT
+                );
+                thumb.position.set(-0.07 * side, 0.02, -PM.hands.palmD * 0.5);
+                group.add(thumb);
+
+                return group;
+            }
+
+            const handL = buildHand(-1);
+            const handR = buildHand(+1);
+            fpRoot.add(handL);
+            fpRoot.add(handR);
+
+            handL.position.set(PM.hands.L.x, PM.hands.L.y, PM.hands.L.z);
+            handL.rotation.set(PM.hands.L.rx, PM.hands.L.ry, PM.hands.L.rz);
+            handR.position.set(PM.hands.R.x, PM.hands.R.y, PM.hands.R.z);
+            handR.rotation.set(PM.hands.R.rx, PM.hands.R.ry, PM.hands.R.rz);
+
+            /* ============================================================
+               4. ITEM HOLDER
+               ------------------------------------------------------------
+               Mirrors the in-game held-item transform:
+                   _handOffset = (0, -0.18, -HAND_HOLD_DISTANCE = 1.15)
+               applied in camera space.
+               ============================================================ */
+            const HAND_HOLD_DISTANCE = 1.15;
+            const HAND_OFFSET = new THREE.Vector3(0, -0.18, -HAND_HOLD_DISTANCE);
+
+            const itemHolder = new THREE.Group();
+            itemHolder.position.copy(HAND_OFFSET);
+            fpCamera.add(itemHolder);
+
+            const spinGroup = new THREE.Group();
+            itemHolder.add(spinGroup);
+
+            let currentIdx = 0;
+            let selectedPartIdx = -1;
+            let selectionBox = null;
+            let autoSpin = false;
+            /* Which icon transform the BAG ICON panel is currently authoring. */
+            let iconEditMode = 'tile';   // 'tile' | 'portrait' | 'landscape'
+
+            function disposeGroup(g) {
+                g.traverse(o => {
+                    if (o.geometry) o.geometry.dispose();
+                    if (o.material) {
+                        if (Array.isArray(o.material)) o.material.forEach(m => m.dispose());
+                        else o.material.dispose();
+                    }
+                });
+                while (g.children.length) g.remove(g.children[0]);
+            }
+
+            function partRot(b) {
+                if (!b.r) b.r = [0, 0, 0];
+                return b.r;
+            }
+
+            function buildPart(b) {
+                const g = new THREE.Group();
+                g.position.set(b.p[0], b.p[1], b.p[2]);
+
+                const rot = partRot(b);
+                g.rotation.set(rot[0], rot[1], rot[2]);
+
+                const matOpts = { color: b.c, fog: true };
+                if (b.e) {
+                    matOpts.emissive = b.e;
+                    matOpts.emissiveIntensity = 1.0;
+                }
+                const mat = new THREE.MeshLambertMaterial(matOpts);
+                const mesh = new THREE.Mesh(
+                    new THREE.BoxGeometry(b.s[0], b.s[1], b.s[2]),
+                    mat
+                );
+                g.add(mesh);
+
+                // Glow halo — additive box slightly larger than the part.
+                if (b.e) {
+                    const haloMat = new THREE.MeshBasicMaterial({
+                        color: b.e,
+                        transparent: true,
+                        opacity: 0.35,
+                        blending: THREE.AdditiveBlending,
+                        depthWrite: false,
+                        fog: false
+                    });
+                    const halo = new THREE.Mesh(
+                        new THREE.BoxGeometry(b.s[0] * 1.18, b.s[1] * 1.18, b.s[2] * 1.18),
+                        haloMat
+                    );
+                    halo.renderOrder = 5;
+                    g.add(halo);
+                }
+
+                return g;
+            }
+
+            function buildItemGroup(model) {
+                const g = new THREE.Group();
+                for (const b of model) g.add(buildPart(b));
+                return g;
+            }
+
+            function rebuildItemModel() {
+                // Clear the spin group.
+                while (spinGroup.children.length) {
+                    const c = spinGroup.children[0];
+                    spinGroup.remove(c);
+                    disposeGroup(c);
+                }
+                selectionBox = null;
+
+                const def = CFG[currentIdx];
+                if (!def) return;
+
+                spinGroup.add(buildItemGroup(def.model));
+
+                // Selection highlight
+                if (selectedPartIdx >= 0 && def.model[selectedPartIdx]) {
+                    const b = def.model[selectedPartIdx];
+                    const edges = new THREE.EdgesGeometry(
+                        new THREE.BoxGeometry(b.s[0] * 1.06, b.s[1] * 1.06, b.s[2] * 1.06)
+                    );
+                    selectionBox = new THREE.LineSegments(
+                        edges,
+                        new THREE.LineBasicMaterial({
+                            color: 0xe8c86a,
+                            depthTest: false,
+                            transparent: true,
+                            opacity: 0.9
+                        })
+                    );
+                    const rot = partRot(b);
+                    selectionBox.position.set(b.p[0], b.p[1], b.p[2]);
+                    selectionBox.rotation.set(rot[0], rot[1], rot[2]);
+                    selectionBox.renderOrder = 999;
+                    spinGroup.add(selectionBox);
+                }
+
+                updateThumbnail();
+            }
+
+            /* ============================================================
+               5. BAG-ICON THUMBNAIL PREVIEW
+               ------------------------------------------------------------
+               Same camera + lights as renderItemThumbnail() in game.js, so
+               what you see here is exactly what the inventory tile gets.
+               ============================================================ */
+            const thumbCanvas = document.getElementById('thumbCanvas');
+            const thumbTile = document.getElementById('thumbTile');
+            const thumbTitleEl = document.getElementById('thumbTitle');
+            let thumbRenderer = null, thumbScene = null, thumbCamera = null, thumbMesh = null;
+
+            function initThumbRenderer() {
+                if (thumbRenderer) return;
+                thumbRenderer = new THREE.WebGLRenderer({
+                    canvas: thumbCanvas,
+                    antialias: true,
+                    alpha: true,
+                    preserveDrawingBuffer: true
+                });
+                thumbRenderer.setPixelRatio(1);
+                thumbRenderer.setSize(128, 128, false);
+                thumbRenderer.setClearColor(0x000000, 0);
+
+                thumbScene = new THREE.Scene();
+
+                const k = new THREE.DirectionalLight(0xffffff, 1.15);
+                k.position.set(1.2, 2.0, 1.5);
+                thumbScene.add(k);
+
+                const f = new THREE.DirectionalLight(0x8899bb, 0.55);
+                f.position.set(-1.5, 0.5, -1.0);
+                thumbScene.add(f);
+
+                thumbScene.add(new THREE.AmbientLight(0xffffff, 0.55));
+
+                thumbCamera = new THREE.PerspectiveCamera(32, 1, 0.01, 20);
+                thumbCamera.position.set(0.62, 0.55, 0.62);
+                thumbCamera.lookAt(0, 0.18, 0);
+            }
+
+            /* ----------------------------------------------------------------
+   Tile geometry — one source of truth for the editor preview.
+   (Mirrors the numbers in .inv-item / .inv-item-icon in style.css.)
+   ---------------------------------------------------------------- */
+            const TILE_CELL = 44;
+            const TILE_INSET_X = 4;
+            const TILE_INSET_TOP = 4;
+            const TILE_INSET_BOTTOM = 14;
+
+            function tileAspectForWH(w, h) {
+                const innerW = Math.max(8, w * TILE_CELL - 2 * TILE_INSET_X);
+                const innerH = Math.max(8, h * TILE_CELL - TILE_INSET_TOP - TILE_INSET_BOTTOM);
+                return innerW / innerH;
+            }
+
+            /* The tile shape we're previewing.
+                 · Square item  → the item's own w×h (base transform only).
+                 · Non-square   → two shapes derived from the item's own dims:
+                                  the taller one (portrait) and the wider one
+                                  (landscape).  Both are always available, so a
+                                  1×3 item can be authored in 1×3 AND 3×1, a
+                                  2×3 item in 2×3 AND 3×2, etc. */
+            function previewTileSize(def, mode) {
+                const W = def.w, H = def.h;
+                if (W === H) return { w: W, h: H };
+                if (mode === 'portrait') return (H > W) ? { w: W, h: H } : { w: H, h: W };
+                if (mode === 'landscape') return (W > H) ? { w: W, h: H } : { w: H, h: W };
+                return { w: W, h: H };
+            }
+
+            /* Make sure the override the user is editing actually exists. */
+            function ensureIconTx(def, mode) {
+                if (mode === 'portrait' && !def.iconPortrait)
+                    def.iconPortrait = { r: [0, 0, 0], p: [0, 0, 0], s: 1 };
+                if (mode === 'landscape' && !def.iconLandscape)
+                    def.iconLandscape = { r: [0, 0, 0], p: [0, 0, 0], s: 1 };
+            }
+
+            /* Accessors for the transform being edited. */
+            function getEditingIconR(def, mode) {
+                if (mode === 'portrait') return def.iconPortrait.r;
+                if (mode === 'landscape') return def.iconLandscape.r;
+                return def.iconR;
+            }
+            function getEditingIconP(def, mode) {
+                if (mode === 'portrait') return def.iconPortrait.p;
+                if (mode === 'landscape') return def.iconLandscape.p;
+                return def.iconP;
+            }
+            function getEditingIconScale(def, mode) {
+                if (mode === 'portrait') return def.iconPortrait.s;
+                if (mode === 'landscape') return def.iconLandscape.s;
+                return def.iconScale;
+            }
+            function setEditingIconScale(def, mode, v) {
+                if (mode === 'portrait') def.iconPortrait.s = v;
+                else if (mode === 'landscape') def.iconLandscape.s = v;
+                else def.iconScale = v;
+            }
+
+            /* What the transform slot looks like for a given mode.
+               Returns { r, p, s, auto } where `auto` is true when the base
+               transform is being used AND no manual Z rotation has been set —
+               in that case the editor + game both apply the auto-rotate. */
+            function activeIconTx(def, mode) {
+                if (mode === 'portrait') {
+                    ensureIconTx(def, mode);
+                    const t = def.iconPortrait;
+                    return { r: t.r, p: t.p, s: t.s, auto: false };
+                }
+                if (mode === 'landscape') {
+                    ensureIconTx(def, mode);
+                    const t = def.iconLandscape;
+                    return { r: t.r, p: t.p, s: t.s, auto: false };
+                }
+                const r = def.iconR;
+                return { r, p: def.iconP, s: def.iconScale, auto: Math.abs(r[2]) < 0.01 };
+            }
+
+            /* Bag-icon transform is now passed in by the caller, so the same
+   function can build the preview for the tile, portrait and landscape
+   variants. `tx.auto` still drives the auto-rotate behaviour. */
+            function buildThumbnailGroup(def, tileAspect, tx) {
+                const c = modelCentre(def.model);
+
+                const inner = buildItemGroup(def.model);
+                inner.position.set(-c.x, -c.y, -c.z);
+
+                const pivot = new THREE.Group();
+                pivot.add(inner);
+
+                const autoZ = tx.auto ? autoIconRotZ(def.model, tileAspect) : 0;
+
+                pivot.rotation.set(tx.r[0], tx.r[1], tx.r[2] + autoZ);
+                pivot.position.set(tx.p[0], tx.p[1], tx.p[2]);
+                pivot.scale.setScalar(tx.s);
+
+                const g = new THREE.Group();
+                g.add(pivot);
+                return g;
+            }
+
+            /* Fit a perspective camera to the AABB of `mesh`, so the whole
+   model lands inside a viewport of `aspect` (W/H).  The camera
+   keeps a fixed 3/4 viewing direction — only its distance, FOV
+   and aspect change. */
+            function fitCameraToModel(camera, mesh, aspect, padding) {
+                mesh.updateMatrixWorld(true);
+
+                const box = new THREE.Box3().setFromObject(mesh);
+                if (box.isEmpty()) {
+                    camera.aspect = aspect;
+                    camera.updateProjectionMatrix();
+                    return;
+                }
+
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+
+                // Fixed 3/4 view direction, backed off far enough that the
+                // whole AABB is in front of the near plane.
+                const dir = new THREE.Vector3(0.62, 0.55, 0.62).normalize();
+                const dist = size.length() * 2 + 0.2;
+
+                camera.position.copy(center).addScaledVector(dir, dist);
+                camera.up.set(0, 1, 0);
+                camera.lookAt(center);
+                camera.updateMatrixWorld(true);
+                camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+
+                // Project the 8 AABB corners into camera space and record
+                // how much tan(half-angle) each one demands.
+                let maxTanX = 0, maxTanY = 0;
+                const v = new THREE.Vector3();
+                for (let i = 0; i < 8; i++) {
+                    v.set(
+                        (i & 1) ? box.max.x : box.min.x,
+                        (i & 2) ? box.max.y : box.min.y,
+                        (i & 4) ? box.max.z : box.min.z
+                    );
+                    v.applyMatrix4(camera.matrixWorldInverse);
+                    const depth = -v.z;
+                    if (depth <= 1e-3) continue;
+                    const tx = Math.abs(v.x) / depth;
+                    const ty = Math.abs(v.y) / depth;
+                    if (tx > maxTanX) maxTanX = tx;
+                    if (ty > maxTanY) maxTanY = ty;
+                }
+
+                // tan(vFOV/2) * 1        ≥ maxTanY  (vertical fit)
+                // tan(vFOV/2) * aspect   ≥ maxTanX  (horizontal fit)
+                const needTan = Math.max(maxTanY, maxTanX / aspect);
+                const vFOV = 2 * Math.atan(needTan * padding);
+
+                camera.fov = vFOV * 180 / Math.PI;
+                camera.aspect = aspect;
+                camera.updateProjectionMatrix();
+            }
+
+            function updateThumbnail() {
+                initThumbRenderer();
+
+                if (thumbMesh) {
+                    thumbScene.remove(thumbMesh);
+                    disposeGroup(thumbMesh);
+                    thumbMesh = null;
+                }
+
+                const def = CFG[currentIdx];
+                if (!def) return;
+
+                /* The preview tile shape is chosen by the editor mode:
+                     · 'tile'      → whatever the item actually is
+                     · 'portrait'  → forced 1×2
+                     · 'landscape' → forced 2×1
+                   And the transform being authored follows the same choice. */
+                const tile = previewTileSize(def, iconEditMode);
+                const aspect = tileAspectForWH(tile.w, tile.h);
+                const tx = activeIconTx(def, iconEditMode);
+
+                thumbMesh = buildThumbnailGroup(def, aspect, tx);
+                thumbScene.add(thumbMesh);
+
+                /* Fit the camera to the model at SCALE 1, then apply the icon
+                   scale to the pivot afterwards.  Box3.setFromObject honours
+                   child scales, so fitting with tx.s applied made the camera
+                   pull back by exactly tx.s and cancel the slider out. */
+                const pivot = thumbMesh.children[0];
+                pivot.scale.setScalar(1);
+                fitCameraToModel(thumbCamera, thumbMesh, aspect, 1.06);
+                pivot.scale.setScalar(tx.s);
+
+                thumbRenderer.render(thumbScene, thumbCamera);
+
+                const innerW = Math.max(8, tile.w * TILE_CELL - 2 * TILE_INSET_X);
+                const innerH = Math.max(8, tile.h * TILE_CELL - TILE_INSET_TOP - TILE_INSET_BOTTOM);
+
+                thumbTile.style.width = (tile.w * TILE_CELL) + 'px';
+                thumbTile.style.height = (tile.h * TILE_CELL) + 'px';
+                thumbTile.style.backgroundColor = def.color;
+
+                thumbCanvas.style.width = innerW + 'px';
+                thumbCanvas.style.height = innerH + 'px';
+
+                /* Title — mode + auto indicator. */
+                let extra = '';
+                if (iconEditMode === 'tile' && tx.auto) {
+                    const autoZ = autoIconRotZ(def.model, aspect);
+                    if (autoZ !== 0) extra = ' · AUTO ⟲';
+                } else if (iconEditMode === 'portrait') extra = ' · P';
+                else if (iconEditMode === 'landscape') extra = ' · L';
+
+                thumbTitleEl.textContent =
+                    'BAG ICON · ' + tile.w + '×' + tile.h + ' · ' + iconEditMode.toUpperCase() + extra;
+            }
+
+            /* ============================================================
+               6. UI HELPERS
+               ============================================================ */
+            const controlsEl = document.getElementById('controls');
+            const itemTabsEl = document.getElementById('itemTabs');
+
+            function hexToStr(hex) {
+                return '#' + (hex >>> 0).toString(16).padStart(6, '0');
+            }
+            function rgbToHex(r, g, b) {
+                return ((r & 255) << 16) | ((g & 255) << 8) | (b & 255);
+            }
+
+            function makeRange(label, value, min, max, step, onChange, fmt) {
+                const row = document.createElement('div');
+                row.className = 'entry';
+
+                const lbl = document.createElement('div');
+                lbl.className = 'lbl';
+                lbl.textContent = label;
+                row.appendChild(lbl);
+
+                const rng = document.createElement('input');
+                rng.type = 'range';
+                rng.min = min; rng.max = max; rng.step = step; rng.value = value;
+                row.appendChild(rng);
+
+                const num = document.createElement('input');
+                num.type = 'number';
+                num.step = step;
+                num.value = (fmt ? fmt(value) : value);
+                row.appendChild(num);
+
+                const commit = (v, fromNumber) => {
+                    let val = parseFloat(v);
+                    if (!isFinite(val)) return;
+                    if (fromNumber && fmt && fmt.parse) val = fmt.parse(v);
+                    val = Math.max(min, Math.min(max, val));
+                    rng.value = val;
+                    num.value = (fmt ? fmt(val) : val);
+                    onChange(val);
+                };
+
+                rng.addEventListener('input', () => commit(rng.value, false));
+                num.addEventListener('input', () => commit(num.value, true));
+
+                return { row, set: v => { rng.value = v; num.value = (fmt ? fmt(v) : v); } };
+            }
+
+            function makeTextRow(label, value, onChange) {
+                const row = document.createElement('div');
+                row.className = 'entry';
+
+                const lbl = document.createElement('div');
+                lbl.className = 'lbl';
+                lbl.textContent = label;
+                row.appendChild(lbl);
+
+                const inp = document.createElement('input');
+                inp.type = 'text';
+                inp.value = value;
+                inp.style.gridColumn = '2 / 4';
+                inp.addEventListener('input', () => onChange(inp.value));
+                row.appendChild(inp);
+
+                return row;
+            }
+
+            // Degree-aware formatting for rotation sliders.
+            // Internally everything stays in radians — only the UI shows degrees.
+            const degFmt = function (v) {
+                return (v / DEG).toFixed(1);
+            };
+            degFmt.parse = function (v) {
+                return parseFloat(v) * DEG;
+            };
+
+            function makeColorRow(label, hex, onChange) {
+                const wrap = document.createElement('div');
+                wrap.className = 'color-row';
+
+                const head = document.createElement('div');
+                head.className = 'color-head';
+
+                const lbl = document.createElement('div');
+                lbl.className = 'lbl';
+                lbl.textContent = label;
+                head.appendChild(lbl);
+
+                const swatch = document.createElement('div');
+                swatch.className = 'swatch';
+                swatch.style.background = hexToStr(hex);
+                head.appendChild(swatch);
+
+                const hexEl = document.createElement('div');
+                hexEl.className = 'hex';
+                hexEl.textContent = hexToStr(hex).toUpperCase();
+                head.appendChild(hexEl);
+
+                wrap.appendChild(head);
+
+                let rr = (hex >> 16) & 255;
+                let gg = (hex >> 8) & 255;
+                let bb = hex & 255;
+
+                const emit = () => {
+                    const h = rgbToHex(rr, gg, bb);
+                    swatch.style.background = hexToStr(h);
+                    hexEl.textContent = hexToStr(h).toUpperCase();
+                    onChange(h);
+                };
+
+                function makeChannel(name, val, cls, setter) {
+                    const chan = document.createElement('div');
+                    chan.className = 'channel ' + cls;
+
+                    const n = document.createElement('span');
+                    n.className = 'ch-name';
+                    n.textContent = name;
+                    chan.appendChild(n);
+
+                    const s = document.createElement('input');
+                    s.type = 'range';
+                    s.min = 0; s.max = 255; s.step = 1; s.value = val;
+                    chan.appendChild(s);
+
+                    const v = document.createElement('span');
+                    v.className = 'ch-val';
+                    v.textContent = val;
+                    chan.appendChild(v);
+
+                    s.addEventListener('input', () => {
+                        v.textContent = s.value;
+                        setter(parseInt(s.value, 10));
+                    });
+
+                    return chan;
+                }
+
+                wrap.appendChild(makeChannel('R', rr, 'r', v => { rr = v; emit(); }));
+                wrap.appendChild(makeChannel('G', gg, 'g', v => { gg = v; emit(); }));
+                wrap.appendChild(makeChannel('B', bb, 'b', v => { bb = v; emit(); }));
+
+                return wrap;
+            }
+
+            function section(title, open) {
+                const det = document.createElement('details');
+                if (open) det.open = true;
+                const sum = document.createElement('summary');
+                sum.textContent = title;
+                det.appendChild(sum);
+                return det;
+            }
+
+            /* ============================================================
+               7. PANEL BUILD
+               ============================================================ */
+            function buildTabs() {
+                itemTabsEl.innerHTML = '';
+                for (let i = 0; i < CFG.length; i++) {
+                    const b = document.createElement('button');
+                    b.textContent = CFG[i].name || CFG[i].key;
+                    if (i === currentIdx) b.classList.add('active');
+                    b.addEventListener('click', () => {
+                        currentIdx = i;
+                        selectedPartIdx = -1;
+                        buildTabs();
+                        buildPanel();
+                        rebuildItemModel();
+                    });
+                    itemTabsEl.appendChild(b);
+                }
+            }
+
+            function isRotated(b) {
+                const r = partRot(b);
+                return Math.abs(r[0]) > 1e-4 || Math.abs(r[1]) > 1e-4 || Math.abs(r[2]) > 1e-4;
+            }
+
+            function buildPanel() {
+                controlsEl.innerHTML = '';
+                const def = CFG[currentIdx];
+                if (!def) return;
+
+                /* ---------- ITEM INFO ---------- */
+                {
+                    const sec = section('ITEM — ' + (def.key || '').toUpperCase(), true);
+
+                    sec.appendChild(makeTextRow('Name', def.name, v => {
+                        def.name = v.toUpperCase();
+                        buildTabs();
+                        saveCfg();
+                    }));
+
+                    sec.appendChild(makeRange('Bag width', def.w, 1, 6, 1, v => {
+                        def.w = Math.round(v);
+                        if (def.w === def.h && iconEditMode !== 'tile') iconEditMode = 'tile';
+                        saveCfg();
+                        rebuildItemModel();          // ← keeps the preview in sync
+                    }).row);
+
+                    sec.appendChild(makeRange('Bag height', def.h, 1, 6, 1, v => {
+                        def.h = Math.round(v);
+                        if (def.w === def.h && iconEditMode !== 'tile') iconEditMode = 'tile';
+                        saveCfg();
+                        rebuildItemModel();          // ← keeps the preview in sync
+                    }).row);
+
+                    sec.appendChild(makeColorRow('Slot tint', cssHexToNum(def.color), h => {
+                        def.color = hexToStr(h);
+                        thumbTile.style.backgroundColor = def.color;
+                        saveCfg();
+                    }));
+
+                    controlsEl.appendChild(sec);
+                }
+
+                /* ---------- BAG ICON TRANSFORM ---------- */
+                {
+                    const sec = section('BAG ICON — 3D TRANSFORM', true);
+
+                    /* Make sure the override we're about to edit exists. */
+                    ensureIconTx(def, iconEditMode);
+
+                    /* ----- Mode selector -----
+   The base (TILE) transform is always offered.  Non-square items
+   additionally get the two orientation overrides, but they are
+   labelled as OVERRIDES so it's obvious the base is the one that
+   applies by default.  We also default the active mode to whatever
+   the game will actually read for this item's declared shape. */
+                    const modeRow = document.createElement('div');
+                    modeRow.className = 'snap-row';
+                    modeRow.style.paddingTop = '8px';
+
+                    const isSquare = (def.w === def.h);
+                    const minWH = Math.min(def.w, def.h);
+                    const maxWH = Math.max(def.w, def.h);
+
+                    /* Which override the game will read for this item's declared w×h.
+                       Square  → base only.
+                       w < h   → native slot is portrait.
+                       w > h   → native slot is landscape. */
+                    const nativeMode = isSquare
+                        ? 'tile'
+                        : (def.h > def.w ? 'portrait' : 'landscape');
+
+                    /* Clamp iconEditMode into the set of modes that exist for this item. */
+                    const validModes = isSquare
+                        ? ['tile']
+                        : ['tile', 'portrait', 'landscape'];
+                    if (!validModes.includes(iconEditMode)) iconEditMode = nativeMode;
+
+                    const modeDefs = [
+                        { id: 'tile', label: 'BASE ' + def.w + '×' + def.h }
+                    ];
+                    if (!isSquare) {
+                        modeDefs.push({
+                            id: 'portrait',
+                            label: 'OVERRIDE ' + minWH + '×' + maxWH,
+                            title: 'Optional portrait slot override (used only when a ' +
+                                minWH + '×' + maxWH + ' tile is rendered)'
+                        });
+                        modeDefs.push({
+                            id: 'landscape',
+                            label: 'OVERRIDE ' + maxWH + '×' + minWH,
+                            title: 'Optional landscape slot override (used only when a ' +
+                                maxWH + '×' + minWH + ' tile is rendered)'
+                        });
+                    }
+
+                    for (const m of modeDefs) {
+                        const b = document.createElement('button');
+                        b.textContent = m.label;
+                        if (m.title) b.title = m.title;
+
+                        /* Highlight the native mode differently so it's obvious
+                           that it's the one the game will read first. */
+                        const isNative = (m.id === nativeMode);
+
+                        if (iconEditMode === m.id) {
+                            b.style.background = '#2a3a4a';
+                            b.style.color = '#e8c86a';
+                            b.style.borderColor = '#e8c86a';
+                        }
+                        if (isNative) {
+                            b.style.fontWeight = 'bold';
+                            b.style.borderColor = '#6ac8e8';
+                        }
+
+                        b.addEventListener('click', () => {
+                            iconEditMode = m.id;
+                            buildPanel();
+                            rebuildItemModel();
+                        });
+                        modeRow.appendChild(b);
+                    }
+                    sec.appendChild(modeRow);
+
+                    /* ----- Mode hint ----- */
+                    const hint = document.createElement('div');
+                    hint.className = 'hint-box';
+                    hint.style.margin = '6px 18px 8px';
+
+                    /* Line 1: what the game will read for this item. */
+                    const nativeLabel =
+                        (nativeMode === 'tile')
+                            ? 'the <b>base transform</b>'
+                            : 'the <b>' + nativeMode + ' override</b>' +
+                            (def['icon' + (nativeMode === 'portrait' ? 'Portrait' : 'Landscape')]
+                                ? ''
+                                : ' (not set — falls back to base)');
+
+                    /* Line 2: what slot shape the item occupies in-game. */
+                    const slotInfo =
+                        isSquare
+                            ? 'square ' + def.w + '×' + def.h
+                            : (def.h > def.w
+                                ? 'portrait ' + def.w + '×' + def.h
+                                : 'landscape ' + def.w + '×' + def.h);
+
+                    hint.innerHTML =
+                        'This item occupies a <b>' + slotInfo + '</b> slot in the inventory, ' +
+                        'so the game reads ' + nativeLabel + ' to draw the icon.<br><br>' +
+                        (iconEditMode === 'tile'
+                            ? 'You are editing the <b>base transform</b>. It is the universal ' +
+                            'fallback, used whenever no matching override is set. ' +
+                            'Auto-rotation on Z fires when <code>Rot Z = 0</code> and the ' +
+                            'model doesn\'t fit the tile.'
+                            : 'You are editing the <b>' + iconEditMode + ' override</b>. ' +
+                            'It only takes effect if the game ever renders a ' +
+                            (iconEditMode === 'portrait'
+                                ? minWH + '×' + maxWH
+                                : maxWH + '×' + minWH) +
+                            ' tile for this item — which will not happen while the declared ' +
+                            'shape is <code>' + def.w + '×' + def.h + '</code>. ' +
+                            (nativeMode === iconEditMode
+                                ? '<b>This is the native slot for this item.</b>'
+                                : '<span style="color:#e08a8a">This is the non-native slot; ' +
+                                'the game will not use it unless you also swap Bag width ' +
+                                'and Bag height.</span>'));
+                    sec.appendChild(hint);
+
+                    /* ----- Current transform values ----- */
+                    const txR = getEditingIconR(def, iconEditMode);
+                    const txP = getEditingIconP(def, iconEditMode);
+                    const txS = getEditingIconScale(def, iconEditMode);
+
+                    const setR = (i, v) => { txR[i] = v; rebuildItemModel(); saveCfg(); };
+                    const setP = (i, v) => { txP[i] = v; rebuildItemModel(); saveCfg(); };
+                    const setS = (v) => { setEditingIconScale(def, iconEditMode, v); rebuildItemModel(); saveCfg(); };
+
+                    sec.appendChild(makeRange('Icon Rot X', txR[0], -PI, PI, 1 * DEG, v => setR(0, v), degFmt).row);
+                    sec.appendChild(makeRange('Icon Rot Y', txR[1], -PI, PI, 1 * DEG, v => setR(1, v), degFmt).row);
+                    sec.appendChild(makeRange('Icon Rot Z', txR[2], -PI, PI, 1 * DEG, v => setR(2, v), degFmt).row);
+
+                    sec.appendChild(makeRange('Icon Pos X', txP[0], -0.8, 0.8, 0.005, v => setP(0, v)).row);
+                    sec.appendChild(makeRange('Icon Pos Y', txP[1], -0.8, 0.8, 0.005, v => setP(1, v)).row);
+                    sec.appendChild(makeRange('Icon Pos Z', txP[2], -0.8, 0.8, 0.005, v => setP(2, v)).row);
+
+                    sec.appendChild(makeRange('Icon Scale', txS, 0.3, 2.0, 0.01, setS).row);
+
+                    /* ----- Quick Z-rotation snap ----- */
+                    const snapRow = document.createElement('div');
+                    snapRow.className = 'snap-row';
+                    for (const s of [
+                        { label: '0°', v: 0 },
+                        { label: '90°', v: PI / 2 },
+                        { label: '180°', v: PI },
+                        { label: '270°', v: -PI / 2 }
+                    ]) {
+                        const b = document.createElement('button');
+                        b.textContent = s.label;
+                        b.title = 'Set Rot Z to ' + s.label;
+                        b.addEventListener('click', () => {
+                            currentIdx = i;
+                            selectedPartIdx = -1;
+
+                            /* Author in the item's native shape by default.  Otherwise
+                               switching from a landscape item to water (1×2) leaves the
+                               editor previewing a 2×1 tile the game will never use. */
+                            const nd = CFG[i];
+                            if (nd.w === nd.h) iconEditMode = 'tile';
+                            else iconEditMode = (nd.h > nd.w) ? 'portrait' : 'landscape';
+
+                            buildTabs();
+                            buildPanel();
+                            rebuildItemModel();
+                        });
+                        snapRow.appendChild(b);
+                    }
+                    sec.appendChild(snapRow);
+
+                    /* ----- Auto-fit + clear ----- */
+                    const row2 = document.createElement('div');
+                    row2.className = 'row-buttons';
+
+                    const autoFit = document.createElement('button');
+                    autoFit.textContent = '⟲ AUTO-FIT';
+                    autoFit.title = 'Set Rot Z to the ideal angle for the current preview tile';
+                    autoFit.addEventListener('click', () => {
+                        const tile = previewTileSize(def, iconEditMode);
+                        const aspect = tileAspectForWH(tile.w, tile.h);
+                        const z = autoIconRotZ(def.model, aspect);
+                        txR[2] = z;
+                        rebuildItemModel();
+                        buildPanel();
+                        saveCfg();
+                        showToast(z === 0 ? 'ALREADY FIT' : 'AUTO-FIT APPLIED');
+                    });
+                    row2.appendChild(autoFit);
+
+                    const clearBtn = document.createElement('button');
+                    clearBtn.textContent = '⟲ CLEAR ' + iconEditMode.toUpperCase();
+                    clearBtn.addEventListener('click', () => {
+                        txR[0] = txR[1] = txR[2] = 0;
+                        txP[0] = txP[1] = txP[2] = 0;
+                        setEditingIconScale(def, iconEditMode, 1);
+                        rebuildItemModel();
+                        buildPanel();
+                        saveCfg();
+                    });
+                    row2.appendChild(clearBtn);
+
+                    sec.appendChild(row2);
+
+                    /* ----- Remove override (only meaningful in P / L modes) ----- */
+                    /* ----- Make this previewed shape the item's actual shape -----
+   Swaps the item's declared w×h to match whatever tile we're
+   currently previewing, then folds the override transform into
+   the base transform so no orientation override is needed.
+   After this, the game's inventory slot and this preview agree. */
+                    if (iconEditMode !== 'tile') {
+                        const shapeRow = document.createElement('div');
+                        shapeRow.className = 'row-buttons';
+
+                        const shapeBtn = document.createElement('button');
+                        shapeBtn.className = 'primary';
+                        shapeBtn.textContent = '⇄ MAKE THIS THE ITEM\'S SHAPE';
+                        shapeBtn.title =
+                            'Swap the item\'s declared w×h to match this preview, and ' +
+                            'copy this override into the base transform';
+
+                        shapeBtn.addEventListener('click', () => {
+                            /* 1. Swap declared w×h if the item is currently the other way round. */
+                            const currentlyPortrait = def.h > def.w;
+                            const wantPortrait = (iconEditMode === 'portrait');
+                            if (currentlyPortrait !== wantPortrait) {
+                                const t = def.w; def.w = def.h; def.h = t;
+                            }
+
+                            /* 2. Fold the override we're editing into the base transform. */
+                            const t = def[iconEditMode === 'portrait' ? 'iconPortrait' : 'iconLandscape'];
+                            if (t) {
+                                def.iconR = [t.r[0], t.r[1], t.r[2]];
+                                def.iconP = [t.p[0], t.p[1], t.p[2]];
+                                def.iconScale = (typeof t.s === 'number' && t.s > 0) ? t.s : 1;
+                            }
+
+                            /* 3. Drop the overrides — the base is now the single source of truth. */
+                            def.iconPortrait = null;
+                            def.iconLandscape = null;
+
+                            /* 4. Land back on the base transform, which is now what the
+                                  game will render in the (freshly swapped) native slot. */
+                            iconEditMode = 'tile';
+
+                            rebuildItemModel();
+                            buildPanel();
+                            saveCfg();
+                            showToast('SHAPE SWAPPED — ' + def.w + '×' + def.h);
+                        });
+
+                        shapeRow.appendChild(shapeBtn);
+                        sec.appendChild(shapeRow);
+                    }
+
+                    controlsEl.appendChild(sec);
+                }
+
+                /* ---------- PARTS LIST ---------- */
+                {
+                    const sec = section('PARTS (' + def.model.length + ')', true);
+
+                    const list = document.createElement('div');
+                    list.className = 'part-list';
+
+                    for (let i = 0; i < def.model.length; i++) {
+                        const part = def.model[i];
+                        const item = document.createElement('div');
+                        item.className = 'part-item';
+                        if (i === selectedPartIdx) item.classList.add('sel');
+
+                        const sw = document.createElement('div');
+                        sw.className = 'part-swatch';
+                        sw.style.background = hexToStr(part.c);
+                        item.appendChild(sw);
+
+                        const nm = document.createElement('div');
+                        nm.className = 'part-name';
+                        nm.textContent = 'Part ' + (i + 1);
+                        item.appendChild(nm);
+
+                        if (isRotated(part)) {
+                            const rot = document.createElement('div');
+                            rot.className = 'part-rotated';
+                            rot.textContent = '↻';
+                            item.appendChild(rot);
+                        }
+
+                        const sz = document.createElement('div');
+                        sz.className = 'part-size';
+                        sz.textContent = part.s[0].toFixed(2) + '×' +
+                            part.s[1].toFixed(2) + '×' + part.s[2].toFixed(2);
+                        item.appendChild(sz);
+
+                        if (part.e) {
+                            const gl = document.createElement('div');
+                            gl.className = 'part-glow';
+                            gl.textContent = '✦GLOW';
+                            item.appendChild(gl);
+                        }
+
+                        item.addEventListener('click', () => {
+                            selectedPartIdx = i;
+                            buildPanel();
+                            rebuildItemModel();
+                        });
+
+                        list.appendChild(item);
+                    }
+
+                    sec.appendChild(list);
+
+                    const btnRow = document.createElement('div');
+                    btnRow.className = 'row-buttons';
+
+                    const addBtn = document.createElement('button');
+                    addBtn.className = 'primary';
+                    addBtn.textContent = '+ ADD PART';
+                    addBtn.addEventListener('click', () => {
+                        def.model.push({
+                            p: [0, 0.10, 0],
+                            s: [0.10, 0.10, 0.10],
+                            r: [0, 0, 0],
+                            c: 0x808890
+                        });
+                        selectedPartIdx = def.model.length - 1;
+                        buildPanel();
+                        rebuildItemModel();
+                        saveCfg();
+                    });
+                    btnRow.appendChild(addBtn);
+
+                    const delBtn = document.createElement('button');
+                    delBtn.className = 'danger';
+                    delBtn.textContent = 'DELETE';
+                    delBtn.disabled = selectedPartIdx < 0 || def.model.length <= 1;
+                    delBtn.style.opacity = delBtn.disabled ? 0.4 : 1;
+                    delBtn.addEventListener('click', () => {
+                        if (selectedPartIdx < 0 || def.model.length <= 1) return;
+                        def.model.splice(selectedPartIdx, 1);
+                        if (selectedPartIdx >= def.model.length) selectedPartIdx = def.model.length - 1;
+                        buildPanel();
+                        rebuildItemModel();
+                        saveCfg();
+                    });
+                    btnRow.appendChild(delBtn);
+
+                    sec.appendChild(btnRow);
+                    controlsEl.appendChild(sec);
+                }
+
+                /* ---------- SELECTED PART ---------- */
+                if (selectedPartIdx >= 0 && def.model[selectedPartIdx]) {
+                    const part = def.model[selectedPartIdx];
+                    const rot = partRot(part);
+
+                    // --- position ---
+                    const posSec = section('PART ' + (selectedPartIdx + 1) + ' — POSITION', true);
+                    posSec.appendChild(makeRange('Pos X', part.p[0], -0.8, 0.8, 0.005, v => {
+                        part.p[0] = v; rebuildItemModel(); saveCfg();
+                    }).row);
+                    posSec.appendChild(makeRange('Pos Y', part.p[1], -0.8, 1.2, 0.005, v => {
+                        part.p[1] = v; rebuildItemModel(); saveCfg();
+                    }).row);
+                    posSec.appendChild(makeRange('Pos Z', part.p[2], -0.8, 0.8, 0.005, v => {
+                        part.p[2] = v; rebuildItemModel(); saveCfg();
+                    }).row);
+                    controlsEl.appendChild(posSec);
+
+                    // --- size ---
+                    const sizeSec = section('SIZE', true);
+                    sizeSec.appendChild(makeRange('Size X', part.s[0], 0.005, 1.5, 0.005, v => {
+                        part.s[0] = v; rebuildItemModel(); saveCfg();
+                    }).row);
+                    sizeSec.appendChild(makeRange('Size Y', part.s[1], 0.005, 1.5, 0.005, v => {
+                        part.s[1] = v; rebuildItemModel(); saveCfg();
+                    }).row);
+                    sizeSec.appendChild(makeRange('Size Z', part.s[2], 0.005, 1.5, 0.005, v => {
+                        part.s[2] = v; rebuildItemModel(); saveCfg();
+                    }).row);
+                    controlsEl.appendChild(sizeSec);
+
+                    // --- rotation (3D) ---
+                    const rotSec = section('ROTATION (°)', true);
+                    rotSec.appendChild(makeRange('Rot X', rot[0], -PI, PI, 1 * DEG, v => {
+                        part.r[0] = v; rebuildItemModel(); saveCfg();
+                    }, degFmt).row);
+                    rotSec.appendChild(makeRange('Rot Y', rot[1], -PI, PI, 1 * DEG, v => {
+                        part.r[1] = v; rebuildItemModel(); saveCfg();
+                    }, degFmt).row);
+                    rotSec.appendChild(makeRange('Rot Z', rot[2], -PI, PI, 1 * DEG, v => {
+                        part.r[2] = v; rebuildItemModel(); saveCfg();
+                    }, degFmt).row);
+
+                    const snapRow = document.createElement('div');
+                    snapRow.className = 'snap-row';
+
+                    const snaps = [
+                        { label: '0°', v: 0 },
+                        { label: '90°', v: PI / 2 },
+                        { label: '180°', v: PI },
+                        { label: '270°', v: -PI / 2 }
+                    ];
+                    for (const s of snaps) {
+                        const b = document.createElement('button');
+                        b.textContent = s.label;
+                        b.title = 'Snap all three axes to ' + s.label;
+                        b.addEventListener('click', () => {
+                            part.r[0] = s.v;
+                            part.r[1] = s.v;
+                            part.r[2] = s.v;
+                            rebuildItemModel();
+                            buildPanel();
+                            saveCfg();
+                        });
+                        snapRow.appendChild(b);
+                    }
+                    rotSec.appendChild(snapRow);
+
+                    const resetRow = document.createElement('div');
+                    resetRow.className = 'row-buttons';
+                    const resetRotBtn = document.createElement('button');
+                    resetRotBtn.textContent = '⟲ CLEAR ROTATION';
+                    resetRotBtn.addEventListener('click', () => {
+                        part.r = [0, 0, 0];
+                        rebuildItemModel();
+                        buildPanel();
+                        saveCfg();
+                    });
+                    resetRow.appendChild(resetRotBtn);
+                    rotSec.appendChild(resetRow);
+
+                    controlsEl.appendChild(rotSec);
+
+                    // --- base color ---
+                    const colorSec = section('BASE COLOR', true);
+                    colorSec.appendChild(makeColorRow('Base', part.c, h => {
+                        part.c = h; rebuildItemModel(); saveCfg();
+                    }));
+                    controlsEl.appendChild(colorSec);
+
+                    // --- glow ---
+                    const glowSec = section('GLOW', true);
+                    const glowOn = !!part.e;
+                    const glowHex = part.e || 0xffaa33;
+
+                    const glowHeader = document.createElement('div');
+                    glowHeader.className = 'color-row';
+                    glowHeader.style.paddingBottom = '4px';
+
+                    const toggleRow = document.createElement('div');
+                    toggleRow.style.display = 'flex';
+                    toggleRow.style.alignItems = 'center';
+                    toggleRow.style.gap = '8px';
+
+                    const chk = document.createElement('input');
+                    chk.type = 'checkbox';
+                    chk.checked = glowOn;
+                    toggleRow.appendChild(chk);
+
+                    const tlbl = document.createElement('div');
+                    tlbl.className = 'lbl';
+                    tlbl.style.fontSize = '10px';
+                    tlbl.style.color = '#8a96a4';
+                    tlbl.textContent = 'Enable glow';
+                    toggleRow.appendChild(tlbl);
+
+                    glowHeader.appendChild(toggleRow);
+                    glowSec.appendChild(glowHeader);
+
+                    chk.addEventListener('change', () => {
+                        if (chk.checked) {
+                            part.e = glowHex || 0xffaa33;
+                        } else {
+                            delete part.e;
+                        }
+                        buildPanel();
+                        rebuildItemModel();
+                        saveCfg();
+                    });
+
+                    if (glowOn) {
+                        glowSec.appendChild(makeColorRow('Glow', part.e, h => {
+                            if (h === 0) h = 1; // keep glow enabled
+                            part.e = h; rebuildItemModel(); saveCfg();
+                        }));
+                    }
+
+                    controlsEl.appendChild(glowSec);
+                }
+
+                /* ---------- HINT ---------- */
+                const hint = document.createElement('div');
+                hint.className = 'hint-box';
+                hint.innerHTML =
+                    '<b>BAG ICON</b>: the preview bottom-right uses the exact camera + lights ' +
+                    'from <code>renderItemThumbnail()</code> in <code>game.js</code>, so what you ' +
+                    'see is what the inventory tile will show.<br><br>' +
+                    '<b>ROTATION</b>: parts spin freely on all three axes. The export writes an ' +
+                    '<code>r: [rx, ry, rz]</code> field (radians) on any part whose rotation is ' +
+                    'non-zero.<br><br>' +
+                    '<b>GLOW</b>: parts with a glow colour export an extra <code>e</code> property. ' +
+                    '<code>buildItemMesh()</code> in <code>game.js</code> already reads both ' +
+                    '<code>b.r</code> and <code>b.e</code>, so nothing else needs changing.';
+                controlsEl.appendChild(hint);
+            }
+
+            // '#rrggbb' → 0xrrggbb
+            function cssHexToNum(s) {
+                if (typeof s !== 'string') return s >>> 0;
+                return parseInt(s.replace('#', ''), 16) >>> 0;
+            }
+
+            /* ============================================================
+               8. VIEW MODE + CONTROLS
+               ============================================================ */
+            let viewMode = 'fp';
+            const viewFPBtn = document.getElementById('viewFP');
+            const viewOrbitBtn = document.getElementById('viewOrbit');
+            const spinBtn = document.getElementById('spinBtn');
+
+            let fpYaw = 0, fpPitch = 0;
+            let fpLocked = false;
+
+            let orbitYaw = 0.65, orbitPitch = 0.30, orbitDist = 1.1;
+            let orbitDragging = false;
+            let lastMX = 0, lastMY = 0;
+
+            function setView(v) {
+                if (viewMode === v) return;
+                viewMode = v;
+
+                if (v !== 'fp' && document.pointerLockElement === renderer.domElement) {
+                    document.exitPointerLock();
+                }
+                if (v === 'fp') { fpYaw = 0; fpPitch = 0; }
+
+                viewFPBtn.classList.toggle('active', v === 'fp');
+                viewOrbitBtn.classList.toggle('active', v === 'orbit');
+                updateLockHint();
+            }
+
+            function updateLockHint() {
+                const el = document.getElementById('lockHint');
+                if (viewMode === 'fp') {
+                    el.textContent = fpLocked ? 'Mouse look active · ESC to release' : 'Click viewport to look';
+                    el.style.color = fpLocked ? '#7ad07a' : '#5a6a7a';
+                } else {
+                    el.textContent = 'Drag to orbit · wheel to zoom';
+                    el.style.color = '#5a6a7a';
+                }
+            }
+
+            viewFPBtn.addEventListener('click', () => setView('fp'));
+            viewOrbitBtn.addEventListener('click', () => setView('orbit'));
+            spinBtn.addEventListener('click', () => {
+                autoSpin = !autoSpin;
+                spinBtn.classList.toggle('active', autoSpin);
+            });
+
+            renderer.domElement.addEventListener('click', () => {
+                if (viewMode !== 'fp') return;
+                if (!fpLocked) renderer.domElement.requestPointerLock();
+            });
+
+            document.addEventListener('pointerlockchange', () => {
+                fpLocked = (document.pointerLockElement === renderer.domElement);
+                updateLockHint();
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (fpLocked) {
+                    const s = 0.0020;
+                    fpYaw -= e.movementX * s;
+                    fpPitch -= e.movementY * s;
+                    fpPitch = Math.max(-1.5, Math.min(1.5, fpPitch));
+                    return;
+                }
+                if (!orbitDragging) return;
+                orbitYaw -= (e.clientX - lastMX) * 0.008;
+                orbitPitch += (e.clientY - lastMY) * 0.008;
+                orbitPitch = Math.max(-1.3, Math.min(1.3, orbitPitch));
+                lastMX = e.clientX;
+                lastMY = e.clientY;
+            });
+
+            renderer.domElement.addEventListener('mousedown', (e) => {
+                if (viewMode !== 'orbit') return;
+                orbitDragging = true;
+                lastMX = e.clientX;
+                lastMY = e.clientY;
+            });
+            window.addEventListener('mouseup', () => orbitDragging = false);
+
+            renderer.domElement.addEventListener('wheel', e => {
+                if (viewMode !== 'orbit') return;
+                e.preventDefault();
+                orbitDist *= (e.deltaY > 0 ? 1.1 : 0.9);
+                orbitDist = Math.max(0.25, Math.min(8, orbitDist));
+            }, { passive: false });
+
+            function modelCentre(model) {
+                let mnX = Infinity, mnY = Infinity, mnZ = Infinity;
+                let mxX = -Infinity, mxY = -Infinity, mxZ = -Infinity;
+                for (const b of model) {
+                    if (b.p[0] - b.s[0] * 0.5 < mnX) mnX = b.p[0] - b.s[0] * 0.5;
+                    if (b.p[0] + b.s[0] * 0.5 > mxX) mxX = b.p[0] + b.s[0] * 0.5;
+                    if (b.p[1] - b.s[1] * 0.5 < mnY) mnY = b.p[1] - b.s[1] * 0.5;
+                    if (b.p[1] + b.s[1] * 0.5 > mxY) mxY = b.p[1] + b.s[1] * 0.5;
+                    if (b.p[2] - b.s[2] * 0.5 < mnZ) mnZ = b.p[2] - b.s[2] * 0.5;
+                    if (b.p[2] + b.s[2] * 0.5 > mxZ) mxZ = b.p[2] + b.s[2] * 0.5;
+                }
+                return {
+                    x: (mnX + mxX) * 0.5,
+                    y: (mnY + mxY) * 0.5,
+                    z: (mnZ + mxZ) * 0.5
+                };
+            }
+
+            /* Raw AABB extents of a model, in model space. */
+            function modelSize(model) {
+                let mnX = Infinity, mnY = Infinity, mnZ = Infinity;
+                let mxX = -Infinity, mxY = -Infinity, mxZ = -Infinity;
+                for (const b of model) {
+                    const hx = b.s[0] * 0.5, hy = b.s[1] * 0.5, hz = b.s[2] * 0.5;
+                    if (b.p[0] - hx < mnX) mnX = b.p[0] - hx;
+                    if (b.p[0] + hx > mxX) mxX = b.p[0] + hx;
+                    if (b.p[1] - hy < mnY) mnY = b.p[1] - hy;
+                    if (b.p[1] + hy > mxY) mxY = b.p[1] + hy;
+                    if (b.p[2] - hz < mnZ) mnZ = b.p[2] - hz;
+                    if (b.p[2] + hz > mxZ) mxZ = b.p[2] + hz;
+                }
+                return { x: mxX - mnX, y: mxY - mnY, z: mxZ - mnZ };
+            }
+
+            /* Decide whether the icon should auto-rotate the model 90° on
+               Z.  The rule is symmetric and depends purely on shape:
+                 · wide tile (aspect > 1.1)  + tall model (modelAspect < 0.9) → rotate
+                 · tall tile (aspect < 0.9)  + wide model (modelAspect > 1.1) → rotate
+               Everything else → no rotation (e.g. the rifle is already wide,
+               the medkit is square, the water bottle in a 1×2 slot is
+               already tall). */
+            function autoIconRotZ(model, tileAspect) {
+                const s = modelSize(model);
+                if (s.y < 1e-4) return 0;
+                const modelAspect = s.x / s.y;
+                if (tileAspect > 1.1 && modelAspect < 0.9) return Math.PI / 2;
+                if (tileAspect < 0.9 && modelAspect > 1.1) return Math.PI / 2;
+                return 0;
+            }
+
+            function updateOrbitCamera() {
+                const def = CFG[currentIdx];
+                const c = modelCentre(def.model);
+
+                // In orbit mode fpCamera sits at the eye with zero rotation, so
+                // the item holder's world position is simply eye + HAND_OFFSET.
+                const tx = PM.body.eyeX + HAND_OFFSET.x + c.x;
+                const ty = PM.body.eyeY + HAND_OFFSET.y + c.y;
+                const tz = PM.body.eyeZ + HAND_OFFSET.z + c.z;
+
+                const cx = tx + Math.sin(orbitYaw) * Math.cos(orbitPitch) * orbitDist;
+                const cy = ty + Math.sin(orbitPitch) * orbitDist;
+                const cz = tz + Math.cos(orbitYaw) * Math.cos(orbitPitch) * orbitDist;
+
+                orbitCamera.position.set(cx, cy, cz);
+                orbitCamera.lookAt(tx, ty, tz);
+            }
+
+            /* ============================================================
+               9. RESIZE
+               ============================================================ */
+            function resize() {
+                const w = viewportEl.clientWidth;
+                const h = viewportEl.clientHeight;
+                renderer.setSize(w, h, false);
+                fpCamera.aspect = w / h;
+                fpCamera.updateProjectionMatrix();
+                orbitCamera.aspect = w / h;
+                orbitCamera.updateProjectionMatrix();
+            }
+            window.addEventListener('resize', resize);
+
+            /* ============================================================
+               10. TOAST + ACTIONS
+               ============================================================ */
+            function showToast(msg) {
+                const t = document.getElementById('toast');
+                t.textContent = msg;
+                t.classList.add('show');
+                clearTimeout(showToast._t);
+                showToast._t = setTimeout(() => t.classList.remove('show'), 1600);
+            }
+
+            document.getElementById('resetBtn').addEventListener('click', () => {
+                const def = CFG[currentIdx];
+                const pristine = DEFAULTS.find(d => d.key === def.key);
+                if (!pristine) {
+                    showToast('NO DEFAULT FOR THIS ITEM');
+                    return;
+                }
+                if (!confirm('Reset "' + def.name + '" to defaults?')) return;
+                CFG[currentIdx] = JSON.parse(JSON.stringify(pristine));
+                selectedPartIdx = -1;
+                buildTabs();
+                buildPanel();
+                rebuildItemModel();
+                saveCfg();
+                showToast('ITEM RESET');
+            });
+
+            document.getElementById('copyBtn').addEventListener('click', () => {
+                const txt = renderConfigJS(false);
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(txt).then(
+                        () => showToast('CONFIG COPIED'),
+                        () => { console.log(txt); showToast('COPY FAILED — SEE CONSOLE'); }
+                    );
+                } else {
+                    console.log(txt);
+                    showToast('COPIED TO CONSOLE');
+                }
+            });
+
+            /* ---------- SAVE ASSET — download assets/model/itemModels.js ---------- */
+            document.getElementById('downloadBtn').addEventListener('click', () => {
+                const body = renderConfigJS(true);
+
+                const file =
+                    '/* =========================================================================\n' +
+                    '   RUIN CITY — item model data\n' +
+                    '   -------------------------------------------------------------------------\n' +
+                    '   Loaded by index.html (before game.js) and ItemEditor.html.\n' +
+                    '   Generated by ItemEditor.html — overwrite assets/model/itemModels.js\n' +
+                    '   with this file.\n' +
+                    '   ========================================================================= */\n' +
+                    body;
+
+                const blob = new Blob([file], { type: 'text/javascript' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'itemModels.js';
+                a.click();
+                URL.revokeObjectURL(url);
+                showToast('SAVED — REPLACE assets/model/itemModels.js');
+            });
+
+            /* ---------- LOAD ASSET ---------- */
+            document.getElementById('loadBtn').addEventListener('click', () => {
+                document.getElementById('loadFile').click();
+            });
+
+            document.getElementById('loadFile').addEventListener('change', (e) => {
+                const f = e.target.files && e.target.files[0];
+                if (!f) return;
+
+                const r = new FileReader();
+                r.onload = () => {
+                    try {
+                        const data = parseAssetFile(r.result);
+                        if (!Array.isArray(data) || !data.length) throw new Error('No ITEM_DEFS array found');
+
+                        CFG = normalise(data);
+                        currentIdx = 0;
+                        selectedPartIdx = -1;
+                        buildTabs();
+                        buildPanel();
+                        rebuildItemModel();
+                        saveCfg();
+                        showToast('ASSET LOADED');
+                    } catch (err) {
+                        console.error(err);
+                        showToast('LOAD FAILED — SEE CONSOLE');
+                    } finally {
+                        e.target.value = '';
+                    }
+                };
+                r.readAsText(f);
+            });
+
+            /* ---------- Asset file parser ----------
+               Accepts two formats:
+                 · A generated asset:  window.ITEM_DEFS_DATA = [ ... ];
+                 · A raw paste of the in-game const:  const ITEM_DEFS = [ ... ];
+               Both are evaluated in an isolated scope, so nothing leaks
+               into the page. */
+            function parseAssetFile(text) {
+                if (/window\.ITEM_DEFS_DATA\s*=/.test(text)) {
+                    const fn = new Function('window', text + '; return window.ITEM_DEFS_DATA;');
+                    return fn({});
+                }
+
+                const start = text.indexOf('[');
+                const end = text.lastIndexOf(']');
+                if (start < 0 || end <= start) throw new Error('No array literal found');
+                return new Function('return (' + text.slice(start, end + 1) + ');')();
+            }
+
+            /* ============================================================
+               11. EXPORT
+               ============================================================ */
+            function renderConfigJS(asWindowGlobal) {
+                const hex = n => '0x' + (n >>> 0).toString(16).padStart(6, '0');
+                const fmt = n => {
+                    const s = n.toFixed(4).replace(/0+$/, '').replace(/\.$/, '.0');
+                    return s.includes('.') ? s : s + '.0';
+                };
+
+                let out = '';
+                out += '/* ===== ITEM_DEFS CONFIG — generated by ItemEditor.html ===== */\n';
+                out += '/* Drop this into assets/model/itemModels.js, or paste the     */\n';
+                out += '/* array straight over the ITEM_DEFS block in game.js.         */\n';
+                out += '/*                                                             */\n';
+                out += '/* Parts may include:                                          */\n';
+                out += '/*   r: [rx, ry, rz]  — rotation in radians (only if non-zero) */\n';
+                out += '/*   e: 0xRRGGBB      — emissive/glow colour (only if enabled) */\n';
+                out += '/*                                                             */\n';
+                out += '/* buildItemMesh() in game.js already honours both, and the    */\n';
+                out += '/* inventory thumbnails are generated from the same data.      */\n\n';
+
+                out += (asWindowGlobal ? 'window.ITEM_DEFS_DATA' : 'const ITEM_DEFS') + ' = [\n';
+
+                for (let ii = 0; ii < CFG.length; ii++) {
+                    const def = CFG[ii];
+                    const comma = ii < CFG.length - 1 ? ',' : '';
+
+                    out += '    {\n';
+                    out += '        key: ' + JSON.stringify(def.key) +
+                        ', name: ' + JSON.stringify(def.name) + ',\n';
+                    out += '        w: ' + (def.w | 0) + ', h: ' + (def.h | 0) +
+                        ', color: ' + JSON.stringify(def.color) + ',\n';
+
+                    // NEW — icon-only transform, emitted only when non-default
+                    const iR = def.iconR || [0, 0, 0];
+                    const iP = def.iconP || [0, 0, 0];
+                    const iS = (typeof def.iconScale === 'number') ? def.iconScale : 1;
+
+                    /* NEW — per-orientation overrides, emitted only when set. */
+                    if (def.iconPortrait) {
+                        const t = def.iconPortrait;
+                        out += '        iconPortrait: { r: [' +
+                            fmt(t.r[0]) + ', ' + fmt(t.r[1]) + ', ' + fmt(t.r[2]) + '], ' +
+                            'p: [' + fmt(t.p[0]) + ', ' + fmt(t.p[1]) + ', ' + fmt(t.p[2]) + '], ' +
+                            's: ' + t.s + ' },\n';
+                    }
+                    if (def.iconLandscape) {
+                        const t = def.iconLandscape;
+                        out += '        iconLandscape: { r: [' +
+                            fmt(t.r[0]) + ', ' + fmt(t.r[1]) + ', ' + fmt(t.r[2]) + '], ' +
+                            'p: [' + fmt(t.p[0]) + ', ' + fmt(t.p[1]) + ', ' + fmt(t.p[2]) + '], ' +
+                            's: ' + t.s + ' },\n';
+                    }
+
+                    if (Math.abs(iR[0]) > 1e-4 || Math.abs(iR[1]) > 1e-4 || Math.abs(iR[2]) > 1e-4) {
+                        out += '        iconR: [' +
+                            fmt(iR[0]) + ', ' + fmt(iR[1]) + ', ' + fmt(iR[2]) + '],\n';
+                    }
+                    if (Math.abs(iP[0]) > 1e-4 || Math.abs(iP[1]) > 1e-4 || Math.abs(iP[2]) > 1e-4) {
+                        out += '        iconP: [' +
+                            fmt(iP[0]) + ', ' + fmt(iP[1]) + ', ' + fmt(iP[2]) + '],\n';
+                    }
+                    if (Math.abs(iS - 1) > 1e-4) {
+                        out += '        iconScale: ' + iS + ',\n';
+                    }
+                    out += '        model: [\n';
+
+                    for (let pi = 0; pi < def.model.length; pi++) {
+                        const b = def.model[pi];
+                        const pcomma = pi < def.model.length - 1 ? ',' : '';
+
+                        let line = '            { p: [' +
+                            fmt(b.p[0]) + ', ' + fmt(b.p[1]) + ', ' + fmt(b.p[2]) + '], ' +
+                            's: [' +
+                            fmt(b.s[0]) + ', ' + fmt(b.s[1]) + ', ' + fmt(b.s[2]) + '], ';
+
+                        const r = partRot(b);
+                        if (Math.abs(r[0]) > 1e-4 || Math.abs(r[1]) > 1e-4 || Math.abs(r[2]) > 1e-4) {
+                            line += 'r: [' +
+                                fmt(r[0]) + ', ' + fmt(r[1]) + ', ' + fmt(r[2]) + '], ';
+                        }
+
+                        line += 'c: ' + hex(b.c);
+                        if (b.e) line += ', e: ' + hex(b.e);
+                        line += ' }' + pcomma + '\n';
+                        out += line;
+                    }
+
+                    out += '        ]\n';
+                    out += '    }' + comma + '\n';
+                }
+
+                out += '];\n';
+                return out;
+            }
+
+            /* ============================================================
+               12. BUILD + MAIN LOOP
+               ============================================================ */
+            buildTabs();
+            buildPanel();
+            rebuildItemModel();
+            resize();
+            updateLockHint();
+
+            fpCamera.position.set(PM.body.eyeX, PM.body.eyeY, PM.body.eyeZ);
+
+            let lastTime = performance.now();
+            function loop(now) {
+                requestAnimationFrame(loop);
+                const dt = Math.min(0.05, (now - lastTime) / 1000);
+                lastTime = now;
+
+                // Idle breathing bob so the hands feel alive
+                const t = now * 0.001;
+                const breath = Math.sin(t * 1.4) * 0.004;
+
+                fpCamera.position.set(
+                    PM.body.eyeX,
+                    PM.body.eyeY + breath,
+                    PM.body.eyeZ
+                );
+
+                if (viewMode === 'fp') {
+                    fpCamera.rotation.set(fpPitch, fpYaw, 0);
+                    fpRoot.visible = true;
+                } else {
+                    fpCamera.rotation.set(0, 0, 0);
+                    fpRoot.visible = false;
+                }
+
+                if (autoSpin) {
+                    spinGroup.rotation.y += dt * 1.4;
+                } else if (spinGroup.rotation.y !== 0) {
+                    // Ease back to the authored orientation
+                    spinGroup.rotation.y *= Math.pow(0.001, dt);
+                    if (Math.abs(spinGroup.rotation.y) < 1e-3) spinGroup.rotation.y = 0;
+                }
+
+                if (viewMode === 'orbit') {
+                    updateOrbitCamera();
+                    renderer.render(scene, orbitCamera);
+                } else {
+                    renderer.render(scene, fpCamera);
+                }
+            }
+            requestAnimationFrame(loop);
+
+        })();
+    </script>
+
+</body>
+
+</html>

@@ -1,0 +1,2444 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>ARive · Inspect Animation Editor</title>
+  <style>
+    * {
+      box-sizing: border-box
+    }
+
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      font-family: "Courier New", monospace;
+      background: #0a0d12;
+      color: #c8b88a
+    }
+
+    #app {
+      display: flex;
+      height: 100%
+    }
+
+    #panel {
+      width: 360px;
+      flex-shrink: 0;
+      background: #12161d;
+      border-right: 2px solid #2b333f;
+      overflow-y: auto;
+      padding: 12px 14px;
+      font-size: 11px;
+      letter-spacing: .5px
+    }
+
+    #view {
+      flex: 1;
+      position: relative;
+      background: #0a0d12
+    }
+
+    #view canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    h2 {
+      font-size: 12px;
+      letter-spacing: 2px;
+      color: #e8c86a;
+      margin: 0 0 10px;
+      border-bottom: 1px solid #2b333f;
+      padding-bottom: 5px;
+      text-transform: uppercase
+    }
+
+    h3 {
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      color: #8fa8c8;
+      margin: 12px 0 6px;
+      text-transform: uppercase;
+      border-bottom: 1px dashed #1e2630;
+      padding-bottom: 3px
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 5px
+    }
+
+    .row label {
+      flex: 1;
+      color: #a89a84;
+      font-size: 10px
+    }
+
+    .row input[type=number] {
+      width: 66px;
+      background: #0a0d12;
+      border: 1px solid #2b333f;
+      color: #e8c86a;
+      padding: 2px 4px;
+      font-family: inherit;
+      font-size: 10px
+    }
+
+    .row input[type=range] {
+      flex: 1;
+      accent-color: #e8c86a;
+      height: 14px
+    }
+
+    .row .val {
+      width: 48px;
+      text-align: right;
+      color: #e8c86a;
+      font-size: 10px
+    }
+
+    select,
+    textarea,
+    button {
+      font-family: inherit;
+      font-size: 10px;
+      background: #0a0d12;
+      border: 1px solid #2b333f;
+      color: #c8b88a;
+      padding: 4px 6px;
+      letter-spacing: .5px
+    }
+
+    select {
+      width: 100%;
+      margin-bottom: 5px
+    }
+
+    textarea {
+      width: 100%;
+      height: 56px;
+      resize: vertical;
+      color: #a89a84;
+      margin-bottom: 5px;
+      font-size: 10px
+    }
+
+    button {
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      padding: 5px 9px
+    }
+
+    button:hover {
+      background: #1a2028;
+      color: #e8c86a
+    }
+
+    button:disabled {
+      cursor: default;
+      opacity: 0.35
+    }
+
+    button.primary {
+      background: #1a2018;
+      border-color: #e8c86a;
+      color: #e8c86a
+    }
+
+    button.primary:hover {
+      background: #222a1c
+    }
+
+    button.active {
+      background: #22281a;
+      border-color: #e8c86a;
+      color: #e8c86a
+    }
+
+    .btnrow {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 5px
+    }
+
+    .btnrow button {
+      flex: 1;
+      padding: 5px 4px;
+      font-size: 9px
+    }
+
+    .hint {
+      color: #6a5a44;
+      font-size: 9px;
+      margin: 4px 0 6px;
+      line-height: 1.4
+    }
+
+    #exportBox {
+      background: #0a0d12;
+      border: 1px solid #2b333f;
+      padding: 7px;
+      white-space: pre;
+      overflow: auto;
+      max-height: 220px;
+      color: #8fa8c8;
+      font-size: 9px;
+      margin-top: 6px;
+      line-height: 1.4
+    }
+
+    /* Timeline */
+    .timelineTrack {
+      position: relative;
+      height: 38px;
+      background: #0a0d12;
+      border: 1px solid #2b333f;
+      margin: 4px 0 6px;
+      cursor: pointer;
+      user-select: none;
+      overflow: hidden
+    }
+
+    .timelineDots {
+      position: absolute;
+      inset: 0;
+      pointer-events: none
+    }
+
+    .kfDot {
+      position: absolute;
+      top: 50%;
+      width: 11px;
+      height: 11px;
+      margin-left: -6px;
+      margin-top: -6px;
+      background: #e8c86a;
+      border: 1px solid #0a0d12;
+      border-radius: 50%;
+      pointer-events: auto;
+      cursor: grab;
+      z-index: 3
+    }
+
+    .kfDot.sel {
+      background: #ff8060;
+      box-shadow: 0 0 0 2px #ff8060, 0 0 8px #ff8060
+    }
+
+    .timelinePlayhead {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: #d04030;
+      pointer-events: none;
+      z-index: 2
+    }
+
+    .timelinePlayhead:before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: -4px;
+      width: 9px;
+      height: 9px;
+      background: #d04030;
+      clip-path: polygon(0 0, 100% 0, 50% 100%)
+    }
+
+    .timelineTicks {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 1
+    }
+
+    /* Keyframe list */
+    .kfRow {
+      display: flex;
+      justify-content: space-between;
+      padding: 3px 5px;
+      border: 1px solid #1e2630;
+      margin-bottom: 2px;
+      cursor: pointer;
+      font-size: 10px;
+      color: #a89a84;
+      background: #0a0d12
+    }
+
+    .kfRow:hover {
+      border-color: #2b333f;
+      color: #c8b88a
+    }
+
+    .kfRow.sel {
+      border-color: #e8c86a;
+      color: #e8c86a;
+      background: #161a12
+    }
+
+    /* Pose controls */
+    .poseGroup {
+      margin-bottom: 8px
+    }
+
+    .poseLabel {
+      color: #8fa8c8;
+      font-size: 9px;
+      letter-spacing: 1.2px;
+      margin-bottom: 3px;
+      text-transform: uppercase
+    }
+
+    .axisRow {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-bottom: 3px
+    }
+
+    .axisRow .axisLbl {
+      width: 12px;
+      color: #6a5a44;
+      font-size: 10px
+    }
+
+    .axisRow input[type=range] {
+      flex: 1;
+      accent-color: #e8c86a;
+      height: 12px
+    }
+
+    .axisRow input[type=number] {
+      width: 58px;
+      background: #0a0d12;
+      border: 1px solid #2b333f;
+      color: #e8c86a;
+      padding: 1px 3px;
+      font-family: inherit;
+      font-size: 10px
+    }
+
+    /* View topbar */
+    #topbar {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      z-index: 10;
+      display: flex;
+      gap: 4px
+    }
+
+    #topbar button {
+      padding: 4px 8px;
+      font-size: 9px
+    }
+
+    #hud {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      z-index: 10;
+      background: rgba(18, 22, 29, .85);
+      border: 1px solid #2b333f;
+      padding: 4px 8px;
+      font-size: 9px;
+      color: #c8b88a;
+      letter-spacing: 1px
+    }
+
+    #hud span {
+      color: #e8c86a
+    }
+
+    .kbd {
+      background: #1a2028;
+      padding: 1px 4px;
+      color: #e8c86a;
+      font-size: 9px
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app">
+    <aside id="panel">
+
+      <h2>Inspect Editor</h2>
+
+      <h3>Load weapons.js</h3>
+      <input type="file" id="weaponsFile" accept=".js,.txt,.json" style="width:100%;margin-bottom:4px;">
+      <div class="hint" id="weaponsFileStatus">
+        Select your project's <span class="kbd">weapons.js</span> — or any file that
+        defines <span class="kbd">WEAPON_MODEL_DATA</span>. Both weapon defs and
+        <span class="kbd">INSPECT_PROFILES</span> are auto-detected and merged in.
+      </div>
+
+      <h3>Weapon</h3>
+      <select id="weaponSelect">
+        <option value="pistol">Pistol</option>
+        <option value="sniper">Sniper (scoped rifle)</option>
+        <option value="shotgun">Shotgun</option>
+        <option value="longrifle">Long Rifle</option>
+      </select>
+      <div class="hint">…or paste weapon JSON (needs <span class="kbd">model</span>, <span
+          class="kbd">hipPose</span>/<span class="kbd">heldPose</span>, <span class="kbd">gripL</span>, <span
+          class="kbd">gripR</span>):</div>
+      <textarea id="weaponJson" placeholder='{ "key": "m4", "hipPose": {...}, ... }'></textarea>
+      <button id="loadJson">Load JSON</button>
+
+      <h3>Import Original Animation</h3>
+      <select id="importProfileSelect">
+        <option value="">— select a profile —</option>
+        <option value="pistol">Pistol — snap spin (original)</option>
+        <option value="smg">SMG — sweep (original)</option>
+        <option value="shotgun">Shotgun — pump (original)</option>
+        <option value="sniper">Sniper — sweep (original)</option>
+        <option value="rifle">Rifle — sweep (original)</option>
+        <option value="custom">Custom (paste below)</option>
+      </select>
+      <div class="row">
+        <label>Samples</label>
+        <input type="number" id="importSamples" min="4" max="64" step="1" value="16" style="width:56px">
+        <label>Duration</label>
+        <input type="number" id="importDur" min="0.5" max="15" step="0.1" value="2.4" style="width:56px">
+      </div>
+      <textarea id="importCode"
+        placeholder="// Custom profile:  function (t, def) { return { dPos, quat, pivot, handL, handR }; }"></textarea>
+      <button id="importBtn" class="primary" style="width:100%">Bake to Keyframes</button>
+      <div class="hint">Samples the procedural profile across 0→1 and replaces the current keyframes. Load a weapon
+        first.</div>
+      <div class="hint" id="importInfo"></div>
+
+      <h3>Edit Target</h3>
+      <div class="btnrow">
+        <button class="target-btn active" data-target="weapon">Weapon (1)</button>
+        <button class="target-btn" data-target="handL">L Hand (2)</button>
+        <button class="target-btn" data-target="handR">R Hand (3)</button>
+      </div>
+      <div class="btnrow">
+        <button class="mode-btn active" data-mode="translate">Move (W)</button>
+        <button class="mode-btn" data-mode="rotate">Rotate (E)</button>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="globalEditChk"> Apply to all keyframes</label>
+      </div>
+      <div class="hint">Moves/rotations become a whole-animation offset — the built-in spin/sweep is preserved.</div>
+
+      <h3>Arms</h3>
+      <div class="row">
+        <label><input type="checkbox" id="showArmsChk" checked> Show Arms</label>
+      </div>
+      <div class="row">
+        <label>R shoulder</label>
+        <input type="number" id="shR_X" min="-0.5" max="0.5" step="0.01" value="0.18" style="width:44px">
+        <input type="number" id="shR_Y" min="-0.5" max="0.5" step="0.01" value="-0.06" style="width:44px">
+        <input type="number" id="shR_Z" min="-0.5" max="0.5" step="0.01" value="0.04" style="width:44px">
+      </div>
+      <div class="row">
+        <label>L shoulder</label>
+        <input type="number" id="shL_X" min="-0.5" max="0.5" step="0.01" value="-0.18" style="width:44px">
+        <input type="number" id="shL_Y" min="-0.5" max="0.5" step="0.01" value="-0.06" style="width:44px">
+        <input type="number" id="shL_Z" min="-0.5" max="0.5" step="0.01" value="0.04" style="width:44px">
+      </div>
+
+      <h3>Pose — <span id="poseTargetLabel" style="color:#e8c86a">Weapon</span></h3>
+      <div id="poseControls"></div>
+
+      <h3>Timeline</h3>
+      <div class="timelineTrack" id="timelineTrack">
+        <div class="timelineTicks" id="timelineTicks"></div>
+        <div class="timelineDots" id="timelineDots"></div>
+        <div class="timelinePlayhead" id="timelinePlayhead"></div>
+      </div>
+      <div class="btnrow">
+        <button id="addKfBtn">+ Key</button>
+        <button id="delKfBtn">− Key</button>
+        <button id="dupKfBtn">Duplicate</button>
+        <button id="clearKfBtn">Clear</button>
+        <button id="undoBtn" title="Ctrl+Z">↶ Undo</button>
+      </div>
+      <div class="hint">t = <span id="tVal" style="color:#e8c86a">0.000</span>s
+        / <span id="durVal" style="color:#e8c86a">2.00</span>s
+        · <span id="kfCount">0</span> keys</div>
+
+      <h3>Playback</h3>
+      <div class="row">
+        <button id="playBtn" style="flex:0 0 auto">▶ Play</button>
+        <label>Speed</label>
+        <input type="range" id="speed" min="0.1" max="3" step="0.05" value="1">
+        <span class="val" id="speedVal">1.00×</span>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="loopChk" checked> Loop</label>
+        <label style="flex:0 0 auto">Dur</label>
+        <input type="number" id="durInput" min="0.2" max="20" step="0.1" value="2.0" style="width:56px">
+      </div>
+
+      <h3>Keyframes</h3>
+      <div id="kfList"></div>
+
+      <h3>Export</h3>
+      <button class="primary" id="copyBtn" style="width:100%">Copy Profile Code</button>
+      <pre id="exportBox"></pre>
+
+    </aside>
+    <div id="view">
+      <canvas id="c"></canvas>
+      <div id="topbar">
+        <button id="viewSide">Side</button>
+        <button id="viewFP">FP</button>
+        <button id="viewTop">Top</button>
+      </div>
+      <div id="hud">Target: <span id="hudTarget">Weapon</span> · Mode: <span id="hudMode">Move</span> · <span
+          style="color:#6a5a44">RMB orbit · Wheel zoom</span></div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
+  <script>
+    "use strict";
+
+    const DEG = Math.PI / 180;
+
+    /* ============================================================
+       ORIGINAL PROFILE IMPORT — helpers + baked sources
+       ============================================================ */
+    function smoothstep(t, a, b) {
+      if (t <= a) return 0;
+      if (t >= b) return 1;
+      const u = (t - a) / (b - a);
+      return u * u * (3 - 2 * u);
+    }
+    function dwell(x, k) {
+      return Math.tanh(k * x) / Math.tanh(k);
+    }
+    const _insE = new THREE.Euler();
+    function _qFromEuler(x, y, z) {
+      _insE.set(x, y, z, "YXZ");
+      return new THREE.Quaternion().setFromEuler(_insE);
+    }
+
+    /* ============================================================
+   Inspect tunables — mirrors weapons.js so imported profiles
+   that reference them (e.g. the pistol spin) still resolve.
+   ============================================================ */
+    const INSPECT_TIME_MUL = 1.5;
+    const INSPECT_REST_MIN = 0.45;
+    const INSPECT_REST_MAX = 1.25;
+    const INSPECT_LOOP_DURATION = 14;
+    const PISTOL_INSPECT_DURATION = 5;
+    const PISTOL_SPIN_PERIOD = 0.25;
+
+    /* Verbatim copies of INSPECT_PROFILES from weapons.js. */
+    const ORIGINAL_PROFILES = {
+      pistol: function (t) {
+        const rise = Math.sin(t * Math.PI);
+        const spinT = smoothstep(t, 0.30, 0.55);
+        const spin = spinT * Math.PI * 2;
+        return {
+          dPos: [0, rise * 0.10, rise * 0.03],
+          quat: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), spin),
+          pivot: [0, -0.02, -0.06],
+          handL: {
+            freezeAtBase: true,
+            dPos: [-rise * 0.10, -rise * 0.18, -rise * 0.04],
+            dQuat: _qFromEuler(-rise * 0.40, rise * 0.15, rise * 0.30),
+          },
+          handR: { freezeAtBase: true },
+        };
+      },
+      smg: function (t) {
+        const rise = Math.sin(t * Math.PI);
+        const viewT = smoothstep(t, 0.10, 0.90);
+        const sweep = Math.sin(viewT * Math.PI * 2);
+        const yaw = dwell(sweep, 4) * 0.85;
+        const roll = dwell(sweep, 4) * 0.15;
+        const swayY = Math.sin(t * Math.PI * 3) * 0.010;
+        const swayZ = Math.cos(t * Math.PI * 2) * 0.008;
+        const rollL = Math.sin(t * Math.PI * 2) * 0.06;
+        const rollR = Math.sin(t * Math.PI * 2 + 1.4) * 0.05;
+        return {
+          dPos: [0, rise * 0.09, rise * 0.04],
+          quat: _qFromEuler(rise * 0.15, yaw, roll),
+          pivot: null,
+          handFollow: 0.45,
+          handL: { dPos: [0, swayY, swayZ], dQuat: _qFromEuler(0, 0, rollL) },
+          handR: { dPos: [0, -swayY * 0.6, swayZ * 0.5], dQuat: _qFromEuler(0, 0, rollR) },
+        };
+      },
+      shotgun: function (t) {
+        const rise = Math.sin(t * Math.PI);
+        const showT = Math.min(smoothstep(t, 0.10, 0.30), 1 - smoothstep(t, 0.72, 0.92));
+        const yaw = showT * -1.15;
+        const roll = showT * 0.30;
+        const pumpBack = Math.max(0, Math.sin(Math.max(0, (t - 0.35) / 0.40) * Math.PI));
+        const rollR = Math.sin(t * Math.PI * 2) * 0.05;
+        return {
+          dPos: [0, rise * 0.06, rise * 0.02],
+          quat: _qFromEuler(rise * 0.10, yaw, roll),
+          pivot: null,
+          handFollow: 0.55,
+          handL: { dPos: [0, 0, pumpBack * 0.14], dQuat: null },
+          handR: { dPos: [0, 0, 0], dQuat: _qFromEuler(0, 0, rollR) },
+        };
+      },
+      sniper: function (t) {
+        const rise = Math.sin(t * Math.PI);
+        const viewT = smoothstep(t, 0.05, 0.95);
+        const sweep = Math.sin(viewT * Math.PI * 2);
+        const yaw = dwell(sweep, 4) * 0.70;
+        const roll = dwell(sweep, 4) * 0.10;
+        const reach = Math.max(0, Math.sin(Math.max(0, (t - 0.30) / 0.40) * Math.PI));
+        const breathY = Math.sin(t * Math.PI * 2) * 0.006;
+        const rollR = Math.sin(t * Math.PI * 1.5) * 0.04;
+        return {
+          dPos: [0, rise * 0.08, rise * 0.03],
+          quat: _qFromEuler(rise * 0.12, yaw, roll),
+          pivot: null,
+          handFollow: 0.35,
+          handL: { dPos: [-reach * 0.10, reach * 0.05 + breathY, reach * 0.15], dQuat: null },
+          handR: { dPos: [0, breathY * 0.5, 0], dQuat: _qFromEuler(0, 0, rollR) },
+        };
+      },
+      rifle: function (t) {
+        const rise = Math.sin(t * Math.PI);
+        const viewT = smoothstep(t, 0.10, 0.90);
+        const sweep = Math.sin(viewT * Math.PI * 2);
+        const yaw = dwell(sweep, 4) * 0.75;
+        const roll = dwell(sweep, 4) * 0.12;
+        const swayY = Math.sin(t * Math.PI * 3) * 0.010;
+        const swayZ = Math.cos(t * Math.PI * 2) * 0.008;
+        const rollL = Math.sin(t * Math.PI * 2) * 0.06;
+        const rollR = Math.sin(t * Math.PI * 2 + 1.4) * 0.05;
+        return {
+          dPos: [0, rise * 0.08, rise * 0.04],
+          quat: _qFromEuler(rise * 0.15, yaw, roll),
+          pivot: null,
+          handFollow: 0.42,
+          handL: { dPos: [0, swayY, swayZ], dQuat: _qFromEuler(0, 0, rollL) },
+          handR: { dPos: [0, -swayY * 0.6, swayZ * 0.5], dQuat: _qFromEuler(0, 0, rollR) },
+        };
+      },
+    };
+
+    /* ============================================================
+   weapons.js LOADER — source-level extraction + sandbox eval
+   ============================================================ */
+
+    /* Find the first `{`/`[` after `pattern` and bracket-match it.
+       Skips braces/brackets inside strings, template strings, and
+       line/block comments so it survives real-world source. */
+    function extractLiteral(src, pattern, open, close) {
+      const m = pattern.exec(src);
+      if (!m) return null;
+      const from = m.index + m[0].length;
+      const start = src.indexOf(open, from);
+      if (start < 0 || start - from > 500) return null;
+
+      let depth = 0, inStr = null, inLC = false, inBC = false;
+      for (let i = start; i < src.length; i++) {
+        const c = src[i], n = src[i + 1];
+        if (inLC) { if (c === "\n") inLC = false; continue; }
+        if (inBC) { if (c === "*" && n === "/") { inBC = false; i++; } continue; }
+        if (inStr) {
+          if (c === "\\") { i++; continue; }
+          if (c === inStr) inStr = null;
+          continue;
+        }
+        if (c === "/" && n === "/") { inLC = true; i++; continue; }
+        if (c === "/" && n === "*") { inBC = true; i++; continue; }
+        if (c === '"' || c === "'" || c === "`") { inStr = c; continue; }
+        if (c === open) depth++;
+        else if (c === close) {
+          depth--;
+          if (depth === 0) return src.slice(start, i + 1);
+        }
+      }
+      return null;
+    }
+
+    /* Evaluate a JS literal with the given names in scope. */
+    function evalInSandbox(code, scope) {
+      const names = Object.keys(scope);
+      const values = names.map(k => scope[k]);
+      const fn = new Function(...names, '"use strict"; return (' + code + ');');
+      return fn(...values);
+    }
+
+    /* Friendly labels for the profile dropdown (used for the built-ins). */
+    const PROFILE_LABELS = {
+      pistol: "Pistol — snap spin",
+      smg: "SMG — sweep",
+      shotgun: "Shotgun — pump",
+      sniper: "Sniper — sweep",
+      rifle: "Rifle — sweep",
+    };
+
+    function rebuildWeaponDropdown() {
+      const sel = document.getElementById("weaponSelect");
+      const prev = sel.value;
+      sel.innerHTML = "";
+      for (const k in PRESETS) {
+        const o = document.createElement("option");
+        o.value = k;
+        o.textContent = PRESETS[k].name || k;
+        sel.appendChild(o);
+      }
+      if (PRESETS[prev]) sel.value = prev;
+    }
+
+    function rebuildImportProfileDropdown() {
+      const sel = document.getElementById("importProfileSelect");
+      const prev = sel.value;
+      sel.innerHTML = "";
+
+      const blank = document.createElement("option");
+      blank.value = "";
+      blank.textContent = "— select a profile —";
+      sel.appendChild(blank);
+
+      for (const k in ORIGINAL_PROFILES) {
+        const o = document.createElement("option");
+        o.value = k;
+        o.textContent = PROFILE_LABELS[k] || k;
+        sel.appendChild(o);
+      }
+
+      const custom = document.createElement("option");
+      custom.value = "custom";
+      custom.textContent = "Custom (paste below)";
+      sel.appendChild(custom);
+
+      if (prev && (ORIGINAL_PROFILES[prev] || prev === "" || prev === "custom")) {
+        sel.value = prev;
+      }
+    }
+
+    function loadWeaponsSource(text, fileName) {
+      const status = document.getElementById("weaponsFileStatus");
+      let nWeapons = 0, nProfiles = 0;
+      const errors = [];
+
+      /* ---- WEAPON_MODEL_DATA --------------------------------- */
+      const wmSrc = extractLiteral(
+        text,
+        /(?:window\s*\.\s*)?WEAPON_MODEL_DATA\s*=/,
+        "[", "]"
+      );
+      if (wmSrc) {
+        try {
+          const arr = evalInSandbox(wmSrc, {});
+          if (Array.isArray(arr)) {
+            for (const w of arr) {
+              if (w && typeof w === "object" && w.key) {
+                PRESETS[w.key] = w;
+                nWeapons++;
+              }
+            }
+          }
+        } catch (e) {
+          errors.push("WEAPON_MODEL_DATA: " + (e.message || e));
+        }
+      }
+
+      /* ---- INSPECT_PROFILES ---------------------------------- */
+      const ipSrc = extractLiteral(text, /INSPECT_PROFILES\s*=/, "{", "}");
+      if (ipSrc) {
+        try {
+          const obj = evalInSandbox(ipSrc, {
+            THREE: THREE,
+            smoothstep: smoothstep,
+            dwell: dwell,
+            _qFromEuler: _qFromEuler,
+            INSPECT_TIME_MUL: INSPECT_TIME_MUL,
+            INSPECT_REST_MIN: INSPECT_REST_MIN,
+            INSPECT_REST_MAX: INSPECT_REST_MAX,
+            INSPECT_LOOP_DURATION: INSPECT_LOOP_DURATION,
+            PISTOL_INSPECT_DURATION: PISTOL_INSPECT_DURATION,
+            PISTOL_SPIN_PERIOD: PISTOL_SPIN_PERIOD,
+          });
+          if (obj && typeof obj === "object") {
+            for (const k in obj) {
+              if (typeof obj[k] === "function") {
+                ORIGINAL_PROFILES[k] = obj[k];
+                nProfiles++;
+              }
+            }
+          }
+        } catch (e) {
+          errors.push("INSPECT_PROFILES: " + (e.message || e));
+        }
+      }
+
+      /* ---- Report ------------------------------------------- */
+      if (nWeapons === 0 && nProfiles === 0) {
+        status.innerHTML =
+          "<span style='color:#d04030'>⚠</span> Nothing detected in <b>" +
+          fileName + "</b>. Expected " +
+          "<span class='kbd'>WEAPON_MODEL_DATA = [ … ]</span> and/or " +
+          "<span class='kbd'>INSPECT_PROFILES = { … }</span>.";
+        if (errors.length) status.innerHTML += "<br>" + errors.join("<br>");
+        return;
+      }
+
+      rebuildWeaponDropdown();
+      rebuildImportProfileDropdown();
+
+      let msg = "<span style='color:#4ad07a'>✓</span> <b>" + fileName + "</b>";
+      if (nWeapons) msg += " · " + nWeapons + " weapon" + (nWeapons === 1 ? "" : "s");
+      if (nProfiles) msg += " · " + nProfiles + " profile" + (nProfiles === 1 ? "" : "s");
+      if (errors.length) msg += "<br><span style='color:#d04030'>" + errors.join("<br>") + "</span>";
+      status.innerHTML = msg;
+    }
+
+    document.getElementById("weaponsFile").addEventListener("change", async (ev) => {
+      const f = ev.target.files && ev.target.files[0];
+      if (!f) return;
+      const status = document.getElementById("weaponsFileStatus");
+      status.textContent = "Reading " + f.name + "…";
+      try {
+        const text = await f.text();
+        loadWeaponsSource(text, f.name);
+      } catch (e) {
+        status.innerHTML =
+          "<span style='color:#d04030'>⚠ Read failed:</span> " + (e.message || e);
+      }
+      ev.target.value = ""; // allow reloading the same file
+    });
+
+    /* ============================================================
+       WEAPON PRESETS
+       ============================================================ */
+    const PRESETS = {
+      pistol: {
+        key: "pistol", name: "PISTOL",
+        hipPose: { p: [0.14, -0.20, -0.28], r: [0.02, -0.06, 0.0] },
+        gripR: { p: [0.000, -0.090, 0.050], r: [0.28, 0.00, -0.08] },
+        gripL: { p: [-0.005, -0.110, 0.030], r: [0.32, 0.05, 0.10] },
+        model: [
+          { p: [0, 0.000, -0.08], s: [0.040, 0.060, 0.20], c: 0x2a2e35 },
+          { p: [0, -0.040, -0.02], s: [0.035, 0.050, 0.10], c: 0x2a2e35 },
+          { p: [0, -0.100, 0.05], s: [0.035, 0.110, 0.06], c: 0x1a1e24 },
+          { p: [0, -0.060, -0.02], s: [0.028, 0.025, 0.04], c: 0x1a1e24 },
+        ],
+      },
+      sniper: {
+        key: "sniper", name: "SNIPER",
+        hipPose: { p: [0.18, -0.24, -0.36], r: [0.03, -0.16, -0.05] },
+        gripR: { p: [0.0, -0.09, 0.06], r: [0.3, 0.0, -0.1] },
+        gripL: { p: [0.0, -0.05, -0.4], r: [0.35, 0.0, 0.12] },
+        model: [
+          { p: [0, 0, 0], s: [0.07, 0.09, 0.35], c: 0x2a3028 },
+          { p: [0, 0.01, -0.45], s: [0.04, 0.04, 0.5], c: 0x1a1f1a },
+          { p: [0, 0.01, -0.74], s: [0.06, 0.06, 0.08], c: 0x30352a },
+          { p: [0, -0.03, 0.28], s: [0.06, 0.13, 0.2], c: 0x3a2a1a },
+          { p: [0, -0.09, 0.05], s: [0.045, 0.13, 0.07], c: 0x3a2a1a },
+          { p: [0, -0.08, -0.12], s: [0.035, 0.1, 0.09], c: 0x3a3a3a },
+          { p: [0, 0.115, -0.1], s: [0.045, 0.05, 0.28], c: 0x101010 },
+          { p: [0, 0.115, -0.25], s: [0.055, 0.06, 0.02], c: 0x4a6a8a },
+          { p: [0, 0.115, 0.045], s: [0.045, 0.05, 0.02], c: 0x202830 },
+          { p: [0, 0.06, -0.02], s: [0.025, 0.05, 0.13], c: 0x202020 },
+        ],
+      },
+      shotgun: {
+        key: "shotgun", name: "SHOTGUN",
+        hipPose: { p: [0.18, -0.24, -0.36], r: [0.03, -0.13, -0.04] },
+        gripR: { p: [0.0, -0.11, 0.06], r: [0.3, 0.0, -0.1] },
+        gripL: { p: [0.0, -0.075, -0.34], r: [0.42, 0.0, 0.1] },
+        model: [
+          { p: [0, 0, 0], s: [0.085, 0.105, 0.3], c: 0x3a2a1a },
+          { p: [0, 0.02, -0.4], s: [0.05, 0.05, 0.5], c: 0x1f1f22 },
+          { p: [0, -0.055, -0.34], s: [0.045, 0.045, 0.42], c: 0x2a2a2c },
+          { p: [0, -0.075, -0.32], s: [0.075, 0.075, 0.14], c: 0x4a2a14 },
+          { p: [0, -0.035, 0.28], s: [0.065, 0.14, 0.22], c: 0x4a2a14 },
+          { p: [0, -0.11, 0.05], s: [0.045, 0.13, 0.07], c: 0x3a2010 },
+          { p: [0, 0.055, -0.62], s: [0.015, 0.015, 0.015], c: 0xd0a040 },
+        ],
+      },
+      longrifle: {
+        key: "longrifle", name: "LONG RIFLE",
+        hipPose: { p: [0.16, -0.22, -0.30], r: [0.02, -0.10, -0.03] },
+        gripR: { p: [0.0, -0.08, 0.04], r: [0.28, 0.0, -0.08] },
+        gripL: { p: [0.0, -0.03, -0.30], r: [0.32, 0.0, 0.10] },
+        model: [
+          { p: [0, 0, 0.0], s: [0.06, 0.09, 0.45], c: 0x30353a },
+          { p: [0, 0.01, -0.55], s: [0.035, 0.035, 0.65], c: 0x1a1f1a },
+          { p: [0, -0.06, 0.30], s: [0.06, 0.14, 0.28], c: 0x4a3820 },
+          { p: [0, -0.08, 0.05], s: [0.045, 0.13, 0.07], c: 0x3a2a1a },
+          { p: [0, -0.02, -0.35], s: [0.04, 0.05, 0.22], c: 0x4a3820 },
+        ],
+      },
+    };
+
+    /* ============================================================
+       STATE
+       ============================================================ */
+    let currentWeapon = null;
+    let currentWeaponKey = "pistol";
+    let weaponMesh = null;
+    const gripMarkers = { L: null, R: null };
+
+    let keyframes = [];      // [{ t, weapon:{p,q}, handL:{p,q}, handR:{p,q} }, ...]
+    let selectedKf = null;    // reference into keyframes
+    let playheadT = 0;
+    let duration = 2.0;
+    let playing = false;
+    let playSpeed = 1;
+    let loopPlayback = true;
+
+    let editTarget = "weapon"; // "weapon" | "handL" | "handR"
+    let transformMode = "translate"; // "translate" | "rotate"
+    let isDragging = false;
+
+    /* ============================================================
+       UNDO SYSTEM
+       ============================================================ */
+    const UNDO_LIMIT = 80;
+    const undoStack = [];
+    let _suppressUndo = false;
+
+    function _snapshot() {
+      return {
+        kfs: keyframes.map(kf => ({
+          t: kf.t,
+          weapon: { p: kf.weapon.p.slice(), q: kf.weapon.q.slice() },
+          handL: { p: kf.handL.p.slice(), q: kf.handL.q.slice() },
+          handR: { p: kf.handR.p.slice(), q: kf.handR.q.slice() },
+        })),
+        dur: duration,
+        sel: selectedKf ? keyframes.indexOf(selectedKf) : -1,
+        playT: playheadT,
+        wkey: currentWeaponKey,
+      };
+    }
+
+    function pushUndo() {
+      if (_suppressUndo) return;
+      undoStack.push(_snapshot());
+      if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+      updateUndoButton();
+    }
+
+    function undo() {
+      if (undoStack.length === 0) return;
+      const snap = undoStack.pop();
+      _suppressUndo = true;
+      try {
+        keyframes = snap.kfs.map(kf => ({
+          t: kf.t,
+          weapon: { p: kf.weapon.p.slice(), q: kf.weapon.q.slice() },
+          handL: { p: kf.handL.p.slice(), q: kf.handL.q.slice() },
+          handR: { p: kf.handR.p.slice(), q: kf.handR.q.slice() },
+        }));
+        duration = snap.dur;
+        document.getElementById("durInput").value = duration.toFixed(2);
+        selectedKf = snap.sel >= 0 && snap.sel < keyframes.length
+          ? keyframes[snap.sel] : (keyframes[0] || null);
+        playheadT = Math.min(snap.playT, duration);
+        refreshTicks();
+        refreshTimeline();
+        refreshKeyframeList();
+        refreshPoseControls();
+        updateExport();
+      } finally {
+        _suppressUndo = false;
+      }
+      updateUndoButton();
+    }
+
+    function updateUndoButton() {
+      const btn = document.getElementById("undoBtn");
+      if (!btn) return;
+      const n = undoStack.length;
+      btn.disabled = n === 0;
+      btn.textContent = n === 0 ? "↶ Undo" : "↶ Undo (" + n + ")";
+    }
+
+    /* ============================================================
+       THREE.JS SETUP
+       ============================================================ */
+    const canvas = document.getElementById("c");
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setClearColor(0x0a0d12, 1);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.005, 20);
+
+    /* ---- Orbit state ---------------------------------------------- */
+    const _orbit = {
+      target: new THREE.Vector3(-0.02, -0.08, -0.35),
+      radius: 1.3,
+      theta: 0.68,
+      phi: 0.33,
+      _sx: 0, _sy: 0, _sTheta: 0, _sPhi: 0,
+    };
+    let _orbiting = false;
+
+    function syncOrbitFromCamera() {
+      const off = camera.position.clone().sub(_orbit.target);
+      _orbit.radius = Math.max(1e-4, off.length());
+      _orbit.theta = Math.atan2(off.x, off.z);
+      _orbit.phi = Math.asin(Math.max(-1, Math.min(1, off.y / _orbit.radius)));
+    }
+    function applyOrbit() {
+      const cp = Math.cos(_orbit.phi), sp = Math.sin(_orbit.phi);
+      camera.position.set(
+        _orbit.target.x + _orbit.radius * cp * Math.sin(_orbit.theta),
+        _orbit.target.y + _orbit.radius * sp,
+        _orbit.target.z + _orbit.radius * cp * Math.cos(_orbit.theta)
+      );
+      camera.lookAt(_orbit.target);
+    }
+
+    function setSideView() {
+      _orbit.target.set(-0.02, -0.08, -0.35);
+      camera.position.set(0.75, 0.35, 0.60);
+      camera.lookAt(_orbit.target);
+      syncOrbitFromCamera();
+    }
+    function setFPView() {
+      _orbit.target.set(0, 0, -1);
+      camera.position.set(0, 0, 0);
+      camera.lookAt(_orbit.target);
+      syncOrbitFromCamera();
+    }
+    function setTopView() {
+      _orbit.target.set(0.0, -0.10, -0.35);
+      camera.position.set(0.12, 0.85, -0.30);
+      camera.lookAt(_orbit.target);
+      syncOrbitFromCamera();
+    }
+    setSideView();
+
+    scene.add(new THREE.AmbientLight(0xc8d4e8, 0.82));
+    const _k = new THREE.DirectionalLight(0xffe0b0, 1.10); _k.position.set(1.5, 2.0, 1.5); scene.add(_k);
+    const _f = new THREE.DirectionalLight(0x8090b8, 0.55); _f.position.set(-1.5, 0.4, -0.8); scene.add(_f);
+    const _r = new THREE.DirectionalLight(0xe8c86a, 0.42); _r.position.set(0, 0.6, 1.5); scene.add(_r);
+
+    const grid = new THREE.GridHelper(2, 20, 0x2a3542, 0x18202a);
+    grid.position.set(0, -0.40, -0.30);
+    grid.material.opacity = 0.55;
+    grid.material.transparent = true;
+    scene.add(grid);
+
+    /* ---- Player direction indicator (forward = -Z) ---- */
+    const dirArrow = new THREE.ArrowHelper(
+      new THREE.Vector3(0, 0, -1),         // direction
+      new THREE.Vector3(0, 0, 0),          // origin
+      0.34,                                 // shaft length
+      0x40a0ff,                             // colour
+      0.07,                                 // head length
+      0.04                                  // head width
+    );
+    scene.add(dirArrow);
+
+    const originDot = new THREE.Mesh(
+      new THREE.CircleGeometry(0.022, 20),
+      new THREE.MeshBasicMaterial({
+        color: 0x40a0ff,
+        transparent: true,
+        opacity: 0.7,
+        side: THREE.DoubleSide,
+      })
+    );
+    scene.add(originDot);
+
+    const fpRoot = new THREE.Group();
+    scene.add(fpRoot);
+
+    const weaponRig = new THREE.Group();
+    fpRoot.add(weaponRig);
+
+    function makeHandMesh() {
+      const g = new THREE.Group();
+      const mat = new THREE.MeshLambertMaterial({ color: 0xd4a686 });
+      const palm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.13, 0.14), mat);
+      palm.position.z = -0.07;
+      g.add(palm);
+      const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.05, 0.07), mat);
+      thumb.position.set(-0.07, 0.02, -0.07);
+      g.add(thumb);
+      return g;
+    }
+    const handL = makeHandMesh();
+    const handR = makeHandMesh();
+    fpRoot.add(handL, handR);
+
+    function makeArmMesh() {
+      const g = new THREE.Group();
+      /* Match the game's sleeve radius: FP_MODEL.body.armSegW = 0.115 → radius 0.0575 */
+      const geo = new THREE.CylinderGeometry(0.0575, 0.0575, 1, 12);
+      geo.translate(0, 0.5, 0);   // base at origin, grows toward +Y
+      /* Match the game's SLEEVE_MAT colour — FP_MODEL.colors.sleeve = 0x3a4a30 */
+      const mat = new THREE.MeshLambertMaterial({
+        color: 0x3a4a30,
+        transparent: true,
+        opacity: 0.9,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      g.add(mesh);
+      g.userData.mesh = mesh;
+      return g;
+    }
+
+    const armL = makeArmMesh();
+    const armR = makeArmMesh();
+    armL.visible = false;
+    armR.visible = false;
+    fpRoot.add(armL, armR);
+
+    /* Estimated shoulder positions in fpRoot space.
+       Match the game's FP_MODEL.body defaults:
+         shoulderLX = -0.18, shoulderLY = -0.06, shoulderLZ = 0.04
+         shoulderRX = +0.18, shoulderRY = -0.06, shoulderRZ = 0.04 */
+    const SHOULDER = {
+      L: new THREE.Vector3(-0.18, -0.06, 0.04),
+      R: new THREE.Vector3(0.18, -0.06, 0.04),
+    };
+
+    let showArms = true;
+
+    function updateArm(arm, shoulderLocal, handPos) {
+      const mesh = arm.userData.mesh;
+      const dir = new THREE.Vector3().subVectors(handPos, shoulderLocal);
+      const len = dir.length();
+      if (len < 0.001) return;
+      mesh.scale.set(1, len, 1);
+      mesh.position.copy(shoulderLocal);
+      mesh.quaternion.setFromUnitVectors(
+        new THREE.Vector3(0, 1, 0),
+        dir.normalize()
+      );
+    }
+
+    /* ============================================================
+       TRANSFORM CONTROLS
+       ============================================================ */
+    const tcontrols = new THREE.TransformControls(camera, renderer.domElement);
+    tcontrols.setSize(0.75);
+    scene.add(tcontrols);
+
+    /* Pre-drag state used when "Apply to all keyframes" is on. */
+    let globalEditBefore = null;   // pose at drag start (for undo / pivot)
+    let globalEditPivot = null;    // pivot of the delta rotation
+    let globalEditPrev = null;     // rig pose captured on the previous objectChange
+
+    tcontrols.addEventListener("dragging-changed", (e) => {
+      isDragging = !!e.value;
+      if (isDragging) {
+        pushUndo();
+        ensureKeyframeAtPlayhead();
+        playing = false;
+        updatePlayButton();
+
+        /* Defensive: TransformControls can pick up a stray scale if the
+           attached object was mutated mid-drag on a previous session. */
+        weaponRig.scale.set(1, 1, 1);
+        handL.scale.set(1, 1, 1);
+        handR.scale.set(1, 1, 1);
+
+        if (document.getElementById("globalEditChk").checked) {
+          globalEditBefore = {
+            weapon: { p: weaponRig.position.clone(), q: weaponRig.quaternion.clone() },
+            handL: { p: handL.position.clone(), q: handL.quaternion.clone() },
+            handR: { p: handR.position.clone(), q: handR.quaternion.clone() },
+          };
+          globalEditPrev = {
+            weapon: { p: weaponRig.position.clone(), q: weaponRig.quaternion.clone() },
+            handL: { p: handL.position.clone(), q: handL.quaternion.clone() },
+            handR: { p: handR.position.clone(), q: handR.quaternion.clone() },
+          };
+          globalEditPivot =
+            editTarget === "weapon" ? weaponRig.position.clone()
+              : editTarget === "handL" ? handL.position.clone()
+                : handR.position.clone();
+        } else {
+          globalEditBefore = null;
+          globalEditPrev = null;
+          globalEditPivot = null;
+        }
+      } else {
+        refreshKeyframeList();
+        refreshTimeline();
+        updateExport();
+        globalEditBefore = null;
+        globalEditPrev = null;
+        globalEditPivot = null;
+      }
+    });
+
+    tcontrols.addEventListener("objectChange", () => {
+      if (!isDragging) return;
+      writeDraggedToKeyframe();
+      refreshKeyframeList();
+      refreshTimeline();
+      refreshPoseControls();
+      updateExport();
+    });
+
+    function attachTransformControls() {
+      /* Detach first so TransformControls doesn't keep stale _scaleStart
+         state from the previous target. */
+      tcontrols.detach();
+      let obj = weaponRig;
+      if (editTarget === "handL") obj = handL;
+      else if (editTarget === "handR") obj = handR;
+      /* Defensive — if a previous interaction left a scale behind, clear it. */
+      obj.scale.set(1, 1, 1);
+      tcontrols.attach(obj);
+      tcontrols.setMode(transformMode);
+      tcontrols.setSpace(transformMode === "rotate" ? "local" : "world");
+    }
+
+    /* ============================================================
+       RIGHT-MOUSE CAMERA ORBIT
+       ============================================================ */
+    canvas.addEventListener("contextmenu", e => e.preventDefault());
+
+    canvas.addEventListener("pointerdown", (e) => {
+      if (e.button !== 2) return;
+      if (tcontrols.axis) return;   // don't orbit while hovering the gizmo
+      e.preventDefault();
+      _orbiting = true;
+      try { canvas.setPointerCapture(e.pointerId); } catch (_) { }
+      _orbit._sx = e.clientX;
+      _orbit._sy = e.clientY;
+      _orbit._sTheta = _orbit.theta;
+      _orbit._sPhi = _orbit.phi;
+    });
+
+    canvas.addEventListener("pointermove", (e) => {
+      if (!_orbiting) return;
+      const dx = e.clientX - _orbit._sx;
+      const dy = e.clientY - _orbit._sy;
+      _orbit.theta = _orbit._sTheta - dx * 0.008;
+      _orbit.phi = Math.max(-1.45, Math.min(1.45, _orbit._sPhi + dy * 0.008));
+      applyOrbit();
+    });
+
+    function _endOrbit(e) {
+      if (!_orbiting) return;
+      _orbiting = false;
+      try { canvas.releasePointerCapture(e.pointerId); } catch (_) { }
+    }
+    canvas.addEventListener("pointerup", _endOrbit);
+    canvas.addEventListener("pointercancel", _endOrbit);
+
+    canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const f = Math.exp(e.deltaY * 0.001);
+      _orbit.radius = Math.max(0.05, Math.min(6, _orbit.radius * f));
+      applyOrbit();
+    }, { passive: false });
+
+    /* ============================================================
+       WEAPON MESH
+       ============================================================ */
+    function buildWeaponMesh(def) {
+      const g = new THREE.Group();
+      for (const part of def.model) {
+        const geo = new THREE.BoxGeometry(part.s[0], part.s[1], part.s[2]);
+        const mat = new THREE.MeshLambertMaterial({
+          color: typeof part.c === "number" ? part.c : 0x808080,
+        });
+        const m = new THREE.Mesh(geo, mat);
+        m.position.set(part.p[0], part.p[1], part.p[2]);
+        if (part.r) m.rotation.set(part.r[0], part.r[1], part.r[2]);
+        g.add(m);
+      }
+      return g;
+    }
+
+    function disposeGroup(g) {
+      if (!g) return;
+      g.traverse(o => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) {
+          if (Array.isArray(o.material)) o.material.forEach(m => m.dispose());
+          else o.material.dispose();
+        }
+      });
+    }
+
+    function buildGripMarkers(def) {
+      if (gripMarkers.L) { weaponRig.remove(gripMarkers.L); disposeGroup(gripMarkers.L); gripMarkers.L = null; }
+      if (gripMarkers.R) { weaponRig.remove(gripMarkers.R); disposeGroup(gripMarkers.R); gripMarkers.R = null; }
+      const mk = (color) => {
+        const g = new THREE.Mesh(
+          new THREE.SphereGeometry(0.018, 12, 8),
+          new THREE.MeshBasicMaterial({
+            color, transparent: true, opacity: 0.42,
+            depthTest: false,
+          })
+        );
+        g.renderOrder = 999;
+        return g;
+      };
+      if (def.gripL) {
+        gripMarkers.L = mk(0x4a8adc);
+        gripMarkers.L.position.set(def.gripL.p[0], def.gripL.p[1], def.gripL.p[2]);
+        weaponRig.add(gripMarkers.L);
+      }
+      if (def.gripR) {
+        gripMarkers.R = mk(0xdc8a4a);
+        gripMarkers.R.position.set(def.gripR.p[0], def.gripR.p[1], def.gripR.p[2]);
+        weaponRig.add(gripMarkers.R);
+      }
+    }
+
+    /* ============================================================
+       POSE SAMPLING (keyframe interpolation)
+       ============================================================ */
+    const _qa = new THREE.Quaternion();
+    const _qb = new THREE.Quaternion();
+
+    function _lerp3(a, b, s) {
+      return [a[0] + (b[0] - a[0]) * s,
+      a[1] + (b[1] - a[1]) * s,
+      a[2] + (b[2] - a[2]) * s];
+    }
+    function _slerpQ(a, b, s) {
+      _qa.fromArray(a); _qb.fromArray(b);
+      if (_qa.dot(_qb) < 0) _qb.set(-_qb.x, -_qb.y, -_qb.z, -_qb.w);
+      _qa.slerp(_qb, s);
+      return [_qa.x, _qa.y, _qa.z, _qa.w];
+    }
+
+    function cloneKf(kf) {
+      return {
+        t: kf.t,
+        weapon: { p: kf.weapon.p.slice(), q: kf.weapon.q.slice() },
+        handL: { p: kf.handL.p.slice(), q: kf.handL.q.slice() },
+        handR: { p: kf.handR.p.slice(), q: kf.handR.q.slice() },
+      };
+    }
+
+    function blendKf(a, b, s) {
+      return {
+        t: a.t + (b.t - a.t) * s,
+        weapon: {
+          p: _lerp3(a.weapon.p, b.weapon.p, s),
+          q: _slerpQ(a.weapon.q, b.weapon.q, s)
+        },
+        handL: {
+          p: _lerp3(a.handL.p, b.handL.p, s),
+          q: _slerpQ(a.handL.q, b.handL.q, s)
+        },
+        handR: {
+          p: _lerp3(a.handR.p, b.handR.p, s),
+          q: _slerpQ(a.handR.q, b.handR.q, s)
+        },
+      };
+    }
+
+    /* ============================================================
+       BAKE — sample a procedural profile into absolute keyframes
+       ============================================================ */
+    function bakeProfile(profileFn, def, numSamples, loopDur) {
+      const hip = def.hipPose || def.heldPose || { p: [0, 0, 0], r: [0, 0, 0] };
+      const hipQ = new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(hip.r[0], hip.r[1], hip.r[2], "XYZ")
+      );
+      const hipP = new THREE.Vector3(hip.p[0], hip.p[1], hip.p[2]);
+
+      // Grip local pose (in weapon frame)
+      const gripLp = new THREE.Vector3(def.gripL.p[0], def.gripL.p[1], def.gripL.p[2]);
+      const gripLq = new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(def.gripL.r[0], def.gripL.r[1], def.gripL.r[2], "XYZ")
+      );
+      const gripRp = new THREE.Vector3(def.gripR.p[0], def.gripR.p[1], def.gripR.p[2]);
+      const gripRq = new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(def.gripR.r[0], def.gripR.r[1], def.gripR.r[2], "XYZ")
+      );
+
+      const _blendQ = new THREE.Quaternion();
+      const _blendP = new THREE.Vector3();
+      const kfs = [];
+
+      for (let i = 0; i <= numSamples; i++) {
+        const u = i / numSamples;
+        const over = profileFn(u, def, { elapsed: u * loopDur, duration: loopDur });
+
+        // ---- Weapon pose: start from hip, apply dPos then quat/pivot ----
+        const wp = hipP.clone();
+        const wq = hipQ.clone();
+
+        if (over && over.dPos) {
+          wp.x += over.dPos[0];
+          wp.y += over.dPos[1];
+          wp.z += over.dPos[2];
+        }
+        if (over && over.quat) {
+          if (over.pivot) {
+            const piv = new THREE.Vector3(over.pivot[0], over.pivot[1], over.pivot[2])
+              .applyQuaternion(wq).add(wp);
+            const rel = wp.clone().sub(piv);
+            rel.applyQuaternion(over.quat);
+            wp.copy(piv).add(rel);
+            wq.premultiply(over.quat);
+          } else {
+            wq.premultiply(over.quat);
+          }
+        }
+
+        // ---- Hand base poses (blended grip, honouring handFollow) ----
+        const follow =
+          over && typeof over.handFollow === "number" ? over.handFollow : 1;
+
+        _blendQ.copy(hipQ).slerp(wq, follow);
+        _blendP.lerpVectors(hipP, wp, follow);
+
+        let hLp = gripLp.clone().applyQuaternion(_blendQ).add(_blendP);
+        let hLq = _blendQ.clone().multiply(gripLq);
+        let hRp = gripRp.clone().applyQuaternion(_blendQ).add(_blendP);
+        let hRq = _blendQ.clone().multiply(gripRq);
+
+        // ---- Inspect overrides (freezeAtBase, dPos, dQuat) ----
+        if (over) {
+          const handDeltaQuat = (hh) =>
+            hh && hh.freezeAtBase ? hipQ.clone() : wq.clone();
+          const freeze = (gp, gq) => ({
+            p: gp.clone().applyQuaternion(hipQ).add(hipP),
+            q: hipQ.clone().multiply(gq),
+          });
+
+          if (over.handL) {
+            if (over.handL.freezeAtBase) {
+              const f = freeze(gripLp, gripLq);
+              hLp.copy(f.p); hLq.copy(f.q);
+            }
+            if (over.handL.dPos) {
+              hLp.add(new THREE.Vector3(...over.handL.dPos)
+                .applyQuaternion(handDeltaQuat(over.handL)));
+            }
+            if (over.handL.dQuat) hLq.premultiply(over.handL.dQuat);
+          }
+          if (over.handR) {
+            if (over.handR.freezeAtBase) {
+              const f = freeze(gripRp, gripRq);
+              hRp.copy(f.p); hRq.copy(f.q);
+            }
+            if (over.handR.dPos) {
+              hRp.add(new THREE.Vector3(...over.handR.dPos)
+                .applyQuaternion(handDeltaQuat(over.handR)));
+            }
+            if (over.handR.dQuat) hRq.premultiply(over.handR.dQuat);
+          }
+        }
+
+        kfs.push({
+          t: u * loopDur,
+          weapon: { p: wp.toArray(), q: wq.toArray() },
+          handL: { p: hLp.toArray(), q: hLq.toArray() },
+          handR: { p: hRp.toArray(), q: hRq.toArray() },
+        });
+      }
+      return kfs;
+    }
+
+    /* Bake with auto-resample: keep doubling samples until adjacent
+       keyframes are within THRESH radians of each other.  Prevents the
+       quaternion-slerp "shortest path" from aliasing fast spins into
+       the wrong direction. */
+    function bakeProfileAdaptive(profileFn, def, initialSamples, loopDur, maxSamples) {
+      maxSamples = maxSamples || 512;
+      const THRESH = Math.PI / 3;        // 60° max step
+
+      let samples = Math.max(2, initialSamples);
+      let kfs = bakeProfile(profileFn, def, samples, loopDur);
+
+      while (samples < maxSamples) {
+        let maxAngle = 0;
+        for (let i = 0; i < kfs.length - 1; i++) {
+          const q1 = new THREE.Quaternion().fromArray(kfs[i].weapon.q);
+          const q2 = new THREE.Quaternion().fromArray(kfs[i + 1].weapon.q);
+          const dot = Math.min(1, Math.abs(q1.dot(q2)));
+          const angle = 2 * Math.acos(dot);
+          if (angle > maxAngle) maxAngle = angle;
+          if (maxAngle > THRESH) break;
+        }
+        if (maxAngle <= THRESH) break;
+        samples = Math.min(maxSamples, samples * 2);
+        kfs = bakeProfile(profileFn, def, samples, loopDur);
+      }
+
+      return { kfs, samples };
+    }
+
+    function samplePose(t) {
+      const n = keyframes.length;
+      if (n === 0) return null;
+      if (n === 1 || t <= keyframes[0].t) return cloneKf(keyframes[0]);
+      const last = keyframes[n - 1];
+      if (t >= last.t) return cloneKf(last);
+      for (let i = 0; i < n - 1; i++) {
+        const a = keyframes[i], b = keyframes[i + 1];
+        if (t >= a.t && t <= b.t) {
+          const span = b.t - a.t;
+          const u = span < 1e-6 ? 0 : (t - a.t) / span;
+          const s = u * u * (3 - 2 * u);
+          return blendKf(a, b, s);
+        }
+      }
+      return cloneKf(last);
+    }
+
+    /* ============================================================
+       DEFAULT POSE (from hipPose + grips)
+       ============================================================ */
+    function defaultPose() {
+      const hip = (currentWeapon && (currentWeapon.hipPose || currentWeapon.heldPose))
+        || { p: [0, 0, 0], r: [0, 0, 0] };
+      const hipQ = new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(hip.r[0], hip.r[1], hip.r[2], "XYZ")
+      );
+      const hipP = new THREE.Vector3(hip.p[0], hip.p[1], hip.p[2]);
+
+      function handPose(grip) {
+        if (!grip) return { p: [0, 0, 0], q: [0, 0, 0, 1] };
+        const gq = new THREE.Quaternion().setFromEuler(
+          new THREE.Euler(grip.r[0], grip.r[1], grip.r[2], "XYZ")
+        );
+        const gp = new THREE.Vector3(grip.p[0], grip.p[1], grip.p[2])
+          .applyQuaternion(hipQ).add(hipP);
+        const hq = hipQ.clone().multiply(gq);
+        return { p: gp.toArray(), q: hq.toArray() };
+      }
+
+      return {
+        t: 0,
+        weapon: { p: hipP.toArray(), q: hipQ.toArray() },
+        handL: handPose(currentWeapon && currentWeapon.gripL),
+        handR: handPose(currentWeapon && currentWeapon.gripR),
+      };
+    }
+
+    /* ============================================================
+       APPLY POSE
+       ============================================================ */
+    function applyPose(pose) {
+      if (!pose) return;
+      /* Belt-and-braces: nothing in the editor ever changes a target's
+         scale, so if it has drifted off 1, snap it back. */
+      if (weaponRig.scale.x !== 1 || weaponRig.scale.y !== 1 || weaponRig.scale.z !== 1) {
+        weaponRig.scale.set(1, 1, 1);
+      }
+      if (handL.scale.x !== 1 || handL.scale.y !== 1 || handL.scale.z !== 1) {
+        handL.scale.set(1, 1, 1);
+      }
+      if (handR.scale.x !== 1 || handR.scale.y !== 1 || handR.scale.z !== 1) {
+        handR.scale.set(1, 1, 1);
+      }
+      if (!isDragging || editTarget !== "weapon") {
+        weaponRig.position.fromArray(pose.weapon.p);
+        weaponRig.quaternion.fromArray(pose.weapon.q);
+      }
+      if (!isDragging || editTarget !== "handL") {
+        handL.position.fromArray(pose.handL.p);
+        handL.quaternion.fromArray(pose.handL.q);
+      }
+      if (!isDragging || editTarget !== "handR") {
+        handR.position.fromArray(pose.handR.p);
+        handR.quaternion.fromArray(pose.handR.q);
+      }
+    }
+
+    /* ============================================================
+       KEYFRAME WRITE-BACK
+       ============================================================ */
+    function ensureKeyframeAtPlayhead() {
+      for (const kf of keyframes) {
+        if (Math.abs(kf.t - playheadT) < 1e-4) return kf;
+      }
+      const pose = samplePose(playheadT) || defaultPose();
+      pose.t = playheadT;
+      keyframes.push(pose);
+      keyframes.sort((a, b) => a.t - b.t);
+      return pose;
+    }
+
+    function writeDraggedToKeyframe() {
+      /* -------- Global mode: apply an INCREMENTAL delta to every keyframe --------
+         On each objectChange we compute the delta between the CURRENT
+         rig pose and the pose we recorded on the PREVIOUS frame, then
+         apply that incremental transform to every keyframe.  Summed
+         over all frames of a drag, the keyframes accumulate exactly
+         the same total delta the rig has moved — no more, no less.
+
+         Rotation is applied AROUND EACH KEYFRAME'S OWN POSITION, using
+         the previous-frame rig position as the shared rotation centre.
+         Using a single fixed pivot (drag-start position) made rotations
+         orbit the wrong point and self-cancel after a few frames. */
+      if (globalEditPrev) {
+        const target =
+          editTarget === "weapon" ? weaponRig
+            : editTarget === "handL" ? handL
+              : handR;
+        const prev = globalEditPrev[editTarget];
+
+        const prevQ = prev.q.clone();
+        const afterQ = target.quaternion.clone();
+        const dq = afterQ.clone().multiply(prevQ.invert());
+        const dpWorld = target.position.clone().sub(prev.p);
+
+        /* Rotation centre: previous-frame rig position.  For pure
+           rotation this is where the gizmo was anchored, and for pure
+           translation it doesn't matter since dq is identity. */
+        const rotCentre = prev.p.clone();
+
+        for (const kf of keyframes) {
+          const kd =
+            editTarget === "weapon" ? kf.weapon
+              : editTarget === "handL" ? kf.handL
+                : kf.handR;
+
+          /* Position: rotate the keyframe's offset from the rotation
+             centre, then re-anchor and apply the world translation. */
+          const rel = new THREE.Vector3(
+            kd.p[0] - rotCentre.x,
+            kd.p[1] - rotCentre.y,
+            kd.p[2] - rotCentre.z,
+          );
+          rel.applyQuaternion(dq);
+          kd.p[0] = rotCentre.x + rel.x + dpWorld.x;
+          kd.p[1] = rotCentre.y + rel.y + dpWorld.y;
+          kd.p[2] = rotCentre.z + rel.z + dpWorld.z;
+
+          /* Orientation: premultiply by the same incremental delta. */
+          const oldQ = new THREE.Quaternion().fromArray(kd.q);
+          oldQ.premultiply(dq);
+          kd.q = oldQ.toArray();
+        }
+
+        /* Remember this frame's pose as the new "previous" baseline. */
+        globalEditPrev = {
+          weapon: { p: weaponRig.position.clone(), q: weaponRig.quaternion.clone() },
+          handL: { p: handL.position.clone(), q: handL.quaternion.clone() },
+          handR: { p: handR.position.clone(), q: handR.quaternion.clone() },
+        };
+
+        /* Keep the pivot fixed for the whole drag session. */
+        selectedKf = keyframes[0];
+
+        /* Defensive: some TransformControls paths nudge scale when the
+           attached object is mutated inside objectChange.  Snap it back. */
+        target.scale.set(1, 1, 1);
+        return;
+      }
+
+      /* -------- Normal mode: write to a single keyframe -------- */
+      const kf = ensureKeyframeAtPlayhead();
+      if (editTarget === "weapon") {
+        kf.weapon.p = weaponRig.position.toArray();
+        kf.weapon.q = weaponRig.quaternion.toArray();
+      } else if (editTarget === "handL") {
+        kf.handL.p = handL.position.toArray();
+        kf.handL.q = handL.quaternion.toArray();
+      } else if (editTarget === "handR") {
+        kf.handR.p = handR.position.toArray();
+        kf.handR.q = handR.quaternion.toArray();
+      }
+      selectedKf = kf;
+    }
+
+    /* ============================================================
+       INSTALL WEAPON
+       ============================================================ */
+    function installWeapon(def, preserveKeyframes) {
+      if (weaponMesh) {
+        weaponRig.remove(weaponMesh);
+        disposeGroup(weaponMesh);
+        weaponMesh = null;
+      }
+      if (!def.hipPose && def.heldPose) def.hipPose = def.heldPose;
+      if (!def.hipPose) def.hipPose = { p: [0.18, -0.22, -0.30], r: [0, 0, 0] };
+      if (!def.gripL) def.gripL = { p: [-0.02, -0.10, 0.02], r: [0, 0, 0] };
+      if (!def.gripR) def.gripR = { p: [0.00, -0.10, 0.04], r: [0, 0, 0] };
+
+      currentWeapon = def;
+      currentWeaponKey = def.key || "custom";
+
+      weaponMesh = buildWeaponMesh(def);
+      weaponRig.add(weaponMesh);
+      buildGripMarkers(def);
+
+      if (!preserveKeyframes) {
+        keyframes = [defaultPose()];
+        selectedKf = keyframes[0];
+        playheadT = 0;
+        const gchk = document.getElementById("globalEditChk");
+        if (gchk) gchk.checked = false;
+        globalEditBefore = null;
+        globalEditPivot = null;
+      } else {
+        for (const kf of keyframes) kf.t = Math.min(kf.t, duration);
+        keyframes.sort((a, b) => a.t - b.t);
+        if (!selectedKf || keyframes.indexOf(selectedKf) < 0) {
+          selectedKf = keyframes[0] || null;
+        }
+      }
+
+      refreshTimeline();
+      refreshKeyframeList();
+      refreshPoseControls();
+      updateExport();
+      attachTransformControls();
+    }
+
+    /* ============================================================
+       SCENE UPDATER
+       ============================================================ */
+    function updateScene(t) {
+      const pose = samplePose(t);
+      if (pose) applyPose(pose);
+    }
+
+    /* ============================================================
+       TIMELINE UI
+       ============================================================ */
+    const trackEl = document.getElementById("timelineTrack");
+    const dotsEl = document.getElementById("timelineDots");
+    const ticksEl = document.getElementById("timelineTicks");
+    const playheadEl = document.getElementById("timelinePlayhead");
+    const tValEl = document.getElementById("tVal");
+    const durValEl = document.getElementById("durVal");
+    const kfCountEl = document.getElementById("kfCount");
+
+    // Background ticks (every 0.25s) — drawn once per duration change
+    function refreshTicks() {
+      ticksEl.innerHTML = "";
+      const step = duration <= 3 ? 0.25 : duration <= 8 ? 0.5 : 1;
+      for (let t = 0; t <= duration + 1e-6; t += step) {
+        const line = document.createElement("div");
+        line.style.cssText =
+          "position:absolute;top:0;bottom:0;width:1px;background:#1a232c;" +
+          "left:" + ((t / duration) * 100) + "%";
+        ticksEl.appendChild(line);
+      }
+    }
+
+    function refreshTimeline() {
+      dotsEl.innerHTML = "";
+      keyframes.forEach((kf) => {
+        const d = document.createElement("div");
+        d.className = "kfDot" + (kf === selectedKf ? " sel" : "");
+        d.style.left = (kf.t / duration * 100) + "%";
+        d.title = "t = " + kf.t.toFixed(3) + "s";
+        d.addEventListener("pointerdown", (e) => startKfDrag(e, kf));
+        dotsEl.appendChild(d);
+      });
+      kfCountEl.textContent = keyframes.length;
+      durValEl.textContent = duration.toFixed(2);
+      updatePlayheadUI();
+    }
+
+    function updatePlayheadUI() {
+      playheadEl.style.left = (playheadT / duration * 100) + "%";
+      tValEl.textContent = playheadT.toFixed(3);
+    }
+
+    function setPlayhead(t) {
+      playheadT = Math.max(0, Math.min(duration, t));
+      updatePlayheadUI();
+      updateScene(playheadT);
+      refreshPoseControls();
+    }
+
+    function startKfDrag(e, kf) {
+      e.preventDefault();
+      e.stopPropagation();
+      pushUndo();
+      selectedKf = kf;
+      setPlayhead(kf.t);
+      refreshTimeline();
+      refreshKeyframeList();
+
+      const rect = trackEl.getBoundingClientRect();
+      const onMove = (ev) => {
+        const x = ev.clientX - rect.left;
+        const t = Math.max(0, Math.min(duration, (x / rect.width) * duration));
+        kf.t = t;
+        keyframes.sort((a, b) => a.t - b.t);
+        setPlayhead(t);
+        refreshTimeline();
+      };
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        refreshTimeline();
+        refreshKeyframeList();
+        updateExport();
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    }
+
+    trackEl.addEventListener("pointerdown", (e) => {
+      // Only respond to clicks on the track itself (dots stop propagation)
+      e.preventDefault();
+      const rect = trackEl.getBoundingClientRect();
+      const t0 = ((e.clientX - rect.left) / rect.width) * duration;
+      setPlayhead(t0);
+
+      const onMove = (ev) => {
+        const x = ev.clientX - rect.left;
+        setPlayhead((x / rect.width) * duration);
+      };
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    });
+
+    /* ============================================================
+       KEYFRAME LIST
+       ============================================================ */
+    const kfListEl = document.getElementById("kfList");
+    function refreshKeyframeList() {
+      kfListEl.innerHTML = "";
+      keyframes.forEach((kf, i) => {
+        const row = document.createElement("div");
+        row.className = "kfRow" + (kf === selectedKf ? " sel" : "");
+        const l = document.createElement("span");
+        l.textContent = "#" + (i + 1) + " · t = " + kf.t.toFixed(3) + "s";
+        const r2 = document.createElement("span");
+        r2.textContent = "◆";
+        row.appendChild(l);
+        row.appendChild(r2);
+        row.addEventListener("click", () => {
+          selectedKf = kf;
+          setPlayhead(kf.t);
+          refreshTimeline();
+          refreshKeyframeList();
+        });
+        kfListEl.appendChild(row);
+      });
+    }
+
+    /* ============================================================
+       POSE CONTROLS
+       ============================================================ */
+    const poseEl = document.getElementById("poseControls");
+    const poseTargetLabel = document.getElementById("poseTargetLabel");
+
+    function makeAxisRow(label, value, min, max, step, onChange) {
+      const row = document.createElement("div");
+      row.className = "axisRow";
+
+      const lbl = document.createElement("span");
+      lbl.className = "axisLbl";
+      lbl.textContent = label;
+
+      const slider = document.createElement("input");
+      slider.type = "range";
+      slider.min = min; slider.max = max; slider.step = step;
+      slider.value = value;
+
+      const num = document.createElement("input");
+      num.type = "number";
+      num.min = min; num.max = max; num.step = step;
+      num.value = value.toFixed(3);
+
+      let _dirty = false;                      // one undo per edit session
+      function resetDirty() { _dirty = false; }
+
+      function fire(v, from) {
+        v = parseFloat(v);
+        if (isNaN(v)) return;
+        if (!_dirty) { pushUndo(); _dirty = true; }
+        if (from !== "slider") slider.value = v;
+        if (from !== "num") num.value = v.toFixed(3);
+        onChange(v);
+      }
+      slider.addEventListener("input", () => fire(slider.value, "slider"));
+      num.addEventListener("input", () => fire(num.value, "num"));
+
+      slider.addEventListener("pointerup", resetDirty);
+      slider.addEventListener("blur", resetDirty);
+      num.addEventListener("pointerup", resetDirty);
+      num.addEventListener("blur", resetDirty);
+
+      row.appendChild(lbl);
+      row.appendChild(slider);
+      row.appendChild(num);
+      return row;
+    }
+
+    function refreshPoseControls() {
+      poseEl.innerHTML = "";
+      poseTargetLabel.textContent =
+        editTarget === "weapon" ? "Weapon" :
+          editTarget === "handL" ? "Left Hand" : "Right Hand";
+
+      const pose = samplePose(playheadT);
+      if (!pose) return;
+
+      let data;
+      if (editTarget === "weapon") data = pose.weapon;
+      else if (editTarget === "handL") data = pose.handL;
+      else data = pose.handR;
+
+      // ---- Position ----
+      const pg = document.createElement("div");
+      pg.className = "poseGroup";
+      const pl = document.createElement("div");
+      pl.className = "poseLabel";
+      pl.textContent = "Position (metres)";
+      pg.appendChild(pl);
+
+      ["X", "Y", "Z"].forEach((ax, i) => {
+        pg.appendChild(makeAxisRow(ax, data.p[i], -1, 1, 0.001, (v) => {
+          const kf = ensureKeyframeAtPlayhead();
+          const kd = (editTarget === "weapon") ? kf.weapon
+            : (editTarget === "handL") ? kf.handL : kf.handR;
+          kd.p[i] = v;
+          selectedKf = kf;
+          applyPose(samplePose(playheadT));
+          refreshTimeline();
+          refreshKeyframeList();
+          updateExport();
+        }));
+      });
+      poseEl.appendChild(pg);
+
+      // ---- Rotation ----
+      const q = new THREE.Quaternion().fromArray(data.q);
+      const e = new THREE.Euler().setFromQuaternion(q, "YXZ");
+      const rotDeg = [e.x / DEG, e.y / DEG, e.z / DEG];
+
+      const rg = document.createElement("div");
+      rg.className = "poseGroup";
+      const rl = document.createElement("div");
+      rl.className = "poseLabel";
+      rl.textContent = "Rotation (° YXZ)";
+      rg.appendChild(rl);
+
+      ["X", "Y", "Z"].forEach((ax, i) => {
+        rg.appendChild(makeAxisRow(ax, rotDeg[i], -180, 180, 0.5, (v) => {
+          rotDeg[i] = v;
+          const ne = new THREE.Euler(rotDeg[0] * DEG, rotDeg[1] * DEG, rotDeg[2] * DEG, "YXZ");
+          const nq = new THREE.Quaternion().setFromEuler(ne);
+          const kf = ensureKeyframeAtPlayhead();
+          const kd = (editTarget === "weapon") ? kf.weapon
+            : (editTarget === "handL") ? kf.handL : kf.handR;
+          kd.q = nq.toArray();
+          selectedKf = kf;
+          applyPose(samplePose(playheadT));
+          refreshTimeline();
+          refreshKeyframeList();
+          updateExport();
+        }));
+      });
+      poseEl.appendChild(rg);
+    }
+
+    /* ============================================================
+       EDIT TARGET / MODE
+       ============================================================ */
+    function setEditTarget(t) {
+      editTarget = t;
+      globalEditBefore = null;
+      globalEditPrev = null;
+      globalEditPivot = null;
+      document.querySelectorAll(".target-btn").forEach(b =>
+        b.classList.toggle("active", b.dataset.target === t));
+      document.getElementById("hudTarget").textContent =
+        t === "weapon" ? "Weapon" : t === "handL" ? "Left Hand" : "Right Hand";
+      attachTransformControls();
+      refreshPoseControls();
+    }
+
+    function setTransformMode(m) {
+      transformMode = m;
+      document.querySelectorAll(".mode-btn").forEach(b =>
+        b.classList.toggle("active", b.dataset.mode === m));
+      document.getElementById("hudMode").textContent =
+        m === "translate" ? "Move" : "Rotate";
+      attachTransformControls();
+    }
+
+    document.querySelectorAll(".target-btn").forEach(b =>
+      b.addEventListener("click", () => setEditTarget(b.dataset.target)));
+    document.querySelectorAll(".mode-btn").forEach(b =>
+      b.addEventListener("click", () => setTransformMode(b.dataset.mode)));
+
+    /* ============================================================
+       ARMS UI
+       ============================================================ */
+    document.getElementById("showArmsChk").addEventListener("change", (e) => {
+      showArms = !!e.target.checked;
+    });
+
+    (function wireShoulderSliders() {
+      const rIds = ["shR_X", "shR_Y", "shR_Z"];
+      const lIds = ["shL_X", "shL_Y", "shL_Z"];
+      rIds.forEach((id, i) => {
+        const el = document.getElementById(id);
+        el.addEventListener("input", () => {
+          const v = parseFloat(el.value) || 0;
+          if (i === 0) SHOULDER.R.x = v;
+          else if (i === 1) SHOULDER.R.y = v;
+          else SHOULDER.R.z = v;
+        });
+      });
+      lIds.forEach((id, i) => {
+        const el = document.getElementById(id);
+        el.addEventListener("input", () => {
+          const v = parseFloat(el.value) || 0;
+          if (i === 0) SHOULDER.L.x = v;
+          else if (i === 1) SHOULDER.L.y = v;
+          else SHOULDER.L.z = v;
+        });
+      });
+    })();
+
+    /* ============================================================
+       PLAYBACK
+       ============================================================ */
+    const playBtn = document.getElementById("playBtn");
+    const speedEl = document.getElementById("speed");
+    const speedValEl = document.getElementById("speedVal");
+    const loopChk = document.getElementById("loopChk");
+    const durInput = document.getElementById("durInput");
+
+    function updatePlayButton() {
+      playBtn.textContent = playing ? "⏸ Pause" : "▶ Play";
+    }
+
+    playBtn.addEventListener("click", () => {
+      playing = !playing;
+      updatePlayButton();
+    });
+    speedEl.addEventListener("input", () => {
+      playSpeed = parseFloat(speedEl.value);
+      speedValEl.textContent = playSpeed.toFixed(2) + "×";
+    });
+    loopChk.addEventListener("change", () => {
+      loopPlayback = loopChk.checked;
+    });
+    durInput.addEventListener("change", () => {
+      const v = Math.max(0.2, Math.min(20, parseFloat(durInput.value) || 2));
+      if (Math.abs(v - duration) < 1e-6) return;
+      pushUndo();
+      duration = v;
+      durInput.value = v.toFixed(2);
+      for (const kf of keyframes) kf.t = Math.min(kf.t, duration);
+      keyframes.sort((a, b) => a.t - b.t);
+      playheadT = Math.min(playheadT, duration);
+      refreshTicks();
+      refreshTimeline();
+      refreshKeyframeList();
+      updateExport();
+    });
+
+    /* ============================================================
+       KEYFRAME BUTTONS
+       ============================================================ */
+    document.getElementById("addKfBtn").addEventListener("click", () => {
+      pushUndo();
+      const kf = ensureKeyframeAtPlayhead();
+      selectedKf = kf;
+      refreshTimeline();
+      refreshKeyframeList();
+      refreshPoseControls();
+      updateExport();
+    });
+
+    document.getElementById("delKfBtn").addEventListener("click", () => {
+      if (!selectedKf) return;
+      pushUndo();
+      if (keyframes.length <= 1) {
+        // reset last keyframe instead of emptying the array
+        keyframes = [defaultPose()];
+        selectedKf = keyframes[0];
+      } else {
+        const i = keyframes.indexOf(selectedKf);
+        if (i < 0) return;
+        keyframes.splice(i, 1);
+        selectedKf = null;
+      }
+      refreshTimeline();
+      refreshKeyframeList();
+      refreshPoseControls();
+      updateExport();
+    });
+
+    document.getElementById("dupKfBtn").addEventListener("click", () => {
+      const src = selectedKf || samplePose(playheadT);
+      if (!src) return;
+      pushUndo();
+      const copy = cloneKf(src);
+      copy.t = Math.min(duration, playheadT + 0.25);
+      keyframes.push(copy);
+      keyframes.sort((a, b) => a.t - b.t);
+      selectedKf = copy;
+      setPlayhead(copy.t);
+      refreshTimeline();
+      refreshKeyframeList();
+      refreshPoseControls();
+      updateExport();
+    });
+
+    document.getElementById("clearKfBtn").addEventListener("click", () => {
+      if (!confirm("Clear all keyframes?")) return;
+      pushUndo();
+      keyframes = [defaultPose()];
+      selectedKf = keyframes[0];
+      playheadT = 0;
+      refreshTimeline();
+      refreshKeyframeList();
+      refreshPoseControls();
+      updateExport();
+    });
+
+    /* ============================================================
+       UNDO BUTTON + SHORTCUT
+       ============================================================ */
+    document.getElementById("undoBtn").addEventListener("click", undo);
+
+    /* ============================================================
+       WEAPON SELECTION
+       ============================================================ */
+    const weaponSelect = document.getElementById("weaponSelect");
+    weaponSelect.value = "pistol";
+
+    weaponSelect.addEventListener("change", () => {
+      const want = weaponSelect.value;
+      if (keyframes.length > 1 &&
+        !confirm("Switching weapons will reset keyframes. Continue?")) {
+        weaponSelect.value = currentWeaponKey;
+        return;
+      }
+      pushUndo();
+      installWeapon(PRESETS[want] || PRESETS.pistol, false);
+    });
+
+    document.getElementById("loadJson").addEventListener("click", () => {
+      try {
+        const txt = document.getElementById("weaponJson").value.trim();
+        if (!txt) return;
+        const def = JSON.parse(txt);
+        if (!Array.isArray(def.model)) {
+          alert("Weapon JSON must have a `model` array.");
+          return;
+        }
+        pushUndo();
+        installWeapon(def, false);
+      } catch (e) {
+        alert("Bad JSON: " + e.message);
+      }
+    });
+
+    /* ============================================================
+       CAMERA VIEWS
+       ============================================================ */
+    document.getElementById("viewSide").addEventListener("click", setSideView);
+    document.getElementById("viewFP").addEventListener("click", setFPView);
+    document.getElementById("viewTop").addEventListener("click", setTopView);
+
+    /* ============================================================
+       KEYBOARD SHORTCUTS
+       ============================================================ */
+    window.addEventListener("keydown", (e) => {
+      const tn = (e.target && e.target.tagName) || "";
+      if (tn === "INPUT" || tn === "TEXTAREA" || tn === "SELECT") return;
+
+      /* Ctrl/Cmd + Z → undo */
+      if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z")) {
+        e.preventDefault();
+        undo();
+        return;
+      }
+
+      switch (e.key) {
+        case "w": case "W": setTransformMode("translate"); break;
+        case "e": case "E": setTransformMode("rotate"); break;
+        case "1": setEditTarget("weapon"); break;
+        case "2": setEditTarget("handL"); break;
+        case "3": setEditTarget("handR"); break;
+        case " ": e.preventDefault(); playing = !playing; updatePlayButton(); break;
+      }
+    });
+
+    /* ============================================================
+       EXPORT
+       ============================================================ */
+    const exportBox = document.getElementById("exportBox");
+
+    function fmt3(a) { return "[" + a.map(n => n.toFixed(4)).join(", ") + "]"; }
+    function fmt4(a) { return "[" + a.map(n => n.toFixed(5)).join(", ") + "]"; }
+
+    function updateExport() {
+      if (!currentWeapon || keyframes.length === 0) {
+        exportBox.textContent = "/* load a weapon first */";
+        return;
+      }
+
+      const hip = currentWeapon.hipPose || currentWeapon.heldPose || { p: [0, 0, 0], r: [0, 0, 0] };
+      const gripL = currentWeapon.gripL || { p: [0, 0, 0], r: [0, 0, 0] };
+      const gripR = currentWeapon.gripR || { p: [0, 0, 0], r: [0, 0, 0] };
+
+      const kfLines = keyframes.map(kf =>
+        "    { t: " + kf.t.toFixed(4) +
+        ",\n      w: { p: " + fmt3(kf.weapon.p) + ", q: " + fmt4(kf.weapon.q) + " }" +
+        ",\n      l: { p: " + fmt3(kf.handL.p) + ", q: " + fmt4(kf.handL.q) + " }" +
+        ",\n      r: { p: " + fmt3(kf.handR.p) + ", q: " + fmt4(kf.handR.q) + " } }"
+      ).join(",\n");
+
+      const out =
+        "/* Keyframed inspect animation — generated by inspectEditor.html\n" +
+        "   Paste into INSPECT_PROFILES (weapons.js) and set\n" +
+        "   inspectProfile: \"custom\" on the weapon def.\n" +
+        "   `smoothstep` and `_qFromEuler` live alongside the other profiles. */\n" +
+        "\n" +
+        "custom: (function () {\n" +
+        "  var KF = [\n" + kfLines + "\n  ];\n" +
+        "  var HIP_P = " + fmt3(hip.p) + ", HIP_R = " + fmt3(hip.r) + ";\n" +
+        "  var GRIP_L = { p: " + fmt3(gripL.p) + ", r: " + fmt3(gripL.r) + " };\n" +
+        "  var GRIP_R = { p: " + fmt3(gripR.p) + ", r: " + fmt3(gripR.r) + " };\n" +
+        "\n" +
+        "  var _E = new THREE.Euler();\n" +
+        "  var _hipQ = new THREE.Quaternion().setFromEuler(\n" +
+        "    _E.set(HIP_R[0], HIP_R[1], HIP_R[2], \"XYZ\"));\n" +
+        "  var _hipP = new THREE.Vector3(HIP_P[0], HIP_P[1], HIP_P[2]);\n" +
+        "  var _invHipQ = _hipQ.clone().invert();\n" +
+        "\n" +
+        "  function _grip(gr) {\n" +
+        "    var q = new THREE.Quaternion().setFromEuler(\n" +
+        "      _E.set(gr.r[0], gr.r[1], gr.r[2], \"XYZ\"));\n" +
+        "    var p = new THREE.Vector3(gr.p[0], gr.p[1], gr.p[2])\n" +
+        "      .applyQuaternion(_hipQ).add(_hipP);\n" +
+        "    return { p: p, q: _hipQ.clone().multiply(q) };\n" +
+        "  }\n" +
+        "  var _bL = _grip(GRIP_L), _bR = _grip(GRIP_R);\n" +
+        "  var _invBLq = _bL.q.clone().invert(), _invBRq = _bR.q.clone().invert();\n" +
+        "\n" +
+        "  var _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3();\n" +
+        "  var _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion();\n" +
+        "  var _sa = new THREE.Quaternion(), _sb = new THREE.Quaternion();\n" +
+        "\n" +
+        "  function _lerp3(a, b, s) {\n" +
+        "    return [a[0]+(b[0]-a[0])*s, a[1]+(b[1]-a[1])*s, a[2]+(b[2]-a[2])*s];\n" +
+        "  }\n" +
+        "  function _slerpQ(a, b, s) {\n" +
+        "    _sa.fromArray(a); _sb.fromArray(b);\n" +
+        "    if (_sa.dot(_sb) < 0) _sb.set(-_sb.x, -_sb.y, -_sb.z, -_sb.w);\n" +
+        "    _sa.slerp(_sb, s);\n" +
+        "    return [_sa.x, _sa.y, _sa.z, _sa.w];\n" +
+        "  }\n" +
+        "  function _sample(t) {\n" +
+        "    var n = KF.length;\n" +
+        "    if (n === 0) return null;\n" +
+        "    if (n === 1 || t <= KF[0].t) return KF[0];\n" +
+        "    var L = KF[n - 1];\n" +
+        "    if (t >= L.t) return L;\n" +
+        "    for (var i = 0; i < n - 1; i++) {\n" +
+        "      var a = KF[i], b = KF[i + 1];\n" +
+        "      if (t >= a.t && t <= b.t) {\n" +
+        "        var span = b.t - a.t;\n" +
+        "        var u = span < 1e-6 ? 0 : (t - a.t) / span;\n" +
+        "        var s = u * u * (3 - 2 * u);\n" +
+        "        return {\n" +
+        "          w: { p: _lerp3(a.w.p, b.w.p, s), q: _slerpQ(a.w.q, b.w.q, s) },\n" +
+        "          l: { p: _lerp3(a.l.p, b.l.p, s), q: _slerpQ(a.l.q, b.l.q, s) },\n" +
+        "          r: { p: _lerp3(a.r.p, b.r.p, s), q: _slerpQ(a.r.q, b.r.q, s) }\n" +
+        "        };\n" +
+        "      }\n" +
+        "    }\n" +
+        "    return L;\n" +
+        "  }\n" +
+        "\n" +
+        "  return function (t) {\n" +
+        "    var s = _sample(t);\n" +
+        "    if (!s) return { dPos: [0,0,0], quat: null, pivot: null, handL: null, handR: null };\n" +
+        "\n" +
+        "    var wp = _v1.set(s.w.p[0], s.w.p[1], s.w.p[2]).sub(_hipP);\n" +
+        "    var lp = _v2.set(s.l.p[0], s.l.p[1], s.l.p[2]).sub(_bL.p).applyQuaternion(_invHipQ);\n" +
+        "    var rp = _v3.set(s.r.p[0], s.r.p[1], s.r.p[2]).sub(_bR.p).applyQuaternion(_invHipQ);\n" +
+        "\n" +
+        "    _q1.fromArray(s.w.q).multiply(_invHipQ);\n" +
+        "    _q2.fromArray(s.l.q).multiply(_invBLq);\n" +
+        "    _q3.fromArray(s.r.q).multiply(_invBRq);\n" +
+        "\n" +
+        "    return {\n" +
+        "      dPos: [wp.x, wp.y, wp.z],\n" +
+        "      quat: _q1,\n" +
+        "      pivot: null,\n" +
+        "      handL: { freezeAtBase: true, dPos: [lp.x, lp.y, lp.z], dQuat: _q2 },\n" +
+        "      handR: { freezeAtBase: true, dPos: [rp.x, rp.y, rp.z], dQuat: _q3 }\n" +
+        "    };\n" +
+        "  };\n" +
+        "})(),";
+
+      exportBox.textContent = out;
+    }
+
+    document.getElementById("copyBtn").addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(exportBox.textContent);
+        const b = document.getElementById("copyBtn");
+        const orig = b.textContent;
+        b.textContent = "✓ Copied";
+        setTimeout(() => { b.textContent = orig; }, 1200);
+      } catch (e) {
+        alert("Clipboard blocked — copy the text manually from the box below.");
+      }
+    });
+
+    /* ============================================================
+       RENDER LOOP
+       ============================================================ */
+    let lastNow = performance.now();
+
+    function tick(now) {
+      const dt = Math.min(0.1, (now - lastNow) / 1000);
+      lastNow = now;
+
+      if (playing && !isDragging) {
+        playheadT += dt * playSpeed;
+        if (playheadT > duration) {
+          if (loopPlayback) playheadT = playheadT - duration;
+          else { playheadT = duration; playing = false; updatePlayButton(); }
+        }
+        updatePlayheadUI();
+      }
+
+      // During a global drag we ignore the playhead and just render the
+      // first keyframe (which was just transformed).  Normal drags still
+      // ride the playhead as before.
+      const pose =
+        globalEditBefore ? cloneKf(keyframes[0]) : samplePose(playheadT);
+      if (pose) applyPose(pose);
+
+      if (showArms) {
+        armL.visible = true;
+        armR.visible = true;
+        updateArm(armL, SHOULDER.L, handL.position);
+        updateArm(armR, SHOULDER.R, handR.position);
+      } else {
+        armL.visible = false;
+        armR.visible = false;
+      }
+
+      renderer.render(scene, camera);
+      requestAnimationFrame(tick);
+    }
+
+    /* ============================================================
+       RESIZE
+       ============================================================ */
+    function resize() {
+      const view = document.getElementById("view");
+      const w = view.clientWidth, h = view.clientHeight;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
+    window.addEventListener("resize", resize);
+
+    /* ============================================================
+       IMPORT — bake procedural profiles into keyframes
+       ============================================================ */
+    const importSelect = document.getElementById("importProfileSelect");
+    const importCode = document.getElementById("importCode");
+
+    // Pre-fill the textarea with the selected profile's source
+    importSelect.addEventListener("change", () => {
+      const which = importSelect.value;
+      if (which && which !== "custom" && ORIGINAL_PROFILES[which]) {
+        importCode.value = ORIGINAL_PROFILES[which].toString();
+      }
+    });
+
+    document.getElementById("importBtn").addEventListener("click", () => {
+      if (!currentWeapon) { alert("Load a weapon first."); return; }
+
+      const which = importSelect.value;
+      if (!which) { alert("Pick a profile to import."); return; }
+
+      let fn = null;
+      if (which === "custom") {
+        const src = importCode.value.trim();
+        if (!src) { alert("Paste the profile function source first."); return; }
+        try {
+          fn = new Function(
+            "smoothstep", "dwell", "_qFromEuler", "THREE",
+            '"use strict"; return (' + src + ');'
+          )(smoothstep, dwell, _qFromEuler, THREE);
+        } catch (e) {
+          alert("Could not compile custom profile:\n" + e.message);
+          return;
+        }
+      } else {
+        fn = ORIGINAL_PROFILES[which];
+      }
+      if (typeof fn !== "function") { alert("Invalid profile."); return; }
+
+      const samples = Math.max(4, Math.min(64,
+        parseInt(document.getElementById("importSamples").value, 10) || 16));
+      const dur = Math.max(0.5, Math.min(15,
+        parseFloat(document.getElementById("importDur").value) || 2.4));
+
+      try {
+        pushUndo();
+        const result = bakeProfileAdaptive(fn, currentWeapon, samples, dur, 512);
+        keyframes = result.kfs;
+        selectedKf = keyframes[0];
+        duration = dur;
+        document.getElementById("durInput").value = dur.toFixed(2);
+        playheadT = 0;
+        refreshTicks();
+        refreshTimeline();
+        refreshKeyframeList();
+        refreshPoseControls();
+        updateExport();
+
+        const info = document.getElementById("importInfo");
+        if (info) {
+          info.innerHTML =
+            "<span style='color:#4ad07a'>✓</span> Baked with <b>" +
+            result.samples + "</b> samples" +
+            (result.samples > samples ? " <i>(auto-raised from " + samples + ")</i>" : "");
+        }
+      } catch (e) {
+        console.error(e);
+        alert("Bake failed: " + e.message);
+      }
+    });
+
+    /* ============================================================
+       BOOT
+       ============================================================ */
+    rebuildWeaponDropdown();
+    rebuildImportProfileDropdown();
+    weaponSelect.value = "pistol";
+
+    _suppressUndo = true;
+    installWeapon(PRESETS.pistol, false);
+    refreshTicks();
+    refreshTimeline();
+    refreshKeyframeList();
+    refreshPoseControls();
+    updateExport();
+    attachTransformControls();
+    _suppressUndo = false;
+    updateUndoButton();
+    resize();
+    requestAnimationFrame(tick);
+  </script>
+</body>
+
+</html>

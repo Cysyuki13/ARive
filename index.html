@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>ARive — Voxel Survival</title>
+    <!-- ARive game favicon / tab icon -->
+    <link rel="icon" type="image/png" href="assets/icons/ARive_icon.png">
+    <link rel="shortcut icon" type="image/png" href="assets/icons/ARive_icon.png">
+    <meta name="application-name" content="ARive">
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+
+<body>
+
+    <canvas id="game"></canvas>
+
+    <div id="hud" class="hidden">
+        <div id="crosshair"><span></span><span></span></div>
+
+        <div id="vitals">
+            <div class="vital"><span class="vlabel">HP</span>
+                <div class="bar">
+                    <div class="fill hp" id="fillHealth"></div>
+                </div>
+                <span class="vnum" id="numHealth">100</span>
+            </div>
+            <div class="vital"><span class="vlabel">FOOD</span>
+                <div class="bar">
+                    <div class="fill food" id="fillHunger"></div>
+                </div>
+                <span class="vnum" id="numHunger">100</span>
+            </div>
+            <div class="vital"><span class="vlabel">H₂O</span>
+                <div class="bar">
+                    <div class="fill water" id="fillThirst"></div>
+                </div>
+                <span class="vnum" id="numThirst">100</span>
+            </div>
+        </div>
+
+        <div id="scrap"><b id="scrapCount">0</b> <span>SCRAP</span></div>
+        <div id="hotbar"></div>
+
+        <div id="mpBadge" style="display:none; position:absolute; top:14px; right:18px;
+             font-size:11px; letter-spacing:1px; color:#e8c86a;
+             text-shadow:0 1px 0 #000,0 0 8px rgba(232,200,106,.45);"></div>
+
+        <div id="info">
+            <span id="fps">FPS 0</span>
+            <span id="threats">THREATS 0</span>
+            <span id="peers">SURVIVORS 1</span>
+        </div>
+
+        <div id="hint">1/2 gun &nbsp;·&nbsp; 3-7 tool &nbsp;·&nbsp; LMB fire/use &nbsp;·&nbsp; RMB scope &nbsp;·&nbsp; R
+            reload &nbsp;·&nbsp; E pick up &nbsp;·&nbsp; TAB bag &nbsp;·&nbsp; ESC menu</div>
+
+    </div>
+
+    <div id="loading" class="screen hidden">
+        <div class="panel">
+            <h1 class="glow">GENERATING RUINS…</h1>
+            <p class="sub">Streaming terrain around you · carving streets · raising towers</p>
+            <div id="progressWrap">
+                <div id="progressBar"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- NEW: map selection screen (shown first) -->
+    <div id="mapSelect" class="screen">
+        <div class="panel">
+            <!-- Google 登入區塊 -->
+            <div id="authBox" style="
+            display: flex; align-items: center; gap: 12px;
+            background: #12161d; border: 2px solid #2b333f;
+            padding: 10px 14px; margin-bottom: 20px;
+            font-family: 'Courier New', monospace;
+        ">
+                <!-- 未登入 -->
+                <div id="authGuest" style="display: flex; align-items: center; gap: 12px; width: 100%;">
+                    <span style="color: #7a6e5e; font-size: 11px; letter-spacing: 2px;">
+                        NOT SIGNED IN
+                    </span>
+                    <button id="authSignInBtn" style="
+                    margin-left: auto;
+                    background: transparent;
+                    border: 2px solid #e8c86a;
+                    color: #e8c86a;
+                    font: bold 11px 'Courier New', monospace;
+                    letter-spacing: 2px;
+                    padding: 6px 14px;
+                    cursor: pointer;
+                ">🔓 SIGN IN WITH GOOGLE</button>
+                </div>
+
+                <!-- 已登入 -->
+                <div id="authUser" style="display: none; align-items: center; gap: 12px; width: 100%;">
+                    <img id="authAvatar" src="" alt="" style="
+                    width: 36px; height: 36px;
+                    border: 2px solid #e8c86a;
+                    border-radius: 50%;
+                    background: #05070a;
+                    object-fit: cover;
+                ">
+                    <div style="display: flex; flex-direction: column; min-width: 0;">
+                        <span id="authName" style="
+                        color: #f6dd8b; font: bold 12px 'Courier New', monospace;
+                        letter-spacing: 1px;
+                        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                    ">—</span>
+                        <span id="authEmail" style="
+                        color: #7a6e5e; font: 10px 'Courier New', monospace;
+                        letter-spacing: 1px;
+                        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                    ">—</span>
+                    </div>
+                    <button id="authSignOutBtn" style="
+                    margin-left: auto;
+                    background: transparent;
+                    border: 2px solid #6a5a44;
+                    color: #a89a84;
+                    font: bold 10px 'Courier New', monospace;
+                    letter-spacing: 1px;
+                    padding: 5px 10px;
+                    cursor: pointer;
+                ">SIGN OUT</button>
+                </div>
+            </div>
+
+            <h1 class="glow">ARive</h1>
+            <p class="sub">Choose your arena</p>
+
+
+            <div class="map-grid">
+                <button class="map-card" data-map="city">
+                    <div class="map-icon">🏙</div>
+                    <div class="map-name">ARive</div>
+                    <div class="map-desc">Procedural ruins<br>hostile creatures<br>full survival loop</div>
+                </button>
+                <button class="map-card" data-map="sandbox">
+                    <div class="map-icon">▢</div>
+                    <div class="map-name">SANDBOX</div>
+                    <div class="map-desc">flat test map<br>dev tool panel<br>no survival drain</div>
+                </button>
+            </div>
+
+            <!-- NEW: direct entry into the multiplayer menu -->
+            <button id="mapMpBtn" class="btn btn-secondary" style="margin: 4px 0 24px;">⚔ MULTIPLAYER</button>
+
+            <div class="controls">
+                <div><b>W A S D</b><span>Move</span></div>
+                <div><b>MOUSE</b><span>Look</span></div>
+                <div><b>SPACE</b><span>Jump</span></div>
+                <div><b>SHIFT</b><span>Sprint</span></div>
+                <div><b>LMB</b><span>Use tool</span></div>
+                <div><b>1 / 2</b><span>Weapon slot</span></div>
+                <div><b>3 – 7</b><span>Select tool</span></div>
+                <div><b>R</b><span>Reload</span></div>
+                <div><b>TAB</b><span>Inventory</span></div>
+                <div><b>G</b><span>Dev tools (sandbox)</span></div>
+                <div><b>ESC</b><span>Pause</span></div>
+            </div>
+
+            <p class="note">Multiplayer: open in a second tab — voxel destruction syncs live.</p>
+        </div>
+    </div>
+
+    <div id="overlay" class="screen hidden">
+        <div class="panel">
+            <h1 class="glow" id="mapTitle">ARive</h1>
+            <p class="sub" id="mapSubtitle">The city fell. The creatures stayed.</p>
+
+            <button id="playBtn" class="btn">ENTER</button>
+            <div class="overlay-secondary">
+                <button id="resetBtn" class="btn btn-secondary">⟳ RESET MAP</button>
+                <button id="settingsBtn" class="btn btn-secondary">⚙ SETTINGS</button>
+                <button id="mpBtn" class="btn btn-secondary">⚔ MULTIPLAYER</button>
+                <button id="mpLeaveBtn" class="btn btn-secondary hidden">✕ LEAVE SESSION</button>
+                <button id="menuBtn" class="btn btn-secondary">☰ MAIN MENU</button>
+            </div>
+            <p class="note" id="mapNote">TAB bag &nbsp;·&nbsp; ESC menu &nbsp;·&nbsp; LMB use tool</p>
+        </div>
+    </div>
+
+    <div id="deathScreen" class="screen hidden">
+        <div class="panel">
+            <h1 class="red">YOU DIED</h1>
+            <p class="sub" id="deathMsg">The ruins claimed you.</p>
+            <button id="respawnBtn" class="btn">RESPAWN</button>
+        </div>
+    </div>
+
+    <div id="settingsScreen" class="screen hidden">
+        <div class="panel">
+            <h1 class="glow">SETTINGS</h1>
+            <p class="sub">Tune your experience</p>
+
+            <div class="settings-list">
+                <div class="setting-row">
+                    <label for="setSensitivity">MOUSE SENSITIVITY</label>
+                    <span class="setting-value" id="setSensitivityVal">x1.0</span>
+                    <input type="range" id="setSensitivity" min="0.2" max="3" step="0.1" value="1">
+                </div>
+                <div class="setting-row">
+                    <label for="setViewChunks">VIEWING CHUNKS</label>
+                    <span class="setting-value" id="setViewChunksVal">6</span>
+                    <input type="range" id="setViewChunks" min="3" max="12" step="1" value="6">
+                </div>
+                <div class="setting-row">
+                    <label for="setMasterVolume">MASTER VOLUME</label>
+                    <input type="range" id="setMasterVolume" min="0" max="1" step="0.05" value="1">
+                    <span id="setMasterVolumeVal" class="set-val">100%</span>
+                </div>
+
+                <div class="setting-row">
+                    <label for="setSeVolume">SE VOLUME</label>
+                    <input type="range" id="setSeVolume" min="0" max="1" step="0.05" value="1">
+                    <span id="setSeVolumeVal" class="set-val">100%</span>
+                </div>
+            </div>
+
+            <button id="settingsBackBtn" class="btn">BACK</button>
+            <p class="note">Changes save automatically.</p>
+        </div>
+    </div>
+
+    <div id="mpScreen" class="screen hidden">
+        <div class="panel">
+            <h1 class="glow">MULTIPLAYER</h1>
+
+            <div id="mpPicker">
+                <div id="mpNameField">
+                    <div class="mp-field">
+                        <label for="mpName">YOUR NAME</label>
+                        <input type="text" id="mpName" maxlength="16" placeholder="Survivor" autocomplete="off" />
+                    </div>
+                </div>
+
+                <div id="mpActions" class="mp-actions">
+                    <button id="mpHostBtn" class="btn">HOST WORLD</button>
+                    <button id="mpJoinBtn" class="btn">JOIN WORLD</button>
+                </div>
+
+                <!-- ============ HOST ============ -->
+                <div id="mpHostPanel" class="hidden">
+                    <p class="sub" style="margin-top:18px;">Configure your room</p>
+
+                    <div class="mp-field">
+                        <label for="mpRoomName">ROOM NAME</label>
+                        <input type="text" id="mpRoomName" maxlength="32" placeholder="My World" autocomplete="off" />
+                    </div>
+
+                    <div class="mp-field">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                            <input type="checkbox" id="mpRoomPrivate" />
+                            <span>PASSWORD PROTECTED</span>
+                        </label>
+                    </div>
+
+                    <div class="mp-field hidden" id="mpPasswordField">
+                        <label for="mpRoomPassword">PASSWORD</label>
+                        <input type="password" id="mpRoomPassword" maxlength="32" autocomplete="new-password" />
+                    </div>
+
+                    <p class="sub" style="margin-top:18px;">Choose a world:</p>
+                    <div class="map-grid" style="margin-bottom:18px;">
+                        <button class="map-card" data-host-map="city">
+                            <div class="map-icon">🏙</div>
+                            <div class="map-name">ARive</div>
+                            <div class="map-desc">Procedural ruins</div>
+                        </button>
+                        <button class="map-card" data-host-map="sandbox">
+                            <div class="map-icon">▢</div>
+                            <div class="map-name">SANDBOX</div>
+                            <div class="map-desc">Flat test map</div>
+                        </button>
+                    </div>
+                    <div class="mp-status" id="mpHostStatus"></div>
+                    <button id="mpHostBack" class="btn btn-secondary">BACK</button>
+                </div>
+
+                <!-- ============ JOIN (room list) ============ -->
+                <div id="mpJoinPanel" class="hidden">
+                    <p class="sub" style="margin-top:18px;">Live rooms</p>
+                    <div id="mpRoomList" class="mp-room-list">
+                        <div class="mp-room-empty">Loading rooms…</div>
+                    </div>
+                    <button id="mpJoinBack" class="btn btn-secondary" style="margin-top:14px;">BACK</button>
+                    <div class="mp-status" id="mpJoinStatus"></div>
+                </div>
+
+                <!-- ============ Password prompt ============ -->
+                <div id="mpPasswordPrompt" class="hidden" style="margin-top:18px;">
+                    <p class="sub" id="mpPasswordRoomName">This room is password protected</p>
+                    <div class="mp-field">
+                        <label for="mpJoinPassword">PASSWORD</label>
+                        <input type="password" id="mpJoinPassword" maxlength="32" autocomplete="off" />
+                    </div>
+                    <div class="mp-copy-row">
+                        <button id="mpPasswordConfirm" class="btn">JOIN</button>
+                        <button id="mpPasswordCancel" class="btn btn-secondary">CANCEL</button>
+                    </div>
+                </div>
+            </div>
+
+            <button id="mpBackBtn" class="btn btn-secondary" style="margin-top:14px;">BACK TO MENU</button>
+            <p class="note">Rooms sync via Firestore · gameplay syncs P2P over WebRTC</p>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+
+    <!-- Model.js -->
+
+    <script src="assets/model/playerModel.js"></script>
+    <script src="assets/model/avatarModel.js"></script>
+    <script src="assets/model/toolModels.js"></script>
+    <script src="assets/model/itemModels.js"></script>
+
+    <script src="assets/model/weaponModel.js"></script>
+    <script src="assets/model/weaponModel/index.js"></script>
+
+    <script src="weaponSkins.js"></script>
+
+    <script src="assets/model/structureModel.js"></script>
+    <script src="assets/model/structureModel/index.js"></script>
+
+    <script src="assets/model/furnitureModel.js"></script>
+    <script src="assets/model/furnitureModel/index.js"></script>
+
+    <!-- Main.js -->
+
+    <script src="multiplayer/firebase-config.js"></script>
+
+    <script src="multiplayer/auth.js"></script>
+    <script src="multiplayer/authUI.js"></script>
+
+    <script src="sfx.js"></script>
+    <script src="weaponSound.js"></script>
+    <script src="weapons.js"></script>
+
+    <script src="inventory.js"></script>
+    <script src="map.js"></script>
+    <script src="game.js"></script>
+    <script src="enemy.js"></script>
+    <script src="sandboxMenu.js"></script>
+
+    <script src="multiplayer/roomRegistry.js"></script>
+    <script src="multiplayer/multiplayer.js"></script>
+
+</body>
+
+</html>
