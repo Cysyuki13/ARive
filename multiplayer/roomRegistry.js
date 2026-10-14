@@ -19,8 +19,8 @@
     'use strict';
 
     const FIRESTORE_SDK = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js';
-    const COLLECTION    = 'arive-rooms';
-    const STALE_MS      = 45000;   // room disappears from the list after this long with no heartbeat
+    const COLLECTION = 'arive-rooms';
+    const STALE_MS = 45000;   // room disappears from the list after this long with no heartbeat
 
     let db = null;
     let initPromise = null;
@@ -32,7 +32,7 @@
             const el = existing || document.createElement('script');
             el.src = src;
             el.async = false;
-            el.addEventListener('load',  () => { el.dataset.ariveLoaded = '1'; resolve(); });
+            el.addEventListener('load', () => { el.dataset.ariveLoaded = '1'; resolve(); });
             el.addEventListener('error', () => reject(new Error('Failed to load ' + src)));
             if (!existing) document.head.appendChild(el);
         });
@@ -81,16 +81,16 @@
         await init();
         const user = global.firebase.auth().currentUser;
         const doc = {
-            roomId:        room.roomId,
-            hostPeerId:    room.hostPeerId,
-            hostUid:       user ? user.uid : null,
-            hostName:      room.hostName,
-            roomName:      room.roomName || ((room.hostName || 'Survivor') + "'s World"),
-            mapType:       room.mapType || 'city',
-            hasPassword:   !!room.hasPassword,
-            maxPlayers:    room.maxPlayers || 8,
-            playerCount:   1,
-            createdAt:     Date.now(),
+            roomId: room.roomId,
+            hostPeerId: room.hostPeerId,
+            hostUid: user ? user.uid : null,
+            hostName: room.hostName,
+            roomName: room.roomName || ((room.hostName || 'Survivor') + "'s World"),
+            mapType: room.mapType || 'city',
+            hasPassword: !!room.hasPassword,
+            maxPlayers: room.maxPlayers || 8,
+            playerCount: 1,
+            createdAt: Date.now(),
             lastHeartbeat: Date.now(),
         };
         await db.collection(COLLECTION).doc(room.roomId).set(doc);
@@ -106,7 +106,7 @@
 
     async function deleteRoom(roomId) {
         if (!db || !roomId) return;
-        try { await db.collection(COLLECTION).doc(roomId).delete(); } catch (e) {}
+        try { await db.collection(COLLECTION).doc(roomId).delete(); } catch (e) { }
     }
 
     function subscribeRooms(callback) {
@@ -118,7 +118,18 @@
                 snap.forEach((doc) => {
                     const r = doc.data();
                     if (!r) return;
-                    if (now - (r.lastHeartbeat || 0) > STALE_MS) return; // stale
+
+                    const isStale = now - (r.lastHeartbeat || 0) > STALE_MS;
+
+                    if (isStale) {
+                        // 👇 這是關鍵：發現過期房間，直接從資料庫刪除
+                        doc.ref.delete().catch((e) => {
+                            // 如果沒有權限刪除，就在 Console 印出警告，不影響讀取
+                            console.warn("[Rooms] Failed to delete stale room:", doc.id, e.message);
+                        });
+                        return; // 不加入列表
+                    }
+
                     rooms.push(r);
                 });
                 rooms.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -133,7 +144,7 @@
         });
 
         return function unsubscribe() {
-            if (unsub) { try { unsub(); } catch (e) {} unsub = null; }
+            if (unsub) { try { unsub(); } catch (e) { } unsub = null; }
         };
     }
 
