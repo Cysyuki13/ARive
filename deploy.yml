@@ -4,23 +4,24 @@ on:
   push:
     branches: [ main ]
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
-  build-and-deploy:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Prepare deployment directory
+      - name: Generate firebase-config.js from Secrets
         run: |
-          mkdir dist
-          # 複製所有檔案到 dist，排除 .git、.github 等
-          rsync -av --exclude='.git' --exclude='.github' --exclude='node_modules' --exclude='.gitignore' ./ dist/
-          
-          # 在 dist 目錄內生成 firebase-config.js
-          cat > dist/firebase-config.js << EOF
+          cat > firebase-config.js << EOF
           window.ARiveFirebaseConfig = {
               apiKey: "${{ secrets.FIREBASE_API_KEY }}",
               authDomain: "${{ secrets.FIREBASE_AUTH_DOMAIN }}",
@@ -31,11 +32,15 @@ jobs:
               measurementId: "${{ secrets.FIREBASE_MEASUREMENT_ID }}"
           };
           EOF
-          echo "firebase-config.js generated in dist/"
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
 
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./dist
-          force_orphan: true
+        id: deployment
+        uses: actions/deploy-pages@v4
