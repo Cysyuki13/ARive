@@ -13,9 +13,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Generate firebase-config.js from Secrets
+      - name: Prepare deployment directory
         run: |
-          cat > firebase-config.js << EOF
+          mkdir dist
+          # 複製所有檔案到 dist，排除 .git、.github 等
+          rsync -av --exclude='.git' --exclude='.github' --exclude='node_modules' --exclude='.gitignore' ./ dist/
+          
+          # 在 dist 目錄內生成 firebase-config.js
+          cat > dist/firebase-config.js << EOF
           window.ARiveFirebaseConfig = {
               apiKey: "${{ secrets.FIREBASE_API_KEY }}",
               authDomain: "${{ secrets.FIREBASE_AUTH_DOMAIN }}",
@@ -26,10 +31,11 @@ jobs:
               measurementId: "${{ secrets.FIREBASE_MEASUREMENT_ID }}"
           };
           EOF
+          echo "firebase-config.js generated in dist/"
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./
-          force_orphan: true 
+          publish_dir: ./dist
+          force_orphan: true
