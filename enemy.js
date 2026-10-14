@@ -33,6 +33,12 @@
 
     const GRAVITY = 22;
 
+    /* ---- Hit-stagger tuning ---- */
+    const HIT_SLOW_DURATION = 0.85;  // seconds the debuff lasts after the last hit
+    const HIT_SLOW_MULTIPLIER = 0.35;  // speed × this while staggered (1 = no slow)
+    const HIT_SLOW_MIN_ADD = 0.25;  // min seconds added per hit
+    const HIT_SLOW_MAX_ADD = 0.55;  // max seconds added per hit
+
     const ENEMY_VOXEL = 0.035;
 
     function boxVoxels(x0, y0, z0, w, h, d, color) {
@@ -1557,7 +1563,7 @@
     const ZOMBIE_TYPES = {
 
         walker: buildZombie({
-            face: "drool", hp: 60, speedWalk: 1, speedRun: 1.2, attackDamage: 10,
+            face: "drool", hp: 150, speedWalk: 1.2, speedRun: 1.5, attackDamage: 10,
             attackRange: 1.5,
         }),
 
@@ -1570,7 +1576,7 @@
                 eye: 0xff3030, eyeWhite: 0xff3030,
                 flesh: 0xb02828, fleshDark: 0x7a1616
             },
-            hp: 40, speedWalk: 2.2, speedRun: 6.2, attackDamage: 12, attackRange: 1.5,
+            hp: 100, speedWalk: 1.3, speedRun: 1.6, attackDamage: 12, attackRange: 1.5,
             colHW: 0.24, colH: 1.35, hitHW: 0.32, hitHH: 0.80, hitCenterY: 0.80
         }),
 
@@ -1582,7 +1588,7 @@
                 pants: 0x3a2a18, pantsDark: 0x251810,
                 wound: 0x802020, flesh: 0x7a1818, fleshDark: 0x500e0e
             },
-            hp: 90, speedWalk: 0.9, speedRun: 1.8, attackDamage: 15, attackRange: 1.5,
+            hp: 225, speedWalk: 1.1, speedRun: 1.3, attackDamage: 15, attackRange: 1.5,
             colHW: 0.30, colH: 1.45
         }),
 
@@ -1595,7 +1601,7 @@
                 eye: 0xff8020, wound: 0x801010,
                 flesh: 0x901818, fleshDark: 0x5c0e0e
             },
-            hp: 250, speedWalk: 1.0, speedRun: 2.2, attackDamage: 25, attackRange: 1.7,
+            hp: 625, speedWalk: 1.1, speedRun: 1.4, attackDamage: 25, attackRange: 1.7,
             colHW: 0.42, colH: 1.85, hitHW: 0.50, hitHH: 1.15, hitCenterY: 1.15
         }),
 
@@ -1605,7 +1611,7 @@
                 skin: 0x6a5040, skinDark: 0x4a3528, skinShade: 0x5a4030,
                 cloth: 0x3a3020, clothDark: 0x201810
             },
-            hp: 35, speedWalk: 0.6, speedRun: 1.4, attackDamage: 8, attackRange: 1.2,
+            hp: 88, speedWalk: 1.1, speedRun: 1.2, attackDamage: 8, attackRange: 1.2,
             colHW: 0.22, colH: 0.85, hitHW: 0.30, hitHH: 0.50, hitCenterY: 0.50,
             startsCrawling: true
         }),
@@ -1618,7 +1624,7 @@
                 pants: 0x3a4a30, pantsDark: 0x28331f, wound: 0x9a2020,
                 flesh: 0xa22222, fleshDark: 0x6e1414
             },
-            hp: 65, speedWalk: 1.7, speedRun: 3.5, attackDamage: 10, attackRange: 1.5
+            hp: 163, speedWalk: 1.2, speedRun: 1.5, attackDamage: 10, attackRange: 1.5
         }),
 
         hooded: buildZombie({
@@ -1629,7 +1635,7 @@
                 pants: 0x2a2a2a, pantsDark: 0x181818,
                 eye: 0xffaa20, flesh: 0x941818, fleshDark: 0x5c0e0e
             },
-            hp: 75, speedWalk: 1.4, speedRun: 3.0, attackDamage: 12, attackRange: 1.5,
+            hp: 188, speedWalk: 1.2, speedRun: 1.4, attackDamage: 12, attackRange: 1.5,
             colHW: 0.30, colH: 1.45
         }),
 
@@ -1643,7 +1649,7 @@
                 eye: 0xffc060, eyeWhite: 0xf0d8b0, wound: 0x901818,
                 flesh: 0x8a1818, fleshDark: 0x5c0e0e
             },
-            hp: 80, speedWalk: 1.2, speedRun: 2.8, attackDamage: 14, attackRange: 1.5,
+            hp: 200, speedWalk: 1.1, speedRun: 1.4, attackDamage: 14, attackRange: 1.5,
             colHW: 0.30, colH: 1.50
         }),
 
@@ -1656,7 +1662,7 @@
                 pants: 0x3a3a3a, pantsDark: 0x242424,
                 flesh: 0xa22222, fleshDark: 0x6e1414
             },
-            hp: 30, speedWalk: 2.0, speedRun: 4.4, attackDamage: 8, attackRange: 1.3,
+            hp: 75, speedWalk: 1.3, speedRun: 1.6, attackDamage: 8, attackRange: 1.3,
             colHW: 0.22, colH: 1.20, hitHW: 0.30, hitHH: 0.68, hitCenterY: 0.68
         }),
 
@@ -1668,7 +1674,7 @@
                 pants: 0x2a3038, pantsDark: 0x181c20,
                 eye: 0xffcc30, flesh: 0xa22222, fleshDark: 0x6e1414
             },
-            hp: 55, speedWalk: 1.5, speedRun: 3.2, attackDamage: 11, attackRange: 1.5
+            hp: 138, speedWalk: 1.2, speedRun: 1.5, attackDamage: 11, attackRange: 1.5
         }),
 
         blondie: buildZombie({
@@ -1681,7 +1687,7 @@
                 eye: 0xffcc30, eyeWhite: 0xf0e8d0,
                 flesh: 0xa22222, fleshDark: 0x6e1414
             },
-            hp: 60, speedWalk: 1.6, speedRun: 3.4, attackDamage: 10, attackRange: 1.5
+            hp: 150, speedWalk: 1.2, speedRun: 1.5, attackDamage: 10, attackRange: 1.5
         }),
 
         demon: buildZombie({
@@ -1694,7 +1700,7 @@
                 eye: 0xffcc30, eyeWhite: 0xffe8b0, wound: 0x601010,
                 flesh: 0xc04030, fleshDark: 0x7a1810
             },
-            hp: 100, speedWalk: 1.8, speedRun: 4.2, attackDamage: 18, attackRange: 1.5,
+            hp: 250, speedWalk: 1.3, speedRun: 1.6, attackDamage: 18, attackRange: 1.5,
             colHW: 0.32, colH: 1.55
         }),
 
@@ -1707,7 +1713,7 @@
                 eye: 0x0a0a0a, eyeWhite: 0x0a0a0a, mouth: 0x0a0a0a,
                 flesh: 0xa22222, fleshDark: 0x6e1414
             },
-            hp: 70, speedWalk: 1.4, speedRun: 3.0, attackDamage: 12, attackRange: 1.5
+            hp: 175, speedWalk: 1.2, speedRun: 1.4, attackDamage: 12, attackRange: 1.5
         }),
 
         formal: buildZombie({
@@ -1718,7 +1724,7 @@
                 pants: 0x2a2a2a, pantsDark: 0x181818,
                 flesh: 0xa22222, fleshDark: 0x6e1414
             },
-            hp: 60, speedWalk: 1.5, speedRun: 3.2, attackDamage: 11, attackRange: 1.5
+            hp: 150, speedWalk: 1.2, speedRun: 1.5, attackDamage: 11, attackRange: 1.5
         }),
 
         vested: buildZombie({
@@ -1730,7 +1736,7 @@
                 pants: 0x3a3030, pantsDark: 0x201818,
                 flesh: 0xa22222, fleshDark: 0x6e1414
             },
-            hp: 75, speedWalk: 1.4, speedRun: 2.9, attackDamage: 13, attackRange: 1.5,
+            hp: 188, speedWalk: 1.2, speedRun: 1.4, attackDamage: 13, attackRange: 1.5,
             colHW: 0.30, colH: 1.55
         }),
 
@@ -1742,7 +1748,7 @@
                 pants: 0x2a3038, pantsDark: 0x181c20,
                 flesh: 0xa22222, fleshDark: 0x6e1414
             },
-            hp: 55, speedWalk: 1.6, speedRun: 3.4, attackDamage: 10, attackRange: 1.5
+            hp: 138, speedWalk: 1.2, speedRun: 1.5, attackDamage: 10, attackRange: 1.5
         }),
 
         /* ============================================================
@@ -1756,13 +1762,13 @@
                 hair: 0x3a8828, eye: 0x101010, eyeWhite: 0xffffff,
                 mouth: 0x1a3a10, flesh: 0x60a040, fleshDark: 0x3a6020,
             },
-            hp: 55, speedWalk: 1.9, speedRun: 4.0,
+            hp: 138, speedWalk: 1.3, speedRun: 1.6,
             attackDamage: 11, attackRange: 1.5,
         }),
 
         blobtron: buildAlien({
             shape: "blob", voxelSize: 0.038,
-            hp: 70, speedWalk: 1.3, speedRun: 2.8,
+            hp: 175, speedWalk: 1.1, speedRun: 1.4,
             attackDamage: 14, attackRange: 1.6,
         }),
 
@@ -1773,7 +1779,7 @@
                 hair: 0xa84808, eye: 0x101010, eyeWhite: 0xfff0a0,
                 mouth: 0x401808, flesh: 0xd05818, fleshDark: 0x903008,
             },
-            hp: 60, speedWalk: 1.7, speedRun: 3.6,
+            hp: 150, speedWalk: 1.2, speedRun: 1.5,
             attackDamage: 12, attackRange: 1.5,
         }),
 
@@ -1784,7 +1790,7 @@
                 hair: 0x300808, eye: 0xffe040, eyeWhite: 0xfff8c0,
                 mouth: 0x400808, flesh: 0xb02020, fleshDark: 0x701010,
             },
-            hp: 90, speedWalk: 1.8, speedRun: 4.0,
+            hp: 225, speedWalk: 1.3, speedRun: 1.6,
             attackDamage: 18, attackRange: 1.6,
         }),
 
@@ -1795,7 +1801,7 @@
                 hair: 0x1a8a6a, eye: 0x101010, eyeWhite: 0xffffff,
                 mouth: 0x0a3a2a, flesh: 0x40b090, fleshDark: 0x206050,
             },
-            hp: 60, speedWalk: 1.6, speedRun: 3.4,
+            hp: 150, speedWalk: 1.2, speedRun: 1.4,
             attackDamage: 11, attackRange: 1.5,
         }),
 
@@ -1806,7 +1812,7 @@
                 hair: 0x2050a0, eye: 0xffe040, eyeWhite: 0xfff8c0,
                 mouth: 0x201030, flesh: 0x4080c0, fleshDark: 0x205080,
             },
-            hp: 80, speedWalk: 0.9, speedRun: 1.8,
+            hp: 200, speedWalk: 1.1, speedRun: 1.2,
             attackDamage: 16, attackRange: 1.4,
         }),
 
@@ -1817,7 +1823,7 @@
                 hair: 0x5030a0, eye: 0x101010, eyeWhite: 0xffffff,
                 mouth: 0x201030, flesh: 0x7060b0, fleshDark: 0x483880,
             },
-            hp: 65, speedWalk: 1.7, speedRun: 3.5,
+            hp: 163, speedWalk: 1.2, speedRun: 1.5,
             attackDamage: 12, attackRange: 1.5,
         }),
 
@@ -1828,7 +1834,7 @@
                 hair: 0x802080, eye: 0x101010, eyeWhite: 0xffffff,
                 mouth: 0x300830, flesh: 0xa050a0, fleshDark: 0x682868,
             },
-            hp: 60, speedWalk: 1.6, speedRun: 3.4,
+            hp: 150, speedWalk: 1.2, speedRun: 1.5,
             attackDamage: 11, attackRange: 1.5,
         }),
     };
@@ -2468,6 +2474,7 @@
             onGround: false, alive: true,
             walkPhase: Math.random() * Math.PI * 2,
             attackPhase: 0, attackTimer: 0, hitFlash: 0,
+            hitSlowTimer: 0,
             state: "wander", wanderTarget: null, wanderTimer: 0,
             losTimer: 0, canSeePlayer: false, stuckTimer: 0,
             lastX: sx, lastZ: sz, parts: rig.parts,
@@ -2518,6 +2525,18 @@
         return e;
     }
 
+    /* Apply (or refresh) the hit-stagger debuff.  Called by every
+   damage entry point — projectile, melee, splash. */
+    function applyHitSlow(e) {
+        if (!e || !e.alive) return;
+        const add = HIT_SLOW_MIN_ADD +
+            Math.random() * (HIT_SLOW_MAX_ADD - HIT_SLOW_MIN_ADD);
+        e.hitSlowTimer = Math.min(
+            HIT_SLOW_DURATION * 1.5,
+            (e.hitSlowTimer || 0) + add,
+        );
+    }
+
     /* =========================================================================
        DAMAGE  (unchanged)
        ========================================================================= */
@@ -2526,6 +2545,7 @@
     function hurtEnemy(e, dmg) {
         if (!e || !e.alive) return;
         const _infinite = window.ARiveSandboxFlags && window.ARiveSandboxFlags.infiniteEnemyHealth;
+        applyHitSlow(e);
         const pool = [];
         for (const key in e.parts) {
             const p = e.parts[key];
@@ -2862,6 +2882,8 @@
             return true;
         }
 
+        applyHitSlow(bestE);
+
         const part = bestE.parts[bestPart];
         const vs = bestE.model.voxelSize;
 
@@ -2928,220 +2950,1108 @@
     }
 
     /* =========================================================================
-       ANIMATION  (unchanged)
+       ANIMATION — REWRITTEN v2
+       -------------------------------------------------------------------------
+       The previous pass used rotation.x < 0 for "reach forward", which is
+       backwards.  Local −Z is the side the enemy face is drawn on, so:
+    
+         rotation.x > 0  →  limb swings FORWARD  (toward the player)
+         rotation.x < 0  →  limb swings BACKWARD (away from the player)
+         rotation.z > 0  →  limb swings toward +X
+         rotation.z < 0  →  limb swings toward −X
+    
+       armL sits on −X, armR on +X.  To spread arms OUTWARD:
+         armL.rotation.z < 0,  armR.rotation.z > 0.
+       To tuck them IN: flip those signs.
+    
+       Every animator below obeys this.  All previously-missing animators are
+       now present, and animateSerpent has been completed.
        ========================================================================= */
+
+    /* ---------- global easing helpers (unchanged) ---------- */
+    function _pulse(t) {
+        if (t <= 0 || t >= 1) return 0;
+        return Math.sin(t * Math.PI);
+    }
+    function _attackCurve(t) {
+        if (t <= 0 || t >= 1) return 0;
+        return t < 0.25 ? t * 4 : 1 - (t - 0.25) / 0.75;
+    }
+    function _ease(t) {
+        if (t <= 0) return 0;
+        if (t >= 1) return 1;
+        return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2);
+    }
+    function _easeOut(t) {
+        if (t <= 0) return 0;
+        if (t >= 1) return 1;
+        return 1 - Math.pow(1 - t, 3);
+    }
+    function _skitterLeg(phase, offset) {
+        return Math.sin(((phase + offset) % 1) * Math.PI * 2);
+    }
+    function _tremor(A, k) {
+        const p = A.tremblePhase;
+        return Math.sin(p * 7.3 + k) * 0.5
+            + Math.sin(p * 13.7 + k * 2.1) * 0.3
+            + Math.sin(p * 23.1 + k * 3.7) * 0.2;
+    }
+
     function ensureAnimState(e) {
         if (!e._anim) {
+            const seed = Math.random() * 100;
             e._anim = {
                 walkPhase: e.walkPhase || Math.random() * Math.PI * 2,
                 idlePhase: Math.random() * Math.PI * 2,
+                breathPhase: Math.random() * Math.PI * 2,
                 bouncePhase: Math.random() * Math.PI * 2,
                 swayPhase: Math.random() * Math.PI * 2,
-                breathPhase: Math.random() * Math.PI * 2,
+                antennaeT: Math.random() * 6.28,
+                headTurn: 0, headPitch: 0,
+                lookTimer: 0, lookDir: 0,
+                blinkPhase: Math.random() * 6.28, blinkT: 0,
+                flinch: 0, flinchRoll: 0,
+                limpSide: ((seed | 0) & 1) ? 1 : -1,
+                limpPhase: 0, dragAccum: 0,
+                sprintPhase: Math.random() * 6.28,
+                sprintLean: 0,
+                tremblePhase: Math.random() * 6.28,
+                trembleAmp: 0,
+                ticTimer: 1.0 + Math.random() * 2.0,
+                ticDir: 0,
+                coilPhase: Math.random() * 6.28,
+                stompT: Math.random() * 0.5,
+                hopCharge: 0, hopAirborne: 0, hopCrouch: 0,
+                tentaclePhase: new Array(8).fill(0).map(() => Math.random() * 6.28),
+                hoodFlare: 0, coilWave: Math.random() * 6.28,
+                floatPhase: Math.random() * 6.28,
+                hairPhase: Math.random() * 6.28,
+                eyeStalkBounce: Math.random() * 6.28,
+                breatheRate: 0.9 + Math.random() * 0.4,
+                _seed: seed,
             };
         }
         return e._anim;
     }
 
-    function animateEnemy(e, dt) {
-        const A = ensureAnimState(e);
-        const spd = Math.hypot(e.vel.x, e.vel.z);
-        const moving = spd > 0.4 && e.onGround;
-        if (moving) A.walkPhase += dt * (1.6 + spd * 0.9);
-        else A.walkPhase += dt * 0.9;
+    /* ---------- shared per-frame state response (unchanged behaviour) ---------- */
+    function applySharedAnimationLogic(e, dt, A, moving, attackReach) {
         A.idlePhase += dt * 1.4;
-        A.breathPhase += dt * 0.9;
-        let attackReach = 0;
+        A.breathPhase += dt * A.breatheRate;
+        A.antennaeT += dt * 2.2;
+        A.blinkPhase += dt * 3.2;
+        A.tremblePhase += dt;
+
+        A.lookTimer -= dt;
+        if (A.lookTimer <= 0) {
+            A.lookTimer = 1.6 + Math.random() * 3.0;
+            A.lookDir = Math.random() * 2 - 1;
+            const dx = player.pos.x - e.pos.x;
+            const dz = player.pos.z - e.pos.z;
+            const d2 = dx * dx + dz * dz;
+            if (d2 < 25) {
+                const worldYaw = Math.atan2(dx, dz);
+                let rel = worldYaw - e.yaw;
+                while (rel > Math.PI) rel -= Math.PI * 2;
+                while (rel < -Math.PI) rel += Math.PI * 2;
+                A.lookDir = clamp(rel / 1.2, -1, 1);
+            }
+        }
+        const turnK = Math.min(1, dt * 3.5);
+        A.headTurn += (A.lookDir - A.headTurn) * turnK;
+        A.headPitch += (Math.sin(A.idlePhase * 0.4) * 0.35 - A.headPitch)
+            * Math.min(1, dt * 2.5);
+
+        if (A.blinkT > 0) A.blinkT = Math.max(0, A.blinkT - dt * 9);
+        else if (A.blinkPhase > 5.7) { A.blinkT = 1; A.blinkPhase = 0; }
+
+        if (e.hitFlash > 0) {
+            A.flinch = Math.max(A.flinch, e.hitFlash * 0.9);
+            A.flinchRoll = (Math.random() - 0.5) * 0.4;
+        }
+        A.flinch = Math.max(0, A.flinch - dt * 2.4);
+        A.flinchRoll *= Math.max(0, 1 - dt * 5);
+
         if (e.attackPhase > 0) {
             e.attackPhase += dt / 0.35;
             if (e.attackPhase >= 1) e.attackPhase = 0;
-            else attackReach = Math.sin(e.attackPhase * Math.PI);
+            else attackReach = _attackCurve(e.attackPhase);
         }
         if (e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt * 4);
+
         const crawlTarget = e.crawlMode ? 1 : 0;
         e.crawlBlend += (crawlTarget - e.crawlBlend) * Math.min(1, dt * 6);
 
-        const bodyType = e.model.bodyType || "humanoid";
-        if (bodyType === "blob") animateBlob(e, dt, A, moving, attackReach);
-        else if (bodyType === "octo") animateOcto(e, dt, A, moving, attackReach);
-        else if (bodyType === "serpent") animateSerpent(e, dt, A, moving, attackReach);
-        else if (bodyType === "insect") animateInsect(e, dt, A, moving, attackReach);
-        else if (bodyType === "hopper") animateHopper(e, dt, A, moving, attackReach);
-        else animateHumanoid(e, dt, A, moving, attackReach);
+        return attackReach;
     }
 
-    function animateHumanoid(e, dt, A, moving, attackReach) {
-        const parts = e.parts;
-        const swing = Math.sin(A.walkPhase);
-        const legAmp = 0.7 * (1 - e.crawlBlend);
-        if (parts.legL.connected) parts.legL.pivot.rotation.x = swing * legAmp;
-        if (parts.legR.connected) parts.legR.pivot.rotation.x = -swing * legAmp;
-        const armAmp = 0.55 * (1 - e.crawlBlend);
-        const crawlArm = -1.3 * e.crawlBlend;
-        const attackArm = -1.7 * attackReach;
-        if (parts.armL.connected) parts.armL.pivot.rotation.x = -swing * armAmp + crawlArm + attackArm;
-        if (parts.armR.connected) parts.armR.pivot.rotation.x = swing * armAmp + crawlArm + attackArm;
-        if (parts.torso.connected) {
-            const walkLean = (moving ? -0.12 : 0) * (1 - e.crawlBlend);
-            const crawlLean = 1.15 * e.crawlBlend;
-            const attackLean = 0.3 * attackReach;
-            parts.torso.pivot.rotation.x = walkLean + crawlLean + attackLean;
-            parts.torso.pivot.rotation.z = moving ? -swing * 0.03 : Math.sin(A.breathPhase) * 0.02;
-            const bob = Math.abs(swing) * 0.05 * (1 - e.crawlBlend);
-            parts.torso.pivot.position.y = parts.torso.basePivot[1] - bob - 0.3 * e.crawlBlend;
-        }
-        if (parts.head.connected) {
-            parts.head.pivot.rotation.x = -attackReach * 0.35;
-            parts.head.pivot.rotation.z = moving ? swing * 0.04 : 0;
-        }
+    /* ---------- dispatcher ---------- */
+    function animateEnemy(e, dt) {
+        const A = ensureAnimState(e);
+        let attackReach = 0;
+        const spd = Math.hypot(e.vel.x, e.vel.z);
+        const moving = spd > 0.4 && e.onGround;
+        attackReach = applySharedAnimationLogic(e, dt, A, moving, attackReach);
+
+        const bt = e.model.bodyType || "humanoid";
+        const k = e.kind || "";
+
+        if (bt === "octo") return animateOcto(e, dt, A, moving, attackReach);
+        if (bt === "serpent") return animateSerpent(e, dt, A, moving, attackReach);
+        if (bt === "insect") return animateImpInsect(e, dt, A, moving, attackReach);
+        if (bt === "hopper") return animateBloomHopper(e, dt, A, moving, attackReach);
+
+        if (k === "brute") return animateBrute(e, dt, A, moving, attackReach);
+        if (k === "runner" || k === "capboy")
+            return animateRunner(e, dt, A, moving, attackReach);
+        if (k === "demon") return animateDemon(e, dt, A, moving, attackReach);
+        if (k === "oldblood") return animateOldblood(e, dt, A, moving, attackReach);
+        if (k === "skull") return animateSkull(e, dt, A, moving, attackReach);
+        if (k === "rotter" || k === "beanie")
+            return animateRotter(e, dt, A, moving, attackReach);
+        if (k === "hooded") return animateHooded(e, dt, A, moving, attackReach);
+        if (k === "crawler") return animateCrawler(e, dt, A, moving, attackReach);
+        if (k === "greyscout") return animateGreyscout(e, dt, A, moving, attackReach);
+        if (k === "voidtwin") return animateVoidtwin(e, dt, A, moving, attackReach);
+        if (k === "wisp") return animateWisp(e, dt, A, moving, attackReach);
+        if (k === "trilens") return animateTrilens(e, dt, A, moving, attackReach);
+
+        animateWalkerZombie(e, dt, A, moving, attackReach);
     }
 
-    function animateBlob(e, dt, A, moving, attackReach) {
+    /* =========================================================================
+       ZOMBIE ANIMATORS
+       ========================================================================= */
+
+    /**
+     * Walker — asymmetric limp/drag gait, BOTH arms reaching forward in the
+     * classic shambling pose.  The dragging side hangs lower, the other side
+     * reaches higher.
+     */
+    function animateWalkerZombie(e, dt, A, moving, attackReach) {
         const parts = e.parts;
         const spd = Math.hypot(e.vel.x, e.vel.z);
-        if (moving) A.bouncePhase += dt * (2.4 + spd * 0.4);
-        else A.bouncePhase += dt * 1.1;
-        const bounce = Math.sin(A.bouncePhase);
-        if (parts.torso.connected) {
-            const squash = 1 + bounce * (moving ? 0.10 : 0.04);
-            parts.torso.pivot.scale.set(1 / Math.sqrt(squash), squash, 1 / Math.sqrt(squash));
-            parts.torso.pivot.rotation.x = 0.25 * attackReach;
-            parts.torso.pivot.position.y = parts.torso.basePivot[1] || 0;
-        }
+        const baseAmp = moving ? 1 : 0.15;
+        if (moving) A.walkPhase += dt * (1.5 + spd * 0.6);
+        else A.walkPhase += dt * 0.55;
+
+        const swing = Math.sin(A.walkPhase);
+        const swing2 = Math.sin(A.walkPhase * 2);
+        const limpSide = A.limpSide;
+
+        /* Legs: dragging leg has almost no forward swing on backstroke */
+        const dragL = limpSide < 0 ? Math.max(0, -swing) : 0;
+        const dragR = limpSide > 0 ? Math.max(0, swing) : 0;
+        const legAmp = 0.62 * (1 - e.crawlBlend) * baseAmp;
+
         if (parts.legL.connected) {
-            parts.legL.pivot.rotation.x = Math.sin(A.bouncePhase * 1.3) * 0.14;
-            parts.legL.pivot.rotation.z = Math.cos(A.bouncePhase * 0.9) * 0.10;
+            parts.legL.pivot.rotation.x = (swing - dragL) * legAmp;
+            parts.legL.pivot.rotation.z = -Math.abs(swing) * 0.05;
         }
         if (parts.legR.connected) {
-            parts.legR.pivot.rotation.x = Math.sin(A.bouncePhase * 1.3 + 1.7) * 0.14;
-            parts.legR.pivot.rotation.z = Math.cos(A.bouncePhase * 0.9 + 1.7) * 0.10;
+            parts.legR.pivot.rotation.x = (-swing + dragR) * legAmp;
+            parts.legR.pivot.rotation.z = Math.abs(swing) * 0.05;
         }
-        if (parts.armL.connected) parts.armL.pivot.rotation.z = Math.sin(A.bouncePhase * 1.4) * 0.20;
-        if (parts.armR.connected) parts.armR.pivot.rotation.z = -Math.sin(A.bouncePhase * 1.4) * 0.20;
+
+        /* Arms — both reach forward.  Which one reaches further flips with
+           the limp side so the character reads as lurching side-to-side. */
+        const reachKey = limpSide < 0 ? "armR" : "armL";
+        const hangKey = limpSide < 0 ? "armL" : "armR";
+        const reach = parts[reachKey];
+        const hang = parts[hangKey];
+
+        const moveK = moving ? 1 : 0.4;
+        const reachBase = 1.05 * moveK + 0.20;   // high, pointing forward
+        const hangBase = 0.55 * moveK + 0.25;   // lower, more relaxed
+
+        /* Counter-sway while walking */
+        const swayAmp = moving ? 0.14 : 0.05;
+        const swayReach = Math.sin(A.walkPhase + (limpSide < 0 ? 0 : Math.PI)) * swayAmp;
+        const swayHang = Math.sin(A.walkPhase * 0.7 + 1.5) * swayAmp * 0.6;
+
+        /* Attack: both arms jab forward (positive rotation.x) */
+        const atk = attackReach * 0.85;
+
+        if (reach && reach.connected) {
+            reach.pivot.rotation.x = reachBase + swayReach + atk;
+            reach.pivot.rotation.z = (reachKey === "armL" ? -0.06 : 0.06)
+                + Math.sin(A.walkPhase * 0.5 + 1.3) * 0.04;
+        }
+        if (hang && hang.connected) {
+            hang.pivot.rotation.x = hangBase + swayHang + atk * 0.35;
+            hang.pivot.rotation.z = (hangKey === "armL" ? -0.22 : 0.22)
+                + Math.sin(A.walkPhase * 0.3) * 0.04;
+        }
+
+        if (parts.torso.connected) {
+            const walkLean = moving ? -0.10 : 0;
+            const crawlLean = 1.15 * e.crawlBlend;
+            const atkLean = 0.35 * attackReach;
+            const breathLean = Math.sin(A.breathPhase) * 0.02;
+            parts.torso.pivot.rotation.x = walkLean + crawlLean + atkLean + breathLean;
+            parts.torso.pivot.rotation.z = limpSide * (moving ? 0.08 : 0.025) + A.flinchRoll;
+            parts.torso.pivot.rotation.y = swing2 * 0.03;
+            const bob = Math.abs(swing) * 0.045 * (1 - e.crawlBlend);
+            parts.torso.pivot.position.y = parts.torso.basePivot[1] - bob;
+        }
+
+        if (parts.head.connected) {
+            const lagSwing = Math.sin(A.walkPhase - 0.8);
+            /* Head lolls FORWARD and slightly down */
+            parts.head.pivot.rotation.x =
+                0.20 * moving + lagSwing * 0.05 + attackReach * 0.35
+                - A.headPitch * 0.06 - A.flinch * 0.35;
+            parts.head.pivot.rotation.y =
+                A.headTurn * 0.3 + Math.sin(A.walkPhase * 0.4) * 0.08;
+            parts.head.pivot.rotation.z = limpSide * (moving ? 0.10 : 0.04);
+        }
     }
 
-    /* Cephalopod: mantle pulses like a heart, all 8 tentacles
-   squirm independently, giant eye glances around, and on
-   attack the front bundles lash forward. */
+    /**
+     * Brute — heavy stomp gait, big overhead slam.
+     */
+    function animateBrute(e, dt, A, moving, attackReach) {
+        const parts = e.parts;
+        const spd = Math.hypot(e.vel.x, e.vel.z);
+        if (moving) A.stompT += dt * (0.75 + spd * 0.12);
+        else A.stompT += dt * 0.32;
+        const beat = A.stompT % 1.0;
+
+        let liftL = 0, liftR = 0, slamImpact = 0;
+        if (beat < 0.40) liftL = _ease(beat / 0.40);
+        else if (beat < 0.50) {
+            const t = (beat - 0.40) / 0.10;
+            liftL = 1 - t;
+            slamImpact = Math.max(slamImpact, _pulse(t));
+        }
+        if (beat > 0.50 && beat < 0.90) liftR = _ease((beat - 0.50) / 0.40);
+        else if (beat >= 0.90) {
+            const t = (beat - 0.90) / 0.10;
+            liftR = 1 - t;
+            slamImpact = Math.max(slamImpact, _pulse(t));
+        }
+
+        /* Attack: windup → overhead lift (rotation.x up to ~2.6 rad, arms
+           over the head), then slam forward-down (rotation.x back to ~0.3). */
+        const atk = attackReach;
+        let wind = 0, crash = 0;
+        if (atk > 0 && atk < 0.30) wind = _easeOut(atk / 0.30);
+        else if (atk >= 0.30) crash = (atk - 0.30) / 0.70;
+
+        A.walkPhase += dt * (moving ? 1.0 + spd * 0.2 : 0.4);
+        const armSwing = Math.sin(A.walkPhase * 0.6);
+        const armLift = armSwing * 0.25 * (moving ? 1 : 0.3);
+
+        /* Legs lift FORWARD (positive rotation.x) */
+        if (parts.legL.connected) {
+            parts.legL.pivot.rotation.x = liftL * 0.70 + slamImpact * 0.12;
+            parts.legL.pivot.rotation.z = -0.06 + liftL * 0.05;
+        }
+        if (parts.legR.connected) {
+            parts.legR.pivot.rotation.x = liftR * 0.70 + slamImpact * 0.12;
+            parts.legR.pivot.rotation.z = 0.06 - liftR * 0.05;
+        }
+
+        /* Arms: idle ≈ 0.35 forward; windup lifts them up-forward to ~2.6;
+           crash swings them forward-down back toward ~0.35. */
+        const armIdle = 0.35;
+        const armWind = 2.60;   /* overhead */
+        const armCrash = 0.30;   /* forward-and-down, in front of the body  */
+        const armX = armIdle + wind * (armWind - armIdle) + crash * (armCrash - armWind);
+
+        if (parts.armL.connected) {
+            parts.armL.pivot.rotation.x = armX + armLift;
+            parts.armL.pivot.rotation.z = -0.32 - Math.sin(A.breathPhase) * 0.03;
+        }
+        if (parts.armR.connected) {
+            parts.armR.pivot.rotation.x = armX - armLift;
+            parts.armR.pivot.rotation.z = 0.32 + Math.sin(A.breathPhase) * 0.03;
+        }
+
+        if (parts.torso.connected) {
+            const heave = slamImpact * 0.2 + Math.sin(A.breathPhase * 0.7) * 0.03;
+            parts.torso.pivot.rotation.x =
+                (moving ? -0.08 : 0) + heave - wind * 0.30 + crash * 0.65;
+            parts.torso.pivot.rotation.z =
+                liftL * 0.05 - liftR * 0.05 + A.flinchRoll * 0.5;
+            parts.torso.pivot.rotation.y = Math.sin(A.walkPhase * 0.5) * 0.03;
+            const bob = (liftL + liftR) * 0.04;
+            parts.torso.pivot.position.y = parts.torso.basePivot[1]
+                - bob + heave * 0.06 - wind * 0.05;
+        }
+        if (parts.head.connected) {
+            parts.head.pivot.rotation.x =
+                0.12 + slamImpact * 0.15 - wind * 0.25 + crash * 0.55
+                + A.headPitch * 0.05 - A.flinch * 0.25;
+            parts.head.pivot.rotation.y = A.headTurn * 0.2;
+            parts.head.pivot.rotation.z = liftL * 0.04 - liftR * 0.04;
+        }
+    }
+
+    /**
+     * Crawler — belly drag, alternating forward arm pulls.
+     */
+    function animateCrawler(e, dt, A, moving, attackReach) {
+        const parts = e.parts;
+        const spd = Math.hypot(e.vel.x, e.vel.z);
+        if (moving) A.walkPhase += dt * (2.0 + spd * 0.8);
+        else A.walkPhase += dt * 1.2;
+
+        const pull = Math.sin(A.walkPhase);
+        const pull2 = Math.sin(A.walkPhase * 2);
+
+        /* Arms already lie forward (through the torso) — animation just
+           cyclically pulls them further forward as it drags itself. */
+        const baseFwd = 1.45;
+        if (parts.armL.connected) {
+            parts.armL.pivot.rotation.x = baseFwd + pull * 0.55 + attackReach * 0.55;
+            parts.armL.pivot.rotation.z = -0.35;
+        }
+        if (parts.armR.connected) {
+            parts.armR.pivot.rotation.x = baseFwd - pull * 0.55 + attackReach * 0.55;
+            parts.armR.pivot.rotation.z = 0.35;
+        }
+
+        if (parts.torso.connected) {
+            parts.torso.pivot.rotation.x = 1.25 + Math.sin(A.walkPhase * 2) * 0.08;
+            parts.torso.pivot.rotation.y = pull2 * 0.10;
+            parts.torso.pivot.rotation.z = pull * 0.06 + A.flinchRoll * 0.5;
+            parts.torso.pivot.position.y = parts.torso.basePivot[1] - 0.28;
+        }
+        if (parts.head.connected) {
+            parts.head.pivot.rotation.x = -0.35 - pull2 * 0.15 - attackReach * 0.55
+                + A.headPitch * 0.05;
+            parts.head.pivot.rotation.y = A.headTurn * 0.4;
+            parts.head.pivot.rotation.z = pull * 0.06;
+        }
+        if (parts.legL.connected) parts.legL.pivot.rotation.x = pull * 0.25;
+        if (parts.legR.connected) parts.legR.pivot.rotation.x = -pull * 0.25;
+    }
+
+    /**
+     * Runner — forward-lean sprint, arms pump forward at the front of the cycle.
+     */
+    function animateRunner(e, dt, A, moving, attackReach) {
+        const parts = e.parts;
+        const spd = Math.hypot(e.vel.x, e.vel.z);
+        if (moving) A.walkPhase += dt * (3.6 + spd * 0.8);
+        else A.walkPhase += dt * 1.4;
+
+        const swing = Math.sin(A.walkPhase);
+        const swing2 = Math.sin(A.walkPhase * 2);
+        const bounce = Math.abs(Math.cos(A.walkPhase));
+
+        const leanTarget = moving ? 0.42 : 0.18;
+        A.sprintLean += (leanTarget - A.sprintLean) * Math.min(1, dt * 4);
+
+        /* Legs alternate — forward is positive rotation.x */
+        if (parts.legL.connected) {
+            parts.legL.pivot.rotation.x = swing * 0.85 * (moving ? 1 : 0.3)
+                + A.sprintLean * 0.35;
+            parts.legL.pivot.rotation.z = -Math.abs(swing) * 0.06;
+        }
+        if (parts.legR.connected) {
+            parts.legR.pivot.rotation.x = -swing * 0.85 * (moving ? 1 : 0.3)
+                + A.sprintLean * 0.35;
+            parts.legR.pivot.rotation.z = Math.abs(swing) * 0.06;
+        }
+
+        /* Arms pump in front of the torso — bias strongly positive so they
+           never swing behind the body at the back of the cycle. */
+        const armBias = 0.85;
+        if (parts.armL.connected) {
+            parts.armL.pivot.rotation.x = armBias + swing * 0.90 * (moving ? 1 : 0.4)
+                + attackReach * 0.70;
+            parts.armL.pivot.rotation.z = -0.15;
+        }
+        if (parts.armR.connected) {
+            parts.armR.pivot.rotation.x = armBias - swing * 0.90 * (moving ? 1 : 0.4)
+                + attackReach * 0.70;
+            parts.armR.pivot.rotation.z = 0.15;
+        }
+
+        if (parts.torso.connected) {
+            parts.torso.pivot.rotation.x = A.sprintLean
+                + Math.sin(A.walkPhase * 2) * 0.05 + attackReach * 0.30;
+            parts.torso.pivot.rotation.y = swing2 * 0.08;
+            parts.torso.pivot.rotation.z = swing * 0.05 + A.flinchRoll;
+            parts.torso.pivot.position.y = parts.torso.basePivot[1] - bounce * 0.05;
+        }
+        if (parts.head.connected) {
+            parts.head.pivot.rotation.x =
+                -A.sprintLean * 0.55 + Math.sin(A.walkPhase * 3) * 0.04
+                + attackReach * 0.35 + A.headPitch * 0.05 - A.flinch * 0.45;
+            parts.head.pivot.rotation.y = A.headTurn * 0.25;
+            parts.head.pivot.rotation.z = Math.sin(A.walkPhase * 1.5) * 0.06;
+        }
+    }
+
+    /**
+     * Rotter — mushy wandering-joint shuffle, arms vaguely forward.
+     */
+    function animateRotter(e, dt, A, moving, attackReach) {
+        const parts = e.parts;
+        const spd = Math.hypot(e.vel.x, e.vel.z);
+        if (moving) A.walkPhase += dt * (1.0 + spd * 0.4);
+        else A.walkPhase += dt * 0.35;
+        A.limpPhase += dt * 0.45;
+
+        const swing = Math.sin(A.walkPhase);
+        const wander = Math.sin(A.limpPhase);
+        const amp = moving ? 1 : 0.15;
+
+        if (parts.legL.connected) {
+            parts.legL.pivot.rotation.x = (swing * 0.55 + wander * 0.15) * 0.55 * amp;
+            parts.legL.pivot.rotation.z = -0.06 + wander * 0.03;
+        }
+        if (parts.legR.connected) {
+            parts.legR.pivot.rotation.x = (-swing * 0.55 - wander * 0.15) * 0.55 * amp;
+            parts.legR.pivot.rotation.z = 0.06 - wander * 0.03;
+        }
+
+        /* Arms — forward-biased, lazy flopping */
+        const fwdBase = 0.85;
+        if (parts.armL.connected) {
+            parts.armL.pivot.rotation.x = fwdBase
+                + Math.sin(A.walkPhase * 0.6 + 0.7) * 0.20 * amp
+                + attackReach * 0.55;
+            parts.armL.pivot.rotation.z = -0.22 - wander * 0.04;
+        }
+        if (parts.armR.connected) {
+            parts.armR.pivot.rotation.x = fwdBase
+                + Math.sin(A.walkPhase * 0.6 - 0.4) * 0.20 * amp
+                + attackReach * 0.55;
+            parts.armR.pivot.rotation.z = 0.22 + wander * 0.04;
+        }
+
+        if (parts.torso.connected) {
+            const wobble = Math.sin(A.walkPhase - 0.9) * 0.06 * amp;
+            parts.torso.pivot.rotation.x = 0.10 + wobble + attackReach * 0.30;
+            parts.torso.pivot.rotation.z = wander * 0.07 + A.flinchRoll;
+            parts.torso.pivot.rotation.y = Math.sin(A.walkPhase * 0.5) * 0.05;
+            parts.torso.pivot.position.y = parts.torso.basePivot[1]
+                - Math.abs(swing) * 0.04;
+        }
+        if (parts.head.connected) {
+            parts.head.pivot.rotation.x =
+                0.15 + Math.sin(A.walkPhase - 1.5) * 0.08
+                + attackReach * 0.35 - A.flinch * 0.35;
+            parts.head.pivot.rotation.y = A.headTurn * 0.35 + wander * 0.10;
+            parts.head.pivot.rotation.z = wander * 0.06;
+        }
+    }
+
+    /**
+     * Hooded — low hunched skulk, arms held forward but tucked low.
+     */
+    function animateHooded(e, dt, A, moving, attackReach) {
+        const parts = e.parts;
+        const spd = Math.hypot(e.vel.x, e.vel.z);
+        if (moving) A.walkPhase += dt * (1.4 + spd * 0.5);
+        else A.walkPhase += dt * 0.3;
+
+        const swing = Math.sin(A.walkPhase);
+        const amp = moving ? 1 : 0.15;
+
+        if (parts.legL.connected) {
+            parts.legL.pivot.rotation.x = swing * 0.55 * 0.55 * amp;
+            parts.legL.pivot.rotation.z = -0.03;
+        }
+        if (parts.legR.connected) {
+            parts.legR.pivot.rotation.x = -swing * 0.55 * 0.55 * amp;
+            parts.legR.pivot.rotation.z = 0.03;
+        }
+
+        /* Arms forward but hanging low — about 55° forward from vertical. */
+        const lowFwd = 0.95;
+        if (parts.armL.connected) {
+            parts.armL.pivot.rotation.x = lowFwd
+                + Math.abs(swing) * 0.10 * amp + attackReach * 0.60;
+            parts.armL.pivot.rotation.z = -0.18;
+        }
+        if (parts.armR.connected) {
+            parts.armR.pivot.rotation.x = lowFwd
+                + Math.abs(swing) * 0.10 * amp + attackReach * 0.60;
+            parts.armR.pivot.rotation.z = 0.18;
+        }
+
+        if (parts.torso.connected) {
+            parts.torso.pivot.rotation.x = 0.48 + attackReach * 0.35;
+            parts.torso.pivot.rotation.z = swing * 0.03 + A.flinchRoll;
+            parts.torso.pivot.rotation.y = swing * 0.05;
+            parts.torso.pivot.position.y = parts.torso.basePivot[1]
+                - Math.abs(swing) * 0.03 - 0.05;
+        }
+        if (parts.head.connected) {
+            parts.head.pivot.rotation.x =
+                0.15 + 0.15 * moving + attackReach * 0.35
+                + A.headPitch * 0.05 - A.flinch * 0.35;
+            parts.head.pivot.rotation.y = A.headTurn * 0.45;
+            parts.head.pivot.rotation.z = swing * 0.03;
+        }
+    }
+
+    /**
+     * Oldblood — elder tremor, shaky joints, arms out front trembling.
+     */
+    function animateOldblood(e, dt, A, moving, attackReach) {
+        const parts = e.parts;
+        const spd = Math.hypot(e.vel.x, e.vel.z);
+        const tremorTarget = moving ? 0.55 : 0.25;
+        A.trembleAmp += (tremorTarget - A.trembleAmp) * Math.min(1, dt * 3);
+
+        if (moving) A.walkPhase += dt * (1.1 + spd * 0.5);
+        else A.walkPhase += dt * 0.45;
+
+        A.ticTimer -= dt;
+        if (A.ticTimer <= 0) {
+            A.ticTimer = 1.5 + Math.random() * 2.5;
+            A.ticDir = Math.random() < 0.5 ? -1 : 1;
+        }
+
+        const swing = Math.sin(A.walkPhase);
+        const ticX = _tremor(A, 0.0) * A.trembleAmp * 0.05;
+        const ticZ = _tremor(A, 3.7) * A.trembleAmp * 0.05;
+        const amp = moving ? 1 : 0.15;
+
+        if (parts.legL.connected) {
+            parts.legL.pivot.rotation.x = swing * 0.55 * 0.55 * amp
+                + _tremor(A, 1.2) * A.trembleAmp * 0.08;
+            parts.legL.pivot.rotation.z = -0.05;
+        }
+        if (parts.legR.connected) {
+            parts.legR.pivot.rotation.x = -swing * 0.55 * 0.55 * amp
+                + _tremor(A, 4.4) * A.trembleAmp * 0.08;
+            parts.legR.pivot.rotation.z = 0.05;
+        }
+
+        /* Arms forward, trembling */
+        const fwdBase = 0.95;
+        if (parts.armL.connected) {
+            parts.armL.pivot.rotation.x = fwdBase + attackReach * 0.60
+                + _tremor(A, 2.1) * A.trembleAmp * 0.15;
+            parts.armL.pivot.rotation.z = -0.22 + _tremor(A, 5.0) * A.trembleAmp * 0.06;
+        }
+        if (parts.armR.connected) {
+            parts.armR.pivot.rotation.x = fwdBase + attackReach * 0.60
+                + _tremor(A, 2.9) * A.trembleAmp * 0.15;
+            parts.armR.pivot.rotation.z = 0.22 - _tremor(A, 6.1) * A.trembleAmp * 0.06;
+        }
+
+        if (parts.torso.connected) {
+            parts.torso.pivot.rotation.x = 0.15 + attackReach * 0.35 + ticX;
+            parts.torso.pivot.rotation.z = A.ticDir * 0.04 * A.trembleAmp + ticZ + A.flinchRoll;
+            parts.torso.pivot.rotation.y = swing * 0.04;
+        }
+        if (parts.head.connected) {
+            parts.head.pivot.rotation.x =
+                0.10 + attackReach * 0.35 + _tremor(A, 7.2) * A.trembleAmp * 0.10
+                + A.headPitch * 0.05 - A.flinch * 0.35;
+            parts.head.pivot.rotation.y = A.headTurn * 0.35
+                + _tremor(A, 8.1) * A.trembleAmp * 0.08;
+            parts.head.pivot.rotation.z = _tremor(A, 9.3) * A.trembleAmp * 0.06;
+        }
+    }
+
+    /**
+     * Skull — mummy pose: arms pinned straight out in front.
+     */
+    function animateSkull(e, dt, A, moving, attackReach) {
+        const parts = e.parts;
+        const spd = Math.hypot(e.vel.x, e.vel.z);
+        if (moving) A.walkPhase += dt * (1.7 + spd * 0.55);
+        else A.walkPhase += dt * 0.65;
+
+        const swing = Math.sin(A.walkPhase);
+        const amp = moving ? 1 : 0.2;
+        const jitter = _tremor(A, 0.0) * 0.04;
+
+        if (parts.legL.connected) {
+            parts.legL.pivot.rotation.x = swing * 0.65 * 0.55 * amp;
+            parts.legL.pivot.rotation.z = -0.02;
+        }
+        if (parts.legR.connected) {
+            parts.legR.pivot.rotation.x = -swing * 0.65 * 0.55 * amp;
+            parts.legR.pivot.rotation.z = 0.02;
+        }
+
+        /* Arms straight out in front (mummy pose). */
+        const mummy = 1.50;
+        if (parts.armL.connected) {
+            parts.armL.pivot.rotation.x = mummy + attackReach * 0.30;
+            parts.armL.pivot.rotation.z = -0.08 + jitter;
+        }
+        if (parts.armR.connected) {
+            parts.armR.pivot.rotation.x = mummy + attackReach * 0.30;
+            parts.armR.pivot.rotation.z = 0.08 - jitter;
+        }
+
+        if (parts.torso.connected) {
+            parts.torso.pivot.rotation.x = 0.02 + jitter + attackReach * 0.25;
+            parts.torso.pivot.rotation.z = swing * 0.02 + A.flinchRoll;
+            parts.torso.pivot.rotation.y = 0;
+        }
+        if (parts.head.connected) {
+            const snap = Math.round(A.headTurn * 5) / 5;
+            parts.head.pivot.rotation.x = attackReach * 0.35 + A.headPitch * 0.05;
+            parts.head.pivot.rotation.y = snap * 0.55 + jitter;
+            parts.head.pivot.rotation.z = _tremor(A, 4.2) * 0.03;
+        }
+    }
+
+    /**
+     * Demon — predatory crouch, coiled lunge, arms held ready in front.
+     */
+    function animateDemon(e, dt, A, moving, attackReach) {
+        const parts = e.parts;
+        const spd = Math.hypot(e.vel.x, e.vel.z);
+        A.coilPhase += dt * (moving ? 2.4 + spd * 0.4 : 1.2);
+        const coil = Math.sin(A.coilPhase);
+        const coil2 = Math.sin(A.coilPhase * 2);
+        const lungeWindTarget = attackReach > 0.05 && attackReach < 0.4 ? 1 : 0;
+        A.lungeWind = (A.lungeWind || 0)
+            + (lungeWindTarget - (A.lungeWind || 0)) * Math.min(1, dt * 8);
+        const lungeDrive = attackReach > 0.4 ? (attackReach - 0.4) / 0.6 : 0;
+        const bend = 0.55 + A.lungeWind * 0.35;
+
+        if (parts.legL.connected) {
+            parts.legL.pivot.rotation.x = bend + coil * 0.30 * (moving ? 1 : 0.3);
+            parts.legL.pivot.rotation.z = -0.06;
+        }
+        if (parts.legR.connected) {
+            parts.legR.pivot.rotation.x = bend - coil * 0.30 * (moving ? 1 : 0.3);
+            parts.legR.pivot.rotation.z = 0.06;
+        }
+
+        /* Arms reach forward, ready to slash — high fwd bias. */
+        const readyFwd = 1.10;
+        if (parts.armL.connected) {
+            parts.armL.pivot.rotation.x = readyFwd
+                + A.lungeWind * 0.35 + lungeDrive * 0.90;
+            parts.armL.pivot.rotation.z = -0.35 - coil * 0.10;
+        }
+        if (parts.armR.connected) {
+            parts.armR.pivot.rotation.x = readyFwd
+                + A.lungeWind * 0.35 + lungeDrive * 0.90;
+            parts.armR.pivot.rotation.z = 0.35 + coil * 0.10;
+        }
+
+        if (parts.torso.connected) {
+            parts.torso.pivot.rotation.x = 0.35 - A.lungeWind * 0.10
+                + lungeDrive * 0.60;
+            parts.torso.pivot.rotation.y = coil2 * 0.08;
+            parts.torso.pivot.rotation.z = coil * 0.06 + A.flinchRoll;
+            parts.torso.pivot.position.y = parts.torso.basePivot[1]
+                - 0.08 - bend * 0.05;
+        }
+        if (parts.head.connected) {
+            const jaw = Math.sin(A.idlePhase * 10) * A.lungeWind * 0.10;
+            parts.head.pivot.rotation.x =
+                0.12 + lungeDrive * 0.55 + A.headPitch * 0.06 - A.flinch * 0.45;
+            parts.head.pivot.rotation.y = A.headTurn * 0.45 + jaw;
+            parts.head.pivot.rotation.z = coil * 0.05;
+        }
+    }
+
+    /* =========================================================================
+       ALIEN ANIMATORS
+       ========================================================================= */
+
+    /**
+     * Blobtron (octo body) — squash/stretch hop, tentacles trail/splay.
+     */
     function animateOcto(e, dt, A, moving, attackReach) {
         const parts = e.parts;
         const spd = Math.hypot(e.vel.x, e.vel.z);
-        if (moving) A.swayPhase += dt * (2.5 + spd * 0.5);
-        else A.swayPhase += dt * 1.5;
+        A.swayPhase += dt * (moving ? 2.6 + spd * 0.5 : 1.4);
 
-        const s1 = Math.sin(A.swayPhase);
-        const s2 = Math.cos(A.swayPhase * 0.71);
-        const s3 = Math.sin(A.swayPhase * 1.23 + 1.7);
-        const s4 = Math.cos(A.swayPhase * 1.43 + 0.4);
-        const atk = attackReach;
+        /* Tentacles are top-pivot bundles that fan outward + downward.  They
+           already extend downward in local space, so rotation.x is a gentle
+           "trail" not a huge swing. */
+        const phases = [0.00, 0.55, 1.10, 1.65];
+        const bundles = [parts.legL, parts.legR, parts.armL, parts.armR];
+        for (let i = 0; i < bundles.length; i++) {
+            const p = bundles[i];
+            if (!p || !p.connected) continue;
+            const t = (A.swayPhase + phases[i] * Math.PI) % (Math.PI * 2);
+            const reach = _pulse(t / (Math.PI * 2));
+            const sideSign = (i === 0 || i === 2) ? -1 : 1;
+            p.pivot.rotation.x = -reach * 0.35 * (moving ? 1 : 0.35)
+                + Math.sin(t) * 0.08 + attackReach * 0.40;
+            p.pivot.rotation.z = sideSign * (0.10 + reach * 0.18)
+                + Math.cos(t * 0.7) * 0.06;
+            p.pivot.rotation.y = Math.sin(t * 0.8 + i) * 0.15;
+        }
 
-        /* Front-left / front-right bundles (children of root) */
-        if (parts.legL.connected) {
-            parts.legL.pivot.rotation.x = s1 * 0.22 - atk * 0.55;
-            parts.legL.pivot.rotation.z = s2 * 0.18;
-            parts.legL.pivot.rotation.y = s3 * 0.12;
-        }
-        if (parts.legR.connected) {
-            parts.legR.pivot.rotation.x = s2 * 0.22 - atk * 0.55;
-            parts.legR.pivot.rotation.z = -s1 * 0.18;
-            parts.legR.pivot.rotation.y = -s3 * 0.12;
-        }
-        /* Back-left / back-right bundles (children of torso) */
-        if (parts.armL.connected) {
-            parts.armL.pivot.rotation.x = s3 * 0.22;
-            parts.armL.pivot.rotation.z = s4 * 0.18;
-            parts.armL.pivot.rotation.y = s1 * 0.14;
-        }
-        if (parts.armR.connected) {
-            parts.armR.pivot.rotation.x = s4 * 0.22;
-            parts.armR.pivot.rotation.z = -s3 * 0.18;
-            parts.armR.pivot.rotation.y = -s1 * 0.14;
-        }
-        /* Mantle: slow heartbeat pulse + subtle attack lean */
         if (parts.torso.connected) {
-            const pulse = 1 + Math.sin(A.breathPhase * 1.7) * 0.05;
+            const ripple = Math.sin(A.swayPhase - 0.9) * 0.06;
+            const pulse = 1 + ripple + Math.sin(A.breathPhase * 1.7) * 0.03;
             parts.torso.pivot.scale.set(pulse, 1 / pulse, pulse);
-            parts.torso.pivot.rotation.x = 0.10 * atk;
+            parts.torso.pivot.rotation.x = 0.12 * attackReach + ripple * 0.4;
+            parts.torso.pivot.rotation.y = Math.sin(A.swayPhase * 0.5) * 0.05;
+            parts.torso.pivot.position.y = (parts.torso.basePivot[1] || 0)
+                + ripple * 0.04;
         }
-        /* Giant eye slowly looks around */
-        if (parts.head.connected) {
-            parts.head.pivot.rotation.y = Math.sin(A.idlePhase * 0.55) * 0.18;
-            parts.head.pivot.rotation.x =
-                Math.sin(A.idlePhase * 0.40) * 0.08 - 0.30 * atk;
+        if (parts.head && parts.head.connected) {
+            parts.head.pivot.rotation.x = Math.sin(A.idlePhase * 0.4) * 0.08
+                + 0.30 * attackReach + A.headPitch * 0.05;
+            parts.head.pivot.rotation.y = Math.sin(A.idlePhase * 0.55) * 0.18
+                + A.headTurn * 0.40;
             parts.head.pivot.rotation.z = Math.sin(A.idlePhase * 0.31 + 1.2) * 0.05;
         }
     }
 
+    /**
+     * Serpent — S-curve body wave, hood flare, tongue/head weave.
+     */
     function animateSerpent(e, dt, A, moving, attackReach) {
         const parts = e.parts;
         const spd = Math.hypot(e.vel.x, e.vel.z);
-        if (moving) A.swayPhase += dt * (1.9 + spd * 0.5);
-        else A.swayPhase += dt * 1.0;
-        const sway = Math.sin(A.swayPhase);
+        A.coilWave += dt * (moving ? 2.0 + spd * 0.4 : 1.2);
+        const sway = Math.sin(A.coilWave);
+        const sway2 = Math.sin(A.coilWave * 0.5);
+
+        const dx = player.pos.x - e.pos.x;
+        const dz = player.pos.z - e.pos.z;
+        const close = Math.hypot(dx, dz) < 8;
+        const hoodTarget = (close || attackReach > 0.1) ? 1 : 0;
+        A.hoodFlare = (A.hoodFlare || 0)
+            + (hoodTarget - (A.hoodFlare || 0)) * Math.min(1, dt * 3.5);
+
         if (parts.torso.connected) {
-            parts.torso.pivot.rotation.y = sway * (moving ? 0.18 : 0.06);
-            parts.torso.pivot.rotation.x = 0.35 * attackReach;
-            parts.torso.pivot.position.y = parts.torso.basePivot[1] || 0;
+            parts.torso.pivot.rotation.y = sway * (moving ? 0.28 : 0.12);
+            parts.torso.pivot.rotation.x = 0.35 * attackReach + sway2 * 0.05;
+            parts.torso.pivot.rotation.z = sway2 * 0.10;
+            parts.torso.pivot.position.y = (parts.torso.basePivot[1] || 0)
+                + Math.abs(sway) * 0.03;
         }
-        if (parts.head.connected) {
-            parts.head.pivot.rotation.y = -sway * 0.14;
-            parts.head.pivot.rotation.x = Math.sin(A.swayPhase * 0.7) * 0.05 - attackReach * 0.55;
+        if (parts.head && parts.head.connected) {
+            const weave = Math.sin(A.coilWave * 1.15 + 0.6) * 0.22;
+            parts.head.pivot.rotation.x = Math.sin(A.coilWave * 0.7) * 0.06
+                + attackReach * 0.65 + A.headPitch * 0.05 - A.flinch * 0.35;
+            parts.head.pivot.rotation.y = -sway * 0.20 + weave + A.headTurn * 0.35;
+            parts.head.pivot.rotation.z = sway2 * 0.10;
+            /* Fake hood flare with vertical head scale */
+            const hs = 1 + A.hoodFlare * 0.22;
+            parts.head.pivot.scale.set(1 + A.hoodFlare * 0.06, hs, hs);
         }
     }
 
-    function animateInsect(e, dt, A, moving, attackReach) {
+    /**
+     * Greyscout — light skittering insectoid shuffle.
+     */
+    function animateGreyscout(e, dt, A, moving, attackReach) {
         const parts = e.parts;
         const spd = Math.hypot(e.vel.x, e.vel.z);
-        if (moving) A.walkPhase += dt * (2.6 + spd * 0.9);
-        else A.walkPhase += dt * 1.8;
+        if (moving) A.walkPhase += dt * (2.8 + spd * 0.7);
+        else A.walkPhase += dt * 1.5;
+
         const swing = Math.sin(A.walkPhase);
+        const swing2 = Math.sin(A.walkPhase * 2);
+        const antTw = Math.sin(A.antennaeT * 3 + 0.4) * 0.18;
+
         if (parts.legL.connected) {
-            parts.legL.pivot.rotation.x = swing * 0.55;
-            parts.legL.pivot.rotation.z = Math.cos(A.walkPhase) * 0.10;
+            parts.legL.pivot.rotation.x = swing * 0.80 * (moving ? 1 : 0.25);
+            parts.legL.pivot.rotation.z = -0.10;
         }
         if (parts.legR.connected) {
-            parts.legR.pivot.rotation.x = -swing * 0.55;
-            parts.legR.pivot.rotation.z = -Math.cos(A.walkPhase) * 0.10;
+            parts.legR.pivot.rotation.x = -swing * 0.80 * (moving ? 1 : 0.25);
+            parts.legR.pivot.rotation.z = 0.10;
         }
-        if (parts.armL.connected) parts.armL.pivot.rotation.x = Math.sin(A.walkPhase * 1.3) * 0.35 - attackReach * 1.2;
-        if (parts.armR.connected) parts.armR.pivot.rotation.x = Math.sin(A.walkPhase * 1.3 + 1.1) * 0.35 - attackReach * 1.2;
+
+        /* Long thin arms hang forward with a nervous flit. */
+        const flit = Math.sin(A.idlePhase * 5 + A._seed) * 0.06;
+        if (parts.armL.connected) {
+            parts.armL.pivot.rotation.x = 0.65 + flit + attackReach * 0.70;
+            parts.armL.pivot.rotation.z = -0.20;
+        }
+        if (parts.armR.connected) {
+            parts.armR.pivot.rotation.x = 0.65 - flit + attackReach * 0.70;
+            parts.armR.pivot.rotation.z = 0.20;
+        }
+
         if (parts.torso.connected) {
-            parts.torso.pivot.rotation.x = 0.10 * attackReach;
-            parts.torso.pivot.position.y = parts.torso.basePivot[1] - Math.abs(swing) * 0.02;
+            parts.torso.pivot.rotation.x = 0.20 + swing2 * 0.04
+                + attackReach * 0.30;
+            parts.torso.pivot.rotation.y = swing * 0.06;
+            parts.torso.pivot.rotation.z = swing * 0.04 + A.flinchRoll;
+            parts.torso.pivot.position.y = parts.torso.basePivot[1]
+                - Math.abs(swing) * 0.03;
         }
         if (parts.head.connected) {
-            parts.head.pivot.rotation.x = -attackReach * 0.35;
-            parts.head.pivot.rotation.z = Math.sin(A.walkPhase * 0.6) * 0.05;
+            parts.head.pivot.rotation.x = 0.05
+                + Math.sin(A.idlePhase * 2) * 0.08
+                + attackReach * 0.45 + A.headPitch * 0.05 - A.flinch * 0.40;
+            parts.head.pivot.rotation.y = A.headTurn * 0.40 + antTw * 0.4;
+            parts.head.pivot.rotation.z = Math.sin(A.idlePhase * 1.7) * 0.05;
         }
     }
 
-    function animateHopper(e, dt, A, moving, attackReach) {
+    /**
+     * Voidtwin (grey) — slow floaty bob, overlong arms sway.
+     */
+    function animateVoidtwin(e, dt, A, moving, attackReach) {
         const parts = e.parts;
         const spd = Math.hypot(e.vel.x, e.vel.z);
-        if (moving) A.bouncePhase += dt * (3.0 + spd * 0.5);
-        else A.bouncePhase += dt * 1.4;
-        const bounce = Math.sin(A.bouncePhase);
+        A.floatPhase += dt * (moving ? 1.8 : 1.0);
+
+        const bob = Math.sin(A.floatPhase);
+        const bob2 = Math.sin(A.floatPhase * 0.5);
+        const hover = bob * 0.03 * (moving ? 1 : 0.5);
+
+        /* Legs — barely move, they hover */
         if (parts.legL.connected) {
-            const s = 1 + bounce * (moving ? 0.14 : 0.05);
-            parts.legL.pivot.scale.y = s;
-            parts.legL.pivot.rotation.x = bounce * 0.05;
+            parts.legL.pivot.rotation.x = bob * 0.10 * (moving ? 1 : 0.3);
+            parts.legL.pivot.rotation.z = -0.04;
         }
         if (parts.legR.connected) {
-            const s = 1 + bounce * (moving ? 0.14 : 0.05);
-            parts.legR.pivot.scale.y = s;
-            parts.legR.pivot.rotation.x = bounce * 0.05;
+            parts.legR.pivot.rotation.x = -bob * 0.10 * (moving ? 1 : 0.3);
+            parts.legR.pivot.rotation.z = 0.04;
         }
+
+        /* Arms drift forward and sway as if floating in water. */
+        if (parts.armL.connected) {
+            parts.armL.pivot.rotation.x = 0.95 + bob2 * 0.15 + attackReach * 0.45;
+            parts.armL.pivot.rotation.z = -0.30 + bob * 0.06;
+        }
+        if (parts.armR.connected) {
+            parts.armR.pivot.rotation.x = 0.95 + bob2 * 0.15 + attackReach * 0.45;
+            parts.armR.pivot.rotation.z = 0.30 - bob * 0.06;
+        }
+
         if (parts.torso.connected) {
-            const squash = 1 - bounce * (moving ? 0.06 : 0.02);
-            parts.torso.pivot.scale.y = squash;
-            parts.torso.pivot.rotation.x = 0.15 * attackReach;
+            parts.torso.pivot.rotation.x = 0.05 + bob * 0.04 + attackReach * 0.20;
+            parts.torso.pivot.rotation.y = bob2 * 0.05;
+            parts.torso.pivot.rotation.z = bob * 0.03 + A.flinchRoll;
+            parts.torso.pivot.position.y = parts.torso.basePivot[1] + hover;
         }
-        if (parts.head.connected) {
-            parts.head.pivot.rotation.z = Math.sin(A.bouncePhase * 0.5) * 0.08;
-            parts.head.pivot.rotation.x = -attackReach * 0.35;
+        if (parts.head && parts.head.connected) {
+            parts.head.pivot.rotation.x = -0.05 + bob * 0.06
+                + attackReach * 0.30 + A.headPitch * 0.05 - A.flinch * 0.30;
+            parts.head.pivot.rotation.y = bob2 * 0.25 + A.headTurn * 0.45;
+            parts.head.pivot.rotation.z = bob * 0.04;
         }
-        if (parts.armL.connected) parts.armL.pivot.rotation.z = Math.sin(A.bouncePhase * 0.8) * 0.14;
-        if (parts.armR.connected) parts.armR.pivot.rotation.z = -Math.sin(A.bouncePhase * 0.8) * 0.14;
+    }
+
+    /**
+     * Wisp (cyclops) — slow stalker, single eye leads every motion.
+     */
+    function animateWisp(e, dt, A, moving, attackReach) {
+        const parts = e.parts;
+        const spd = Math.hypot(e.vel.x, e.vel.z);
+        if (moving) A.walkPhase += dt * (1.6 + spd * 0.4);
+        else A.walkPhase += dt * 0.8;
+        A.eyeStalkBounce += dt * 1.6;
+        A.hairPhase += dt * 1.2;
+
+        const swing = Math.sin(A.walkPhase);
+        const eyeSway = Math.sin(A.eyeStalkBounce) * 0.10;
+        const hairSway = Math.sin(A.hairPhase) * 0.05;
+
+        if (parts.legL.connected) {
+            parts.legL.pivot.rotation.x = swing * 0.55 * (moving ? 1 : 0.25);
+            parts.legL.pivot.rotation.z = -0.05;
+        }
+        if (parts.legR.connected) {
+            parts.legR.pivot.rotation.x = -swing * 0.55 * (moving ? 1 : 0.25);
+            parts.legR.pivot.rotation.z = 0.05;
+        }
+
+        if (parts.armL.connected) {
+            parts.armL.pivot.rotation.x = 0.85
+                + Math.sin(A.walkPhase + 0.4) * 0.10
+                + attackReach * 0.70;
+            parts.armL.pivot.rotation.z = -0.22;
+        }
+        if (parts.armR.connected) {
+            parts.armR.pivot.rotation.x = 0.85
+                + Math.sin(A.walkPhase - 0.4) * 0.10
+                + attackReach * 0.70;
+            parts.armR.pivot.rotation.z = 0.22;
+        }
+
+        if (parts.torso.connected) {
+            parts.torso.pivot.rotation.x = 0.10 + swing * 0.04 + attackReach * 0.30;
+            parts.torso.pivot.rotation.y = swing * 0.05;
+            parts.torso.pivot.rotation.z = eyeSway * 0.3 + A.flinchRoll;
+            parts.torso.pivot.position.y = parts.torso.basePivot[1]
+                - Math.abs(swing) * 0.03;
+        }
+        if (parts.head && parts.head.connected) {
+            /* The eye-stalk head swings the whole head — the "look" is the
+               animation. */
+            parts.head.pivot.rotation.x = eyeSway * 0.6
+                + attackReach * 0.35 + A.headPitch * 0.05 - A.flinch * 0.40;
+            parts.head.pivot.rotation.y = A.headTurn * 0.55 + eyeSway;
+            parts.head.pivot.rotation.z = hairSway;
+        }
+    }
+
+    /**
+     * Trilens — orange stalker with many tentacle bundles for arms/legs.
+     */
+    function animateTrilens(e, dt, A, moving, attackReach) {
+        const parts = e.parts;
+        const spd = Math.hypot(e.vel.x, e.vel.z);
+        if (moving) A.walkPhase += dt * (2.2 + spd * 0.6);
+        else A.walkPhase += dt * 1.2;
+
+        const swing = Math.sin(A.walkPhase);
+        const swing2 = Math.sin(A.walkPhase * 2);
+
+        if (parts.legL.connected) {
+            parts.legL.pivot.rotation.x = swing * 0.55 * (moving ? 1 : 0.25);
+            parts.legL.pivot.rotation.z = -0.10;
+        }
+        if (parts.legR.connected) {
+            parts.legR.pivot.rotation.x = -swing * 0.55 * (moving ? 1 : 0.25);
+            parts.legR.pivot.rotation.z = 0.10;
+        }
+
+        /* Tentacle-bundle arms — always forward with wriggle. */
+        if (parts.armL.connected) {
+            parts.armL.pivot.rotation.x = 1.05
+                + Math.sin(A.walkPhase * 1.7 + 0.5) * 0.15
+                + attackReach * 0.55;
+            parts.armL.pivot.rotation.z = -0.30
+                + Math.cos(A.walkPhase * 1.1) * 0.08;
+            parts.armL.pivot.rotation.y = Math.sin(A.walkPhase * 0.8) * 0.12;
+        }
+        if (parts.armR.connected) {
+            parts.armR.pivot.rotation.x = 1.05
+                + Math.sin(A.walkPhase * 1.7 - 0.5) * 0.15
+                + attackReach * 0.55;
+            parts.armR.pivot.rotation.z = 0.30
+                - Math.cos(A.walkPhase * 1.1) * 0.08;
+            parts.armR.pivot.rotation.y = Math.sin(A.walkPhase * 0.8 + 1.7) * 0.12;
+        }
+
+        if (parts.torso.connected) {
+            parts.torso.pivot.rotation.x = 0.18 + swing2 * 0.04 + attackReach * 0.30;
+            parts.torso.pivot.rotation.y = swing * 0.06;
+            parts.torso.pivot.rotation.z = swing * 0.04 + A.flinchRoll;
+            parts.torso.pivot.position.y = parts.torso.basePivot[1]
+                - Math.abs(swing) * 0.03;
+        }
+        if (parts.head && parts.head.connected) {
+            parts.head.pivot.rotation.x = 0.05
+                + Math.sin(A.idlePhase * 2) * 0.05
+                + attackReach * 0.40 + A.headPitch * 0.05 - A.flinch * 0.40;
+            parts.head.pivot.rotation.y = A.headTurn * 0.45
+                + Math.sin(A.idlePhase * 1.3) * 0.12;
+            parts.head.pivot.rotation.z = Math.sin(A.idlePhase * 1.7) * 0.06;
+        }
+    }
+
+    /**
+     * Imp (insect body) — fast aggressive skitter with forward mandible chatter.
+     */
+    function animateImpInsect(e, dt, A, moving, attackReach) {
+        const parts = e.parts;
+        const spd = Math.hypot(e.vel.x, e.vel.z);
+        if (moving) A.walkPhase += dt * (3.2 + spd * 0.7);
+        else A.walkPhase += dt * 1.8;
+
+        const swing = Math.sin(A.walkPhase);
+        const swing2 = Math.sin(A.walkPhase * 2);
+
+        if (parts.legL.connected) {
+            parts.legL.pivot.rotation.x = swing * 0.85 * (moving ? 1 : 0.3);
+            parts.legL.pivot.rotation.z = -0.08;
+        }
+        if (parts.legR.connected) {
+            parts.legR.pivot.rotation.x = -swing * 0.85 * (moving ? 1 : 0.3);
+            parts.legR.pivot.rotation.z = 0.08;
+        }
+
+        /* Arms thrash forward aggressively */
+        if (parts.armL.connected) {
+            parts.armL.pivot.rotation.x = 0.95
+                + Math.sin(A.walkPhase * 1.6 + 0.7) * 0.20
+                + attackReach * 0.90;
+            parts.armL.pivot.rotation.z = -0.28;
+        }
+        if (parts.armR.connected) {
+            parts.armR.pivot.rotation.x = 0.95
+                + Math.sin(A.walkPhase * 1.6 - 0.7) * 0.20
+                + attackReach * 0.90;
+            parts.armR.pivot.rotation.z = 0.28;
+        }
+
+        if (parts.torso.connected) {
+            parts.torso.pivot.rotation.x = 0.25 + swing2 * 0.05 + attackReach * 0.35;
+            parts.torso.pivot.rotation.y = swing * 0.07;
+            parts.torso.pivot.rotation.z = swing * 0.05 + A.flinchRoll;
+            parts.torso.pivot.position.y = parts.torso.basePivot[1]
+                - Math.abs(swing) * 0.03;
+        }
+        if (parts.head && parts.head.connected) {
+            /* Rapid mandible chatter via tiny rotation.y wobble */
+            const chatter = Math.sin(A.idlePhase * 15) * 0.06;
+            parts.head.pivot.rotation.x = 0.10
+                + attackReach * 0.50 + A.headPitch * 0.05 - A.flinch * 0.40;
+            parts.head.pivot.rotation.y = A.headTurn * 0.40 + chatter;
+            parts.head.pivot.rotation.z = Math.sin(A.idlePhase * 2) * 0.04;
+        }
+    }
+
+    /**
+     * Bloom (hopper body) — long-legged bouncing hop.
+     */
+    function animateBloomHopper(e, dt, A, moving, attackReach) {
+        const parts = e.parts;
+        const spd = Math.hypot(e.vel.x, e.vel.z);
+
+        A.bouncePhase += dt * (moving ? 3.6 + spd * 0.6 : 1.6);
+        const b = A.bouncePhase % (Math.PI * 2);
+        const hop = Math.sin(b);
+        const airborne = Math.max(0, hop);
+        const land = Math.max(0, -hop);
+        const crouch = hop > -0.2 && hop < 0.2 && Math.cos(b) < 0
+            ? Math.abs(Math.cos(b)) : 0;
+
+        /* Squash/stretch the torso with the hop. */
+        if (parts.torso.connected) {
+            const sy = 1 + airborne * 0.25 - land * 0.20 - crouch * 0.18;
+            const sxz = 1 / Math.sqrt(Math.max(0.5, sy));
+            parts.torso.pivot.scale.set(sxz, sy, sxz);
+            parts.torso.pivot.position.y = (parts.torso.basePivot[1] || 0)
+                + airborne * 0.16;
+            parts.torso.pivot.rotation.x = 0.30 * attackReach + crouch * 0.08;
+            parts.torso.pivot.rotation.z = Math.sin(A.idlePhase * 0.7 + A._seed) * 0.03;
+        }
+
+        /* Long legs — big fold at the knee during the crouch, extend on launch. */
+        const legFold = -crouch * 1.1 + land * 0.15;
+        if (parts.legL.connected) {
+            parts.legL.pivot.rotation.x = legFold + airborne * 0.20
+                + Math.sin(A.bouncePhase * 0.5) * 0.05;
+            parts.legL.pivot.rotation.z = -0.06;
+        }
+        if (parts.legR.connected) {
+            parts.legR.pivot.rotation.x = legFold + airborne * 0.20
+                + Math.sin(A.bouncePhase * 0.5 + 1.5) * 0.05;
+            parts.legR.pivot.rotation.z = 0.06;
+        }
+
+        /* Tiny arms — mostly hang with slight bounce. */
+        const armBounce = -hop * 0.20;
+        if (parts.armL.connected) {
+            parts.armL.pivot.rotation.x = 0.55 + armBounce + attackReach * 0.45;
+            parts.armL.pivot.rotation.z = -0.35;
+        }
+        if (parts.armR.connected) {
+            parts.armR.pivot.rotation.x = 0.55 + armBounce + attackReach * 0.45;
+            parts.armR.pivot.rotation.z = 0.35;
+        }
+
+        if (parts.head && parts.head.connected) {
+            const bob = Math.sin(A.bouncePhase + 0.6) * 0.10;
+            parts.head.pivot.rotation.x = bob
+                + attackReach * 0.30 + A.headPitch * 0.05 - A.flinch * 0.35;
+            parts.head.pivot.rotation.y = A.headTurn * 0.40;
+            parts.head.pivot.rotation.z = Math.sin(A.idlePhase * 0.5) * 0.05;
+        }
     }
 
     /* =========================================================================
@@ -3189,6 +4099,9 @@
                 if (e.dying) updateDeathAnim(e, dt);
                 continue;
             }
+
+            if (e.hitSlowTimer > 0) e.hitSlowTimer -= dt;
+
             const dx = player.pos.x - e.pos.x;
             const dz = player.pos.z - e.pos.z;
             const distToPlayer = Math.hypot(dx, dz);
@@ -3205,6 +4118,9 @@
                 e.state = "wander";
                 e.wanderTarget = null;
             }
+
+            const slowMul = e.hitSlowTimer > 0 ? HIT_SLOW_MULTIPLIER : 1;
+
             let moveSpeed = 0, dirX = 0, dirZ = 0;
             if (e.state === "chase") {
                 dirX = dx / distToPlayer;
@@ -3752,6 +4668,9 @@
         // Feed the animator.
         const spd = Math.hypot(e.vel.x, e.vel.z);
         e.moving = spd > 0.35;
+        if (typeof e._targetSlow === 'number') {
+            e.hitSlowTimer = e._targetSlow;
+        }
         if (typeof e._targetCrawlBlend === 'number') {
             e.crawlBlend += (e._targetCrawlBlend - e.crawlBlend) * Math.min(1, dt * 6);
         }
@@ -3789,6 +4708,7 @@
             e._targetYaw = s.yaw;
             e._targetHp = s.hp;
             e._targetAlive = !!s.a;
+            e._targetSlow = s.sl || 0;
             e._targetCrawlBlend = s.cb || 0;
         }
     }
@@ -3805,6 +4725,8 @@
     function hitEnemyById(eid, hx, hy, hz, dmg, dirX, dirY, dirZ) {
         const e = findByMpId(eid);
         if (!e || !e.alive) return false;
+
+        applyHitSlow(e);
 
         // Find the part whose bounding sphere is closest to the hit point.
         let bestKey = null, bestD2 = Infinity;

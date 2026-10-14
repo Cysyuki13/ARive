@@ -22,19 +22,8 @@
 (function (global) {
     "use strict";
 
-    /* ---------------------------------------------------------------------
-       1. PASTE YOUR FIREBASE WEB CONFIG HERE
-          Firebase console → Project settings → Your apps → Web app → Config
-       --------------------------------------------------------------------- */
-    const firebaseConfig = {
-        apiKey: "AIzaSyB_GbApsfgkq25JR20NA_nT_7AxvqAydVI",
-        authDomain: "arive-26.firebaseapp.com",
-        projectId: "arive-26",
-        storageBucket: "arive-26.firebasestorage.app",
-        messagingSenderId: "1081630929337",
-        appId: "1:1081630929337:web:db677bc6537ffaf7b24668",
-        measurementId: "G-JBEQ8J9W49"
-    };
+    // auth.js - Replace the hardcoded config block with this:
+    const firebaseConfig = global.ARiveFirebaseConfig || {};
 
     /* ---------------------------------------------------------------------
        2. SDK source (loaded on demand — no <script> tags needed in HTML)

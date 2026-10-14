@@ -687,6 +687,7 @@
                 hp: Math.round(e.hp),
                 a: e.alive ? 1 : 0,
                 cb: +(e.crawlBlend || 0).toFixed(2),
+                sl: +(e.hitSlowTimer || 0).toFixed(2),
             });
         }
         if (!list.length) return;
