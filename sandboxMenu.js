@@ -612,10 +612,16 @@
         } else if (d.kind === "furniture" && Hk.spawnFurnitureAt) {
             Hk.spawnFurnitureAt(target.x, target.y, target.z, d.def);
             setStatus("✓  " + card.name);
-        } else if (d.kind === "zombie" && window.Enemies && window.Enemies.spawn) {
+        } else if (d.kind === "zombie" && window.Enemies) {
             const gy = (Hk.getGroundYAtVoxel && Hk.getGroundYAtVoxel(target.vx, target.vz)) || 4;
-            window.Enemies.spawn(d.type, { x: target.x, y: gy, z: target.z });
-            setStatus("✓  " + d.type.toUpperCase());
+            const MP = window.ARiveMP;
+            if (MP && MP.connected && !MP.isHost && MP.requestEnemySpawn) {
+                MP.requestEnemySpawn(d.type, target.x, gy, target.z);
+                setStatus("✓  requested " + d.type.toUpperCase());
+            } else {
+                window.Enemies.spawn(d.type, { x: target.x, y: gy, z: target.z });
+                setStatus("✓  " + d.type.toUpperCase());
+            }
         } else if (d.kind === "block" && Hk.placeBlockAt) {
             Hk.placeBlockAt(target.vx, target.vy, target.vz, d.blockId);
             setStatus("✓  " + card.name);

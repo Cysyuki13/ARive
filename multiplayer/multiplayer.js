@@ -120,7 +120,7 @@
         return sp;
     }
 
-    function createRemotePlayer(id, name) {
+    function createRemotePlayer(id, name, avatarData) {
         if (mp.remotePlayers.has(id)) {
             const rp = mp.remotePlayers.get(id);
             if (name && rp.name !== name) {
@@ -134,7 +134,14 @@
             return rp;
         }
 
-        const model = Hooks.buildRemotePlayerMesh();
+        // Convert the wire-format avatar → AVATAR_MODEL_DATA-shape for the builder
+        let remoteModel = null;
+        if (avatarData && global.ARiveAvatar) {
+            try { remoteModel = global.ARiveAvatar.toRemoteModelData(avatarData); }
+            catch (e) { console.warn('[MP] avatar convert failed:', e); }
+        }
+
+        const model = Hooks.buildRemotePlayerMesh(remoteModel);
         const group = model.group;
         group.position.set(0, -10, 0);
         const tag = makeNameTag(name);
@@ -288,7 +295,7 @@
             case 'peer-join':
                 if (!mp.isHost && msg.id !== mp.myId) {
                     mp.clients.set(msg.id, { name: msg.name });
-                    createRemotePlayer(msg.id, msg.name);
+                    createRemotePlayer(msg.id, msg.name, msg.avatar);   // ← avatar
                 }
                 break;
             case 'peer-leave':
@@ -319,7 +326,7 @@
         const peers = [];
         for (const [id, c] of mp.clients) {
             if (id === clientId) continue;
-            peers.push({ id, name: c.name });
+            peers.push({ id, name: c.name, avatar: c.avatar || null });
         }
 
         const pickupSnapshots = [];
@@ -349,26 +356,37 @@
             });
         }
 
+        const myAvatar = (global.ARiveAvatar ? global.ARiveAvatar.loadLocal() : null);
+
         const welcome = {
             t: 'welcome',
             hostId: mp.myId,
             hostName: mp.myName,
+            hostAvatar: myAvatar,             // ← NEW
             roomName: mp.roomName,
             seed: Hooks.getCurrentSeed(),
             mapType: Hooks.getCurrentMapType(),
-            peers: peers,
+            peers: peers,                     // now includes avatar per peer
             pickups: pickupSnapshots,
             enemies: enemySnapshot,
             eventLog: mp.eventLog,
         };
         try { mp.clients.get(clientId).conn.send(welcome); } catch (e) { console.warn(e); }
 
+        // Notify OTHER clients about this new peer — include their avatar
         for (const [id, c] of mp.clients) {
             if (id === clientId) continue;
-            try { c.conn.send({ t: 'peer-join', id: clientId, name: msg.name }); } catch (e) { }
+            try {
+                c.conn.send({
+                    t: 'peer-join',
+                    id: clientId,
+                    name: msg.name,
+                    avatar: msg.avatar || null,   // ← NEW
+                });
+            } catch (e) { }
         }
 
-        createRemotePlayer(clientId, msg.name);
+        createRemotePlayer(clientId, msg.name, msg.avatar);   // ← pass avatar
         updateSessionUI();
         broadcastHeartbeat();
     }
@@ -382,10 +400,10 @@
                 return Hooks.regenerateWorld(msg.seed, msg.mapType || "city");
             })
             .then(function () {
-                createRemotePlayer(msg.hostId, msg.hostName);
+                createRemotePlayer(msg.hostId, msg.hostName, msg.hostAvatar);   // ← avatar
                 for (const p of (msg.peers || [])) {
                     mp.clients.set(p.id, { name: p.name });
-                    createRemotePlayer(p.id, p.name);
+                    createRemotePlayer(p.id, p.name, p.avatar);                  // ← avatar
                 }
                 for (const es of (msg.enemies || [])) {
                     if (window.Enemies && window.Enemies.spawnRemote) {
@@ -550,14 +568,31 @@
     mp.onLocalPickupSpawn = function (p) {
         if (!p.pid) return;
         if (!p.def || !p.def.meta || !p.def.meta.model) return;
+
         const msg = {
             t: 'pickup-spawn', pid: p.pid,
             def: {
-                name: p.def.name, iconImage: p.def.iconImage,
+                name: p.def.name,
+                iconImage: p.def.iconImage,
                 iconImageRotated: p.def.iconImageRotated,
-                w: p.def.w, h: p.def.h, color: p.def.color, meta: p.def.meta,
+                w: p.def.w, h: p.def.h,
+                color: p.def.color,
+                meta: p.def.meta,
+
+                // Fields added so weapons / ammo / furniture / stacks survive
+                // the round-trip through the host.
+                size: p.def.size,
+                furnitureKey: p.def.furnitureKey,
+                count: p.def.count,
+                maxStack: p.def.maxStack,
+                isAmmo: !!p.def.isAmmo,
+                ammoType: p.def.ammoType,
+                isWeapon: !!p.def.isWeapon,
+                weaponDef: p.def.weaponDef || null,
             },
-            x: p.mesh.position.x, y: p.mesh.position.y, z: p.mesh.position.z,
+            x: p.mesh.position.x,
+            y: p.mesh.position.y,
+            z: p.mesh.position.z,
         };
         if (mp.isHost) broadcastRelay(msg, null);
         else if (mp.connected) sendToHost(msg);
@@ -621,15 +656,25 @@
     };
     /* ---- Enemy sync (host → clients) ---- */
     mp.onEnemySpawned = function (e) {
-        if (!mp.connected || !mp.isHost) return;
+        if (!mp.connected) return;
         if (!e || !e._mpId) return;
-        broadcastToClients({
+        if (e._remoteOwned) return;              // never echo remote mirrors
+
+        const msg = {
             t: 'enemy-spawn',
             eid: e._mpId,
             type: e.kind,
             x: e.pos.x, y: e.pos.y, z: e.pos.z,
             yaw: e.yaw,
-        }, null);
+        };
+        if (mp.isHost) broadcastToClients(msg, null);
+        else sendToHost(msg);                    // ← client path was missing
+    };
+
+    mp.requestEnemySpawn = function (type, x, y, z) {
+        if (!mp.connected || mp.isHost) return false;
+        sendToHost({ t: 'request-spawn', kind: 'enemy', type, x, y, z });
+        return true;
     };
 
     mp.onEnemyKilled = function (e) {
@@ -678,7 +723,7 @@
         for (let i = 0; i < enemies.length; i++) {
             const e = enemies[i];
             if (!e._mpId || e._remoteOwned) continue;
-            list.push({
+            const entry = {
                 i: e._mpId,
                 x: +e.pos.x.toFixed(3),
                 y: +e.pos.y.toFixed(3),
@@ -688,7 +733,16 @@
                 a: e.alive ? 1 : 0,
                 cb: +(e.crawlBlend || 0).toFixed(2),
                 sl: +(e.hitSlowTimer || 0).toFixed(2),
-            });
+            };
+            // Boss action state — only for mini/final bosses
+            if (e.kind === '__mini_boss__' || e.kind === '__final_boss__') {
+                entry.th = e.isThrowing ? 1 : 0;
+                entry.tt = +((e.throwTimer || 0).toFixed(2));
+                entry.sm = e.isSlamming ? 1 : 0;
+                entry.st = +((e.slamTimer || 0).toFixed(2));
+                entry.sy = (typeof e.slamYaw === 'number') ? +e.slamYaw.toFixed(2) : 0;
+            }
+            list.push(entry);
         }
         if (!list.length) return;
         broadcastToClients({ t: 'enemy-batch', list }, null);
@@ -932,7 +986,7 @@
                 }
             }
             conn._authed = true;
-            mp.clients.set(senderId, { conn, name: msg.name || '?' });
+            mp.clients.set(senderId, { conn, name: msg.name || '?', avatar: msg.avatar || null });
             onClientHello(senderId, msg);
             return;
         }
@@ -954,6 +1008,12 @@
             case 'pickup-grab':
             case 'pickup-release':
             case 'pickup-remove':
+            case 'request-spawn':
+                if (msg.kind === 'enemy' && window.Enemies && window.Enemies.spawn) {
+                    window.Enemies.spawn(msg.type, { x: msg.x, y: msg.y, z: msg.z });
+                    // spawnEnemy auto-fires onEnemySpawned → broadcast to all clients
+                }
+                break;
             case 'pickup-move':
                 handleMessage(msg, senderId, false);
                 broadcastRelay(msg, senderId);
@@ -1045,6 +1105,17 @@
                     return;
                 }
                 if (msg.t === 'denied') {
+                    if (msg.reason === 'bad-password' && !mp._pwRetried) {
+                        mp._pwRetried = true;
+                        const pw = window.prompt('Wrong password. Try again:');
+                        if (pw) {
+                            const myName = mp.myName;
+                            const roomId = mp.roomCode;
+                            cleanupFailedJoin();
+                            joinGame(myName, roomId, pw);
+                            return;
+                        }
+                    }
                     setJoinStatus('Access denied: ' + (msg.reason || 'unknown'));
                     cleanupFailedJoin();
                     return;
@@ -1070,17 +1141,28 @@
         let proof = null;
 
         if (msg.needsPassword) {
-            if (!mp._pendingPassword) {
-                setJoinStatus('Password required.');
-                cleanupFailedJoin();
-                return;
+            let pw = mp._pendingPassword;
+            if (!pw) {
+                pw = window.prompt('This room is password-protected.\nEnter the password:');
+                if (pw == null) {
+                    setJoinStatus('Cancelled.');
+                    cleanupFailedJoin();
+                    return;
+                }
+                mp._pendingPassword = pw;
             }
-            if (Rooms) proof = await Rooms.hashPassword(mp._pendingPassword, nonce);
+            if (Rooms) proof = await Rooms.hashPassword(pw, nonce);
         }
 
         setJoinStatus('Syncing world…');
-        sendToHost({ t: 'hello', name: mp.myName, passwordProof: proof });
+        sendToHost({
+            t: 'hello',
+            name: mp.myName,
+            passwordProof: proof,
+            avatar: myAvatar,               // ← NEW
+        });
     }
+
 
     function cleanupFailedJoin() {
         if (mp._hostConn) { try { mp._hostConn.close(); } catch (e) { } mp._hostConn = null; }
@@ -1116,6 +1198,7 @@
         mp.eventLog.length = 0;
         clearRemotePlayers();
         Hooks.setMpBadge('');
+        mp._pwRetried = false;
 
         if (doCleanup) Hooks.stopPlaying();
         updateSessionUI();
@@ -1238,6 +1321,10 @@
         $('mpPasswordPrompt').classList.add('hidden');
         $('mpJoinPanel').classList.remove('hidden');
         setJoinStatus('');
+
+        const ci = $('mpJoinCode');
+        if (ci) ci.value = '';
+
         startRoomListSubscription();
     }
 
@@ -1350,6 +1437,38 @@
         $('mpPasswordPrompt').classList.add('hidden');
         $('mpJoinPanel').classList.remove('hidden');
         setJoinStatus('');
+    }
+
+    function onJoinByCode() {
+        const name = ($('mpName').value || '').trim();
+        if (!name) { setJoinStatus('Enter a name first.'); return; }
+
+        const input = $('mpJoinCode');
+        const code = (input.value || '').trim().toUpperCase();
+        if (code.length !== CODE_LEN) {
+            setJoinStatus('Enter the ' + CODE_LEN + '-character room code.');
+            input.focus();
+            return;
+        }
+
+        // 若该房间恰好在列表里且有密码，走原来的密码提示 UI
+        const known = currentRooms.find(r => r.roomId === code);
+        if (known && known.hasPassword) {
+            pendingJoinRoom = known;
+            $('mpJoinPanel').classList.add('hidden');
+            $('mpPasswordPrompt').classList.remove('hidden');
+            const lbl = $('mpPasswordRoomName');
+            if (lbl) lbl.textContent = 'Password for "' +
+                (known.roomName || known.hostName || 'room') + '"';
+            $('mpJoinPassword').value = '';
+            setJoinStatus('');
+            setTimeout(() => $('mpJoinPassword').focus(), 40);
+            return;
+        }
+
+        // 直接 P2P 连——完全绕过 Firestore
+        stopRoomListSubscription();
+        joinGame(name, code, '');
     }
 
     // ---- Name preference -------------------------------------------------
@@ -1482,6 +1601,20 @@
             $('mpActions').classList.remove('hidden');
             setHostStatus('');
         });
+
+        // ---- Join by room code ----
+        const codeInput = $('mpJoinCode');
+        const codeBtn = $('mpJoinCodeBtn');
+        if (codeBtn) codeBtn.addEventListener('click', onJoinByCode);
+        if (codeInput) {
+            codeInput.addEventListener('input', (e) => {
+                e.target.value = e.target.value.toUpperCase()
+                    .replace(new RegExp('[^' + CODE_CHARS + ']', 'g'), '');
+            });
+            codeInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); onJoinByCode(); }
+            });
+        }
 
         $('mpJoinBack').addEventListener('click', closeRoomList);
 

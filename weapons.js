@@ -268,6 +268,17 @@
     return "rifle";
   }
 
+  /* Shotgun JSONs that forget `pellets` still fire a proper spread
+   instead of a single slug.  Non-shotguns default to 1. */
+  function getPelletCount(def) {
+    if (!def) return 1;
+    if (typeof def.pellets === "number" && def.pellets > 0) {
+      return Math.max(1, def.pellets | 0);
+    }
+    if (getWeaponType(def) === "shotgun") return 8;
+    return 1;
+  }
+
   /* =====================================================================
        Sound table — window.WEAPON_SOUNDS, loaded before this file.
        ===================================================================== */
@@ -1345,7 +1356,7 @@ as the gun comes up, then returns to the grip as the gun settles. */
 
     playWeaponSound(def, "fire");
 
-    const pelletCount = Math.max(1, def.pellets | 0 || 1);
+    const pelletCount = getPelletCount(def);
     const origin = cam.position.clone();
     const spreadMul = 1 - 0.75 * scopeT;
     const sp = (def.spread || 0) * spreadMul;
@@ -1418,9 +1429,10 @@ as the gun comes up, then returns to the grip as the gun settles. */
             endPoint.x, endPoint.y, endPoint.z,
             def.damage,
             dir.x, dir.y, dir.z,
+            def.carveRadius,          // ← 新增
           );
         }
-        if (!routed && g.hurtEnemy) g.hurtEnemy(hitEnemy, def.damage);
+        if (!routed && g.hurtEnemy) g.hurtEnemy(hitEnemy, def.damage, def.carveRadius);
 
         spawnImpact(endPoint, 0xff5050, true);
       } else if (hitVoxel) {
@@ -1428,8 +1440,20 @@ as the gun comes up, then returns to the grip as the gun settles. */
         const cx = hitVoxel.x + hitVoxel.nx;
         const cy = hitVoxel.y + hitVoxel.ny;
         const cz = hitVoxel.z + hitVoxel.nz;
-        if (g.carveSphere) g.carveSphere(cx, cy, cz, 1.1, { debrisChance: 0.12 });
-        if (g.net && g.net.sendCarve) g.net.sendCarve(cx, cy, cz, 1.1, false);
+        /* Per-weapon block-breaking power.  Falls back to the old 1.1 radius
+           if the JSON doesn't set it, so old weapons keep working. */
+        const carveRadius = (typeof def.carveRadius === "number" && def.carveRadius > 0)
+          ? def.carveRadius : 1.1;
+        const carveDebris = (typeof def.carveDebris === "number")
+          ? def.carveDebris : 0.12;
+        const carvePenetrate = (def.carvePenetrate === true);
+
+        if (g.carveSphere) {
+          g.carveSphere(cx, cy, cz, carveRadius, { debrisChance: carveDebris });
+        }
+        if (g.net && g.net.sendCarve) {
+          g.net.sendCarve(cx, cy, cz, carveRadius, carvePenetrate);
+        }
         spawnImpact(endPoint, def.bulletColor, false);
       } else {
         endPoint = origin.clone().addScaledVector(dir, MAX_RANGE);
@@ -2129,7 +2153,7 @@ as the gun comes up, then returns to the grip as the gun settles. */
     if (!el) return;
 
     const def = activeSlot >= 0 ? slots[activeSlot] : null;
-    const pellets = def ? (def.pellets | 0) : 0;
+    const pellets = def ? getPelletCount(def) : 0;
     const scoped = scopeT > 0.3;
 
     let key;

@@ -3,7 +3,8 @@
 
 <head>
     <meta charset="utf-8">
-    <title>ARive — 武器編輯器</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>ARive · 武器編輯器</title>
     <style>
         * {
             box-sizing: border-box;
@@ -11,85 +12,250 @@
 
         html,
         body {
-            margin: 0;
             height: 100%;
-            background: #080b10;
-            color: #c8b88a;
-            font: 12px "Courier New", monospace;
+            margin: 0;
+            background: #0a0d12;
+            color: #d4c9a8;
+            font: 13px "Segoe UI", "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
             overflow: hidden;
         }
 
-        #wrap {
-            display: grid;
-            grid-template-columns: 340px 1fr 360px;
-            height: 100vh;
+        body {
+            display: flex;
+            flex-direction: column;
         }
 
-        .col {
+        /* ---------------- top bar ---------------- */
+        #topbar {
+            flex: 0 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 16px;
+            background: linear-gradient(180deg, #12171f 0%, #0e1219 100%);
+            border-bottom: 1px solid #252d3a;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, .35);
+        }
+
+        #topbar h1 {
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            color: #f0d878;
+            margin: 0 12px 0 0;
+            white-space: nowrap;
+        }
+
+        #topbar h1::before {
+            content: "◈ ";
+            color: #6ac8e8;
+        }
+
+        #topbar .grow {
+            flex: 1;
+        }
+
+        #loadInfo {
+            font-size: 11px;
+            color: #7a8a9a;
+            letter-spacing: 0.5px;
+            max-width: 320px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* ---------------- page nav ---------------- */
+        #pagenav {
+            flex: 0 0 auto;
+            display: flex;
+            gap: 4px;
+            padding: 6px 12px;
+            background: #0c1016;
+            border-bottom: 1px solid #1e2633;
+        }
+
+        #pagenav button {
+            width: auto;
+            padding: 8px 18px;
+            font-size: 12px;
+            font-weight: 500;
+            letter-spacing: 0.8px;
+            background: transparent;
+            border: 1px solid transparent;
+            color: #7a8a9a;
+            border-radius: 6px;
+            transition: all .15s ease;
+        }
+
+        #pagenav button:hover {
+            background: #161c26;
+            color: #d4c9a8;
+            border-color: #2a3441;
+        }
+
+        #pagenav button.active {
+            background: #e8c86a;
+            color: #0b0e13;
+            border-color: #f6e2a6;
+            font-weight: 600;
+            box-shadow: 0 0 12px rgba(232, 200, 106, 0.25);
+        }
+
+        /* ---------------- workspace (viewport + side) ---------------- */
+        #workspace {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            overflow: hidden;
+        }
+
+        #viewportArea {
+            flex: 1.35;
+            min-width: 0;
+            min-height: 0;
+            position: relative;
+            background: #05070a;
+            border-right: 1px solid #1e2633;
+        }
+
+        #sidePanel {
+            flex: 0 0 400px;
+            min-width: 340px;
+            max-width: 520px;
+            display: flex;
+            flex-direction: column;
+            background: #0c1016;
+            overflow: hidden;
+        }
+
+        #sidePanel.wide {
+            flex: 0 0 560px;
+            max-width: 640px;
+        }
+
+        /* ---------------- pages ---------------- */
+        #pages {
+            flex: 1;
+            min-height: 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .page {
+            display: none;
+            height: 100%;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        .page.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Browser page: stacked panels */
+        #page-browser.active {
             overflow-y: auto;
-            padding: 14px;
-            background: #0e1219;
-            border-right: 1px solid #1c232d;
+            padding: 12px;
+            gap: 12px;
+        }
+
+        /* Data page: scrollable form grid */
+        #page-data.active {
+            overflow-y: auto;
+            padding: 12px;
+            gap: 10px;
+            display: grid;
+            grid-template-columns: 1fr;
+            align-content: start;
+        }
+
+        /* Model page: split list + props */
+        #page-model.active {
+            flex-direction: row;
+            gap: 0;
+        }
+
+        #page-model .model-left {
+            flex: 0 0 220px;
+            border-right: 1px solid #1e2633;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        #page-model .model-right {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        /* Pose / Scope / Icon: single scroll panel */
+        #page-pose.active,
+        #page-scope.active,
+        #page-icon.active {
+            overflow-y: auto;
+            padding: 12px;
+        }
+
+        .panel {
+            background: #11161f;
+            border: 1px solid #1e2633;
+            border-radius: 8px;
+            padding: 12px 14px;
+            overflow-y: auto;
+            min-height: 0;
             scrollbar-width: thin;
             scrollbar-color: #2b333f #0e1219;
         }
 
-        .col:last-child {
-            border-right: none;
-            border-left: 1px solid #1c232d;
-        }
-
-        .col::-webkit-scrollbar {
+        .panel::-webkit-scrollbar {
             width: 8px;
+            height: 8px;
         }
 
-        .col::-webkit-scrollbar-thumb {
+        .panel::-webkit-scrollbar-thumb {
             background: #2b333f;
+            border-radius: 4px;
         }
 
-        .col::-webkit-scrollbar-track {
-            background: #0e1219;
+        .panel::-webkit-scrollbar-track {
+            background: transparent;
         }
 
-        h1 {
-            font-size: 13px;
-            letter-spacing: 3px;
-            color: #e8c86a;
-            margin: 0 0 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        h1::before {
-            content: "◈";
-            color: #6ac8e8;
-        }
-
+        /* ---------------- generic form bits ---------------- */
         h2 {
-            font-size: 10px;
-            letter-spacing: 2px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 1.5px;
             color: #8fa8c8;
-            margin: 14px 0 6px;
-            padding-bottom: 4px;
-            border-bottom: 1px solid #1c232d;
+            margin: 0 0 10px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #1e2633;
             text-transform: uppercase;
         }
 
+        h2:first-child {
+            margin-top: 0;
+        }
+
         h3 {
-            font-size: 9px;
-            letter-spacing: 1.5px;
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 1.2px;
             color: #6ac8e8;
-            margin: 10px 0 4px;
+            margin: 12px 0 6px;
             text-transform: uppercase;
         }
 
         label {
             display: block;
-            font-size: 9px;
-            color: #7a889a;
-            letter-spacing: 1px;
-            margin-top: 6px;
+            font-size: 10px;
+            font-weight: 500;
+            color: #8a9aaa;
+            letter-spacing: 0.6px;
+            margin-top: 8px;
+            margin-bottom: 3px;
             text-transform: uppercase;
         }
 
@@ -98,13 +264,13 @@
         textarea,
         button {
             width: 100%;
-            background: #161b23;
-            color: #e8c86a;
-            border: 1px solid #2b333f;
-            padding: 5px 7px;
-            font: 11px "Courier New", monospace;
-            border-radius: 2px;
-            transition: border-color .12s, background .12s;
+            background: #161b25;
+            color: #f0d878;
+            border: 1px solid #2a3441;
+            padding: 7px 10px;
+            font: 12px "Segoe UI", "SF Pro Text", system-ui, sans-serif;
+            border-radius: 5px;
+            transition: border-color .12s, background .12s, box-shadow .12s;
         }
 
         input:focus,
@@ -112,121 +278,159 @@
         textarea:focus {
             outline: none;
             border-color: #6ac8e8;
+            box-shadow: 0 0 0 2px rgba(106, 200, 232, 0.15);
         }
 
         button {
             cursor: pointer;
-            letter-spacing: 1px;
-            background: #1a2029;
+            letter-spacing: 0.5px;
+            background: #1a212c;
+            font-weight: 500;
         }
 
         button:hover {
-            background: #20272f;
-            border-color: #3a4450;
+            background: #222a36;
+            border-color: #3a4656;
         }
 
         button.active {
             background: #e8c86a;
             color: #0b0e13;
             border-color: #f6e2a6;
-            font-weight: bold;
+            font-weight: 600;
+        }
+
+        button.sm {
+            padding: 6px 12px;
+            font-size: 11px;
+            width: auto;
+            border-radius: 5px;
+        }
+
+        button.primary {
+            background: #2a3a28;
+            border-color: #3d5a38;
+            color: #a8d89a;
+        }
+
+        button.primary:hover {
+            background: #344a32;
+            border-color: #4a7048;
         }
 
         .row {
             display: flex;
-            gap: 6px;
+            gap: 8px;
+            align-items: center;
         }
 
         .row>* {
             flex: 1;
+            min-width: 0;
         }
 
-        /* ---- tabs ---- */
-        .tabs {
-            display: flex;
-            gap: 2px;
-            margin: 0 0 12px;
-            background: #0a0d12;
-            padding: 3px;
-            border-radius: 3px;
-            border: 1px solid #1c232d;
+        .row.tight {
+            gap: 6px;
         }
 
-        .tabs button {
-            flex: 1;
-            padding: 7px 4px;
-            font-size: 9px;
-            letter-spacing: 1.5px;
-            background: transparent;
-            border: none;
-            color: #6a7a8a;
+        .row.tight>* {
+            flex: 0 0 auto;
         }
 
-        .tabs button.active {
-            background: #e8c86a;
-            color: #0b0e13;
-            font-weight: bold;
-        }
-
-        .tab-pane {
-            display: none;
-        }
-
-        .tab-pane.active {
-            display: block;
-        }
-
-        /* ---- groups ---- */
         .grp {
-            background: #0a0d12;
-            border: 1px solid #1c232d;
-            padding: 8px 10px 10px;
-            margin-bottom: 8px;
-            border-radius: 3px;
+            background: #0c1016;
+            border: 1px solid #1e2633;
+            padding: 10px 12px 12px;
+            margin-bottom: 10px;
+            border-radius: 6px;
         }
 
-        /* ---- slider rows ---- */
+        .hint {
+            font-size: 11px;
+            color: #6a7a8a;
+            letter-spacing: 0.3px;
+            margin-top: 10px;
+            line-height: 1.6;
+            background: #0c1016;
+            padding: 8px 10px;
+            border-left: 3px solid #6ac8e8;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .hint b {
+            color: #d4c9a8;
+        }
+
+        .dim {
+            color: #5a6a7a;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        }
+
+        .chk {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: #9aabbb;
+            margin-top: 8px;
+            cursor: pointer;
+            letter-spacing: 0.3px;
+        }
+
+        .chk input {
+            width: auto;
+            flex: none;
+            cursor: pointer;
+            accent-color: #6ac8e8;
+        }
+
+        /* ---------------- slider rows ---------------- */
         .vec-row {
             display: grid;
-            grid-template-columns: 22px 1fr 64px;
-            gap: 5px;
+            grid-template-columns: 28px 1fr 72px;
+            gap: 6px;
             align-items: center;
-            margin-top: 3px;
+            margin-top: 4px;
         }
 
         .vec-row>span:first-child {
-            font-size: 9px;
-            color: #5a6a7a;
+            font-size: 10px;
+            color: #6a7a8a;
             text-align: center;
-            letter-spacing: 1px;
+            letter-spacing: 0.5px;
+            font-weight: 500;
         }
 
         .vec-row input[type="range"] {
             width: 100%;
-            height: 3px;
+            height: 4px;
             background: #1a2028;
             appearance: none;
             -webkit-appearance: none;
             outline: none;
             cursor: pointer;
             border-radius: 2px;
+            padding: 0;
+            border: none;
         }
 
         .vec-row input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
-            width: 12px;
-            height: 12px;
+            width: 14px;
+            height: 14px;
             background: #6ac8e8;
-            border: 1px solid #0a0d12;
+            border: 2px solid #0a0d12;
             cursor: grab;
             border-radius: 50%;
+            box-shadow: 0 0 6px rgba(106, 200, 232, 0.4);
         }
 
         .vec-row input[type="range"]::-moz-range-thumb {
-            width: 12px;
-            height: 12px;
+            width: 14px;
+            height: 14px;
             background: #6ac8e8;
-            border: 1px solid #0a0d12;
+            border: 2px solid #0a0d12;
             cursor: grab;
             border-radius: 50%;
         }
@@ -237,24 +441,25 @@
         }
 
         .vec-row input[type="number"] {
-            padding: 3px 5px;
-            font-size: 10px;
+            padding: 4px 6px;
+            font-size: 11px;
             text-align: right;
-            font-family: "Courier New", monospace;
         }
 
         .vec-row input[type="number"]:disabled {
             opacity: .3;
         }
 
-        /* ---- viewport ---- */
-        #viewport {
-            position: relative;
+        /* ---------------- viewport ---------------- */
+        #viewportBox {
+            position: absolute;
+            inset: 0;
             background: #05070a;
-            min-width: 0;
         }
 
-        #viewport canvas {
+        #viewportBox canvas {
+            position: absolute;
+            inset: 0;
             display: block;
             width: 100%;
             height: 100%;
@@ -262,38 +467,36 @@
 
         #hud {
             position: absolute;
-            top: 10px;
-            left: 12px;
-            font-size: 9px;
-            color: #5a6a7a;
-            letter-spacing: 1px;
+            top: 12px;
+            left: 14px;
+            font-size: 11px;
+            color: #7a8a9a;
+            letter-spacing: 0.4px;
             pointer-events: none;
             line-height: 1.7;
-            background: rgba(10, 14, 20, .6);
-            padding: 6px 9px;
-            border: 1px solid #1c232d;
-            border-radius: 3px;
-        }
-
-        #hud b {
-            font-weight: bold;
+            background: rgba(10, 14, 20, .72);
+            padding: 8px 12px;
+            border: 1px solid #1e2633;
+            border-radius: 6px;
+            backdrop-filter: blur(6px);
         }
 
         #camPresets {
             position: absolute;
-            top: 10px;
-            right: 12px;
+            top: 12px;
+            right: 14px;
             display: flex;
-            gap: 4px;
+            gap: 5px;
         }
 
         #camPresets button {
             width: auto;
-            padding: 5px 10px;
-            font-size: 9px;
-            letter-spacing: 1px;
-            background: rgba(16, 22, 30, .85);
+            padding: 6px 12px;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+            background: rgba(16, 22, 30, .88);
             border-color: #2a3441;
+            border-radius: 5px;
         }
 
         #camPresets button.active {
@@ -304,36 +507,38 @@
 
         #readout {
             position: absolute;
-            bottom: 10px;
-            left: 12px;
-            font-size: 10px;
+            bottom: 12px;
+            left: 14px;
+            font-size: 11px;
             color: #6ac8e8;
-            letter-spacing: 1px;
-            background: rgba(10, 14, 20, .78);
-            border: 1px solid #1c232d;
-            padding: 6px 10px;
-            line-height: 1.6;
+            letter-spacing: 0.4px;
+            background: rgba(10, 14, 20, .8);
+            border: 1px solid #1e2633;
+            padding: 7px 12px;
+            line-height: 1.5;
             pointer-events: none;
-            border-radius: 3px;
+            border-radius: 6px;
+            backdrop-filter: blur(6px);
         }
 
         #viewTabs {
             position: absolute;
-            top: 10px;
+            top: 12px;
             left: 50%;
             transform: translateX(-50%);
             display: flex;
-            gap: 4px;
+            gap: 5px;
             z-index: 3;
         }
 
         #viewTabs button {
             width: auto;
-            padding: 6px 14px;
-            font-size: 9px;
-            letter-spacing: 1.5px;
-            background: rgba(16, 22, 30, .85);
+            padding: 7px 16px;
+            font-size: 11px;
+            letter-spacing: 0.8px;
+            background: rgba(16, 22, 30, .88);
             border-color: #2a3441;
+            border-radius: 5px;
         }
 
         #viewTabs button.active {
@@ -354,16 +559,16 @@
 
         #scopeBanner {
             position: absolute;
-            top: 52px;
+            top: 56px;
             left: 50%;
             transform: translateX(-50%);
-            font-size: 10px;
-            letter-spacing: 3px;
+            font-size: 11px;
+            letter-spacing: 2px;
             color: #6ac8e8;
-            background: rgba(10, 14, 20, .85);
+            background: rgba(10, 14, 20, .88);
             border: 1px solid #6ac8e8;
-            padding: 4px 14px;
-            border-radius: 3px;
+            padding: 5px 16px;
+            border-radius: 4px;
             pointer-events: none;
             opacity: 0;
             transition: opacity .2s;
@@ -373,118 +578,217 @@
             opacity: 1;
         }
 
-        /* ---- parts ---- */
+        /* ---------------- weapon cards ---------------- */
+        .wlist {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .wcard {
+            background: #0e131b;
+            border: 1px solid #1e2633;
+            border-radius: 8px;
+            padding: 10px 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: border-color .15s, background .15s, box-shadow .15s;
+        }
+
+        .wcard:hover {
+            border-color: #2f3c4d;
+            background: #121820;
+        }
+
+        .wcard.cur {
+            border-color: #e8c86a;
+            background: #161c26;
+            box-shadow: 0 0 0 1px rgba(232, 200, 106, 0.2);
+        }
+
+        .wcard .info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .wcard .wname {
+            font-size: 13px;
+            font-weight: 500;
+            color: #d4c9a8;
+            letter-spacing: 0.3px;
+        }
+
+        .wcard .wkey {
+            color: #6ac8e8;
+            font-size: 11px;
+            margin-left: 8px;
+            font-weight: 400;
+        }
+
+        .wcard .wmeta {
+            font-size: 11px;
+            color: #5a6a7a;
+            letter-spacing: 0.3px;
+            margin-top: 3px;
+        }
+
+        .wcard .acts {
+            display: flex;
+            gap: 5px;
+            flex: 0 0 auto;
+        }
+
+        .wcard .acts button {
+            width: auto;
+            padding: 5px 10px;
+            font-size: 11px;
+            border-radius: 4px;
+        }
+
+        .dropzone {
+            border: 2px dashed #2a3441;
+            border-radius: 8px;
+            padding: 24px 14px;
+            text-align: center;
+            color: #5a6a7a;
+            font-size: 12px;
+            letter-spacing: 0.5px;
+            transition: .15s;
+            cursor: pointer;
+            background: #0c1016;
+        }
+
+        .dropzone:hover,
+        .dropzone.over {
+            border-color: #6ac8e8;
+            color: #6ac8e8;
+            background: #0e1520;
+        }
+
+        /* ---------------- parts list (with thumbnails) ---------------- */
+        #partsList {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
         .part {
-            background: #0a0d12;
-            border: 1px solid #1c232d;
-            padding: 7px 9px;
-            margin-bottom: 6px;
-            border-radius: 3px;
-            transition: border-color .12s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #0e131b;
+            border: 1px solid #1e2633;
+            border-radius: 6px;
+            padding: 6px 8px;
+            cursor: pointer;
+            transition: border-color .12s, background .12s;
+            user-select: none;
         }
 
         .part:hover {
-            border-color: #2b333f;
+            border-color: #3a4656;
+            background: #121820;
         }
 
         .part.sel {
             border-color: #e8c86a;
-            background: #0e121a;
+            background: #161c26;
         }
 
-        .part .hd {
+        .part.sel .pname b {
+            color: #e8c86a;
+        }
+
+        .part .thumb {
+            width: 42px;
+            height: 42px;
+            flex: 0 0 auto;
+            background: #06090d;
+            border: 1px solid #1e2633;
+            border-radius: 4px;
+            image-rendering: auto;
+        }
+
+        .part .meta {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .part .pname {
+            font-size: 12px;
+            color: #a8b4c4;
+            letter-spacing: 0.3px;
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            font-size: 11px;
-            color: #c8b88a;
-            margin-bottom: 5px;
-            cursor: pointer;
+            gap: 5px;
         }
 
-        .part .hd .idx {
+        .part .pname b {
             color: #6ac8e8;
-            font-weight: bold;
         }
 
-        .part .hd .badges {
-            display: flex;
-            gap: 4px;
-            align-items: center;
+        .part .pdim {
+            font-size: 10px;
+            color: #5a6a7a;
+            letter-spacing: 0.3px;
+            margin-top: 2px;
         }
 
-        .part .hd .badge {
-            font-size: 8px;
-            letter-spacing: 1px;
+        .part .badge {
+            font-size: 9px;
+            letter-spacing: 0.8px;
             padding: 1px 5px;
-            border-radius: 2px;
+            border-radius: 3px;
             background: #6ac8e8;
             color: #0b0e13;
-            font-weight: bold;
+            font-weight: 600;
         }
 
-        .part .hd .sw {
-            width: 12px;
-            height: 12px;
-            border-radius: 2px;
+        .part .sw {
+            width: 14px;
+            height: 14px;
+            flex: 0 0 auto;
+            border-radius: 3px;
             border: 1px solid #2b333f;
         }
 
-        .part .body {
-            display: none;
+        #partProps .phd {
+            font-size: 13px;
+            letter-spacing: 0.4px;
+            color: #d4c9a8;
+            padding-bottom: 8px;
+            margin-bottom: 6px;
+            border-bottom: 1px solid #1e2633;
         }
 
-        .part.open .body {
-            display: block;
-        }
-
-        .part .sec {
-            font-size: 8px;
+        #partProps .phd b {
             color: #6ac8e8;
-            letter-spacing: 2px;
-            margin: 8px 0 3px;
-            padding-bottom: 2px;
-            border-bottom: 1px dashed #1c232d;
+        }
+
+        #partProps .sec {
+            font-size: 9px;
+            color: #6ac8e8;
+            letter-spacing: 1.5px;
+            margin: 12px 0 5px;
+            padding-bottom: 3px;
+            border-bottom: 1px dashed #1e2633;
             text-transform: uppercase;
+            font-weight: 600;
         }
 
-        .chk {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 10px;
-            color: #8a9aaa;
-            margin-top: 5px;
-            cursor: pointer;
-            letter-spacing: 1px;
-        }
-
-        .chk input {
-            width: auto;
-            flex: none;
-            cursor: pointer;
-        }
-
-        #status {
-            font-size: 10px;
-            color: #7ad07a;
-            height: 14px;
-            margin-top: 8px;
-            letter-spacing: 1px;
-        }
-
-        /* ---- icon preview ---- */
+        /* ---------------- icon preview ---------------- */
         #iconPreviewWrap {
             background: #06090d;
-            border: 1px solid #1c232d;
-            padding: 8px;
-            margin-bottom: 8px;
+            border: 1px solid #1e2633;
+            padding: 10px;
             display: flex;
             justify-content: center;
             align-items: center;
-            min-height: 40px;
+            min-height: 48px;
             overflow: hidden;
-            border-radius: 3px;
+            border-radius: 6px;
         }
 
         #iconPreview {
@@ -493,326 +797,461 @@
         }
 
         .icon-info {
-            font-size: 9px;
+            font-size: 11px;
             color: #5a6a7a;
-            letter-spacing: 1px;
+            letter-spacing: 0.4px;
             text-align: center;
-            margin-bottom: 6px;
+            margin-bottom: 8px;
         }
 
-        .hint {
-            font-size: 9px;
-            color: #5a6a7a;
-            letter-spacing: .5px;
-            margin-top: 8px;
-            line-height: 1.6;
-            background: #0a0d12;
-            padding: 6px 8px;
-            border-left: 2px solid #6ac8e8;
-            border-radius: 2px;
+        /* ---------------- toast ---------------- */
+        #toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(70px);
+            background: #14452f;
+            border: 1px solid #2b8a68;
+            color: #d6ffee;
+            padding: 10px 22px;
+            border-radius: 99px;
+            opacity: 0;
+            transition: .25s;
+            pointer-events: none;
+            z-index: 90;
+            font-size: 13px;
+            letter-spacing: 0.4px;
+            max-width: 80vw;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, .4);
         }
 
-        .hint b {
-            color: #c8b88a;
+        #toast.on {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        #toast.err {
+            background: #4a1a1e;
+            border-color: #8a2b31;
+            color: #ffd6d8;
+        }
+
+        #drop {
+            position: fixed;
+            inset: 0;
+            background: rgba(8, 11, 16, .94);
+            z-index: 80;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: #6ac8e8;
+            letter-spacing: 2px;
+            border: 3px dashed #6ac8e8;
+            border-radius: 12px;
+        }
+
+        #drop.on {
+            display: flex;
+        }
+
+        /* Responsive tweak for narrower side */
+        @media (max-width: 1100px) {
+            #sidePanel {
+                flex: 0 0 340px;
+            }
+
+            #sidePanel.wide {
+                flex: 0 0 480px;
+            }
         }
     </style>
 </head>
 
 <body>
-    <div id="wrap">
 
-        <!-- ================= LEFT COLUMN ================= -->
-        <div class="col">
-            <h1>武器編輯器</h1>
+    <!-- ======================= TOP BAR ======================= -->
+    <header id="topbar">
+        <h1>武器編輯器</h1>
+        <label style="margin:0;flex:0 0 auto;width:auto">
+            <select id="weaponSelect" style="width:260px;padding:7px 10px"></select>
+        </label>
+        <button id="btnSaveLocal" class="sm primary">💾 儲存</button>
+        <span class="grow"></span>
+        <span id="loadInfo"></span>
+        <button id="btnReloadLib" class="sm">↻ 重新載入</button>
+        <button id="btnExport" class="sm">匯出 JSON</button>
+        <button id="btnCopy" class="sm">複製 JSON</button>
+    </header>
 
-            <!-- TABS -->
-            <div class="tabs">
-                <button class="active" data-tab="stats">武器</button>
-                <button data-tab="pose">姿態</button>
-                <button data-tab="scope">瞄準鏡</button>
-                <button data-tab="icon">圖示</button>
-            </div>
+    <!-- ======================= PAGE NAV ======================= -->
+    <nav id="pagenav">
+        <button data-page="browser" class="active">☰ 武器庫</button>
+        <button data-page="data">⚙ 數據</button>
+        <button data-page="model">◧ 模型</button>
+        <button data-page="pose">✋ 姿態</button>
+        <button data-page="scope">◎ 瞄準鏡</button>
+        <button data-page="icon">▣ 圖示</button>
+    </nav>
 
-            <!-- ============ TAB: STATS ============ -->
-            <div class="tab-pane active" data-pane="stats">
-                <h2>基本資訊</h2>
-                <label>識別碼</label> <input id="wKey">
-                <label>名稱</label> <input id="wName">
-                <label>圖示（文字）</label> <input id="wIcon">
-                <label>顏色</label> <input id="wColor">
+    <!-- ======================= WORKSPACE ======================= -->
+    <div id="workspace">
+        <!-- Persistent 3D Viewport (always visible) -->
+        <div id="viewportArea"></div>
 
-                <h2>彈藥 / 傷害</h2>
-                <div class="row">
-                    <div><label>彈藥類型</label>
-                        <select id="wAmmo">
-                            <option>9mm</option>
-                        </select>
+        <!-- Side controls panel -->
+        <div id="sidePanel">
+            <div id="pages">
+                <!-- ---------- PAGE: BROWSER ---------- -->
+                <section class="page active" data-page="browser" id="page-browser">
+                    <div class="panel">
+                        <h2>磁碟武器（來自 index.js）</h2>
+                        <div id="diskList" class="wlist"></div>
                     </div>
-                    <div><label>彈匣</label><input id="wMag" type="number" step="1"></div>
-                </div>
-                <div class="row">
-                    <div><label>射速</label><input id="wRate" type="number" step="0.01"></div>
-                    <div><label>裝填</label><input id="wRel" type="number" step="0.05"></div>
-                </div>
-                <div class="row">
-                    <div><label>傷害</label><input id="wDmg" type="number" step="1"></div>
-                    <div><label>全自動？</label>
-                        <select id="wAuto">
-                            <option value="0">半自動</option>
-                            <option value="1">全自動</option>
-                        </select>
+                    <div class="panel">
+                        <h2>本機儲存 / 已匯入</h2>
+                        <div id="localList" class="wlist"></div>
                     </div>
-                </div>
-                <div class="row">
-                    <div><label>散佈</label><input id="wSpread" type="number" step="0.001"></div>
-                    <div><label>後座力</label><input id="wRecoil" type="number" step="0.005"></div>
-                </div>
-
-                <h2>子彈</h2>
-                <div class="row">
-                    <div><label>速度</label><input id="wBSpeed" type="number" step="5"></div>
-                    <div><label>大小</label><input id="wBSize" type="number" step="0.002"></div>
-                </div>
-                <label>顏色</label> <input id="wBColor">
-
-                <h2>動畫</h2>
-                <div class="vec-row"><span>擺動</span><input id="wAnimSw" type="number" step="0.01"></div>
-                <div class="vec-row"><span>後衝</span><input id="wAnimKc" type="number" step="0.005"></div>
-            </div>
-
-            <!-- ============ TAB: POSE ============ -->
-            <div class="tab-pane" data-pane="pose">
-                <h2>姿態預覽</h2>
-                <div class="tabs" style="margin-bottom:8px">
-                    <button class="active" data-view="hip">腰射</button>
-                    <button data-view="ads">瞄準</button>
-                    <button data-view="blend">混合</button>
-                </div>
-                <label>混合比 <span id="blendVal">0.00</span></label>
-                <input type="range" id="blend" min="0" max="1" step="0.01" value="0">
-
-                <div class="grp">
-                    <h3>腰射姿態（fpRoot 座標系）</h3>
-                    <label>位置 (x, y, z)</label>
-                    <div class="vec-row"><span>X</span><input id="hipP0" type="number" step="0.005"></div>
-                    <div class="vec-row"><span>Y</span><input id="hipP1" type="number" step="0.005"></div>
-                    <div class="vec-row"><span>Z</span><input id="hipP2" type="number" step="0.005"></div>
-                    <label>旋轉 (弧度)</label>
-                    <div class="vec-row"><span>X</span><input id="hipR0" type="number" step="0.01"></div>
-                    <div class="vec-row"><span>Y</span><input id="hipR1" type="number" step="0.01"></div>
-                    <div class="vec-row"><span>Z</span><input id="hipR2" type="number" step="0.01"></div>
-                </div>
-
-                <div class="grp">
-                    <h3>瞄準姿態</h3>
-                    <label class="chk"><input type="checkbox" id="adsAuto"> 自動（依準心）</label>
-                    <label>位置</label>
-                    <div class="vec-row"><span>X</span><input id="adsP0" type="number" step="0.005"></div>
-                    <div class="vec-row"><span>Y</span><input id="adsP1" type="number" step="0.005"></div>
-                    <div class="vec-row"><span>Z</span><input id="adsP2" type="number" step="0.005"></div>
-                    <label>旋轉</label>
-                    <div class="vec-row"><span>X</span><input id="adsR0" type="number" step="0.01"></div>
-                    <div class="vec-row"><span>Y</span><input id="adsR1" type="number" step="0.01"></div>
-                    <div class="vec-row"><span>Z</span><input id="adsR2" type="number" step="0.01"></div>
-                </div>
-
-                <div class="grp">
-                    <h3>準心 / 槍口（武器本地）</h3>
-                    <label>準心位置</label>
-                    <div class="vec-row"><span>X</span><input id="sightP0" type="number" step="0.005"></div>
-                    <div class="vec-row"><span>Y</span><input id="sightP1" type="number" step="0.005"></div>
-                    <div class="vec-row"><span>Z</span><input id="sightP2" type="number" step="0.005"></div>
-                    <label>槍口位置</label>
-                    <div class="vec-row"><span>X</span><input id="muzzleLocal0" type="number" step="0.005"></div>
-                    <div class="vec-row"><span>Y</span><input id="muzzleLocal1" type="number" step="0.005"></div>
-                    <div class="vec-row"><span>Z</span><input id="muzzleLocal2" type="number" step="0.005"></div>
-                </div>
-
-                <div class="grp">
-                    <h3>右手握把</h3>
-                    <div class="vec-row"><span>X</span><input id="gripRP0" type="number" step="0.005"></div>
-                    <div class="vec-row"><span>Y</span><input id="gripRP1" type="number" step="0.005"></div>
-                    <div class="vec-row"><span>Z</span><input id="gripRP2" type="number" step="0.005"></div>
-                    <div class="vec-row"><span>RX</span><input id="gripRR0" type="number" step="0.01"></div>
-                    <div class="vec-row"><span>RY</span><input id="gripRR1" type="number" step="0.01"></div>
-                    <div class="vec-row"><span>RZ</span><input id="gripRR2" type="number" step="0.01"></div>
-                </div>
-
-                <div class="grp">
-                    <h3>左手握把</h3>
-                    <div class="vec-row"><span>X</span><input id="gripLP0" type="number" step="0.005"></div>
-                    <div class="vec-row"><span>Y</span><input id="gripLP1" type="number" step="0.005"></div>
-                    <div class="vec-row"><span>Z</span><input id="gripLP2" type="number" step="0.005"></div>
-                    <div class="vec-row"><span>RX</span><input id="gripLR0" type="number" step="0.01"></div>
-                    <div class="vec-row"><span>RY</span><input id="gripLR1" type="number" step="0.01"></div>
-                    <div class="vec-row"><span>RZ</span><input id="gripLR2" type="number" step="0.01"></div>
-                </div>
-
-                <div class="grp">
-                    <h3>肩膀（手臂骨骼）</h3>
-                    <label>左肩</label>
-                    <div class="vec-row"><span>X</span><input id="shoulderL0" type="number" step="0.01"></div>
-                    <div class="vec-row"><span>Y</span><input id="shoulderL1" type="number" step="0.01"></div>
-                    <div class="vec-row"><span>Z</span><input id="shoulderL2" type="number" step="0.01"></div>
-                    <label>右肩</label>
-                    <div class="vec-row"><span>X</span><input id="shoulderR0" type="number" step="0.01"></div>
-                    <div class="vec-row"><span>Y</span><input id="shoulderR1" type="number" step="0.01"></div>
-                    <div class="vec-row"><span>Z</span><input id="shoulderR2" type="number" step="0.01"></div>
-                </div>
-            </div>
-
-            <!-- ============ TAB: SCOPE ============ -->
-            <div class="tab-pane" data-pane="scope">
-                <h2>瞄準鏡模式</h2>
-                <select id="wScopeMode">
-                    <option value="none">無瞄準鏡（腰射準心）</option>
-                    <option value="sniper">狙擊鏡（全螢幕，可隱藏槍枝）</option>
-                    <option value="inline">內嵌鏡（僅鏡片放大）</option>
-                </select>
-
-                <h2>顯示選項</h2>
-                <label class="chk"><input type="checkbox" id="wHideWeaponOnAds">
-                    全槍於瞄準時隱藏（適用狙擊鏡）</label>
-                <label class="chk"><input type="checkbox" id="wHideScopeOnAds">
-                    瞄準鏡零件於瞄準時隱藏（內嵌鏡）</label>
-
-                <div id="scopeSniperFields" style="display:none;margin-top:10px">
-                    <h2>狙擊鏡設定</h2>
-                    <div class="row">
-                        <div><label>視野角</label><input id="wScopeFov" type="number"></div>
-                        <div><label>靈敏度 ×</label><input id="wScopeSens" type="number" step="0.05"></div>
+                    <div class="panel">
+                        <h2>新增 / 匯入</h2>
+                        <div class="row" style="margin-bottom:8px">
+                            <button id="btnNewWeapon" class="primary">＋ 新增武器</button>
+                        </div>
+                        <div class="row" style="margin-bottom:8px">
+                            <button id="btnImportJSON">匯入 JSON 檔案…</button>
+                        </div>
+                        <div class="dropzone" id="dropZone">
+                            拖放 .json 檔案到此<br>
+                            <span style="font-size:11px">（可一次拖放多個）</span>
+                        </div>
+                        <div class="hint">
+                            <b>index.js</b> 會列出武器資料夾中的所有 <b>.json</b>。<br>
+                            編輯器啟動時會自動讀取，若失敗請按上方
+                            <b>↻ 重新載入</b>，或直接拖放檔案。<br><br>
+                            <b>提示：</b>用 <b>python -m http.server</b> 開啟此頁可自動載入。
+                        </div>
                     </div>
-                </div>
+                </section>
 
-                <div id="scopeInlineFields" style="display:none;margin-top:10px">
-                    <h2>內嵌鏡設定</h2>
-                    <div class="vec-row"><span>FOV</span><input id="wInlineFov" type="number" step="0.5"></div>
-                    <div class="vec-row"><span>R</span><input id="wInlineRadius" type="number" step="0.001"></div>
-                    <label>鏡片位置（武器本地）</label>
-                    <div class="vec-row"><span>X</span><input id="inlineLensP0" type="number" step="0.005"></div>
-                    <div class="vec-row"><span>Y</span><input id="inlineLensP1" type="number" step="0.005"></div>
-                    <div class="vec-row"><span>Z</span><input id="inlineLensP2" type="number" step="0.005"></div>
-                </div>
+                <!-- ---------- PAGE: DATA ---------- -->
+                <section class="page" data-page="data" id="page-data">
+                    <div class="panel">
+                        <h2>基本資訊</h2>
+                        <label>識別碼 (key)</label><input id="wKey">
+                        <label>名稱</label><input id="wName">
+                        <label>圖示（文字）</label><input id="wIcon">
+                        <label>顏色</label><input id="wColor">
+                    </div>
 
-                <div class="hint">
-                    <b>瞄準鏡零件</b> 需在右側零件列表中勾選 <b>SCOPE</b> 標記。<br>
-                    <b>內嵌鏡</b> 使用 <b>SCOPE VIEW</b> 按鈕預覽隱藏效果。<br>
-                    <b>狙擊鏡</b> 於遊戲中全螢幕顯示，透過 vignette 遮罩。
-                </div>
+                    <div class="panel">
+                        <h2>彈藥 / 傷害</h2>
+                        <div class="row">
+                            <div><label>彈藥類型</label>
+                                <select id="wAmmo">
+                                    <option>9mm</option>
+                                </select>
+                            </div>
+                            <div><label>彈匣</label><input id="wMag" type="number" step="1"></div>
+                        </div>
+                        <div class="row">
+                            <div><label>射速</label><input id="wRate" type="number" step="0.01"></div>
+                            <div><label>裝填</label><input id="wRel" type="number" step="0.05"></div>
+                        </div>
+                        <div class="row">
+                            <div><label>傷害</label><input id="wDmg" type="number" step="1"></div>
+                            <div><label>全自動？</label>
+                                <select id="wAuto">
+                                    <option value="0">半自動</option>
+                                    <option value="1">全自動</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div><label>散佈</label><input id="wSpread" type="number" step="0.001"></div>
+                            <div><label>後座力</label><input id="wRecoil" type="number" step="0.005"></div>
+                        </div>
+                        <div class="row">
+                            <div><label>武器類型</label>
+                                <select id="wType">
+                                    <option value="pistol">手槍</option>
+                                    <option value="smg">衝鋒槍</option>
+                                    <option value="rifle">步槍</option>
+                                    <option value="shotgun">霰彈槍</option>
+                                    <option value="sniper">狙擊槍</option>
+                                </select>
+                            </div>
+                            <div><label>彈丸數（霰彈槍用）</label>
+                                <input id="wPellets" type="number" step="1" min="1" placeholder="1">
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div><label>音效 key（可留空）</label>
+                                <input id="wSoundKey" placeholder="例如 rifle">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <h2>子彈</h2>
+                        <div class="row">
+                            <div><label>速度</label><input id="wBSpeed" type="number" step="5"></div>
+                            <div><label>大小</label><input id="wBSize" type="number" step="0.002"></div>
+                        </div>
+                        <label>顏色</label><input id="wBColor">
+                        <div class="hint">
+                            子彈顏色用於彈道曳光與命中特效。
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <h2>方塊破壞力</h2>
+                        <div class="row">
+                            <div><label>破壞半徑</label>
+                                <input id="wCarveRadius" type="number" step="0.1" min="0.1">
+                            </div>
+                            <div><label>碎屑機率</label>
+                                <input id="wCarveDebris" type="number" step="0.01" min="0" max="1">
+                            </div>
+                        </div>
+                        <label class="chk">
+                            <input type="checkbox" id="wCarvePenetrate">
+                            貫穿多層方塊（狙擊槍建議開啟）
+                        </label>
+                        <div class="hint">
+                            <b>破壞半徑</b>＝打牆時挖掉多大的球。<br>
+                            <b>碎屑機率</b>＝每顆彈丸噴出碎屑的機率。<br>
+                            <b>貫穿</b>＝子彈是否繼續往後挖第二層。
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <h2>動畫參數</h2>
+                        <h3>擺動 / 後衝</h3>
+                        <div class="vec-row"><span>擺動</span><input id="wAnimSw" type="number" step="0.01"></div>
+                        <div class="vec-row"><span>後衝</span><input id="wAnimKc" type="number" step="0.005"></div>
+                        <div class="hint">
+                            <b>擺動</b>＝移動時槍枝左右搖擺幅度。<br>
+                            <b>後衝</b>＝開火時槍枝向後退的距離。
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ---------- PAGE: MODEL ---------- -->
+                <section class="page" data-page="model" id="page-model">
+                    <div class="model-left">
+                        <h2>模型零件</h2>
+                        <div class="row tight" style="margin-bottom:6px">
+                            <button id="btnAddPart" class="sm" style="flex:1">＋ 零件</button>
+                            <button id="btnDupPart" class="sm" style="flex:1">複製</button>
+                            <button id="btnDelPart" class="sm" style="flex:1">刪除</button>
+                        </div>
+                        <div class="row tight">
+                            <button id="btnSelAll" class="sm" style="flex:1">全選</button>
+                            <button id="btnSelNone" class="sm" style="flex:1">取消全選</button>
+                        </div>
+                        <div id="selInfo" class="dim" style="margin-top:8px">已選 <b>1</b> 個零件</div>
+                        <div id="partsList"></div>
+                        <div class="hint">
+                            <b>Shift / Ctrl + 點擊</b> 可多選。<br>
+                            <b>在 3D 視圖點擊零件</b> 也可選取。<br>
+                            多選時拖動數值會整體位移。
+                        </div>
+                    </div>
+                    <div class="model-right" id="partPropsPanel">
+                        <h2>零件屬性</h2>
+                        <div id="partProps"></div>
+                    </div>
+                </section>
+
+                <!-- ---------- PAGE: POSE ---------- -->
+                <section class="page" data-page="pose" id="page-pose">
+                    <h2>姿態預覽</h2>
+                    <div class="tabs row tight" style="margin-bottom:10px">
+                        <button data-view="hip" class="active sm" style="flex:1">腰射</button>
+                        <button data-view="ads" class="sm" style="flex:1">瞄準</button>
+                        <button data-view="blend" class="sm" style="flex:1">混合</button>
+                    </div>
+                    <label>混合比 <span id="blendVal">0.00</span></label>
+                    <input type="range" id="blend" min="0" max="1" step="0.01" value="0"
+                        style="height:4px;background:#1a2028;appearance:none;-webkit-appearance:none;padding:0;border:none;border-radius:2px">
+
+                    <div class="grp">
+                        <h3>腰射姿態（fpRoot 座標系）</h3>
+                        <label>位置 (x, y, z)</label>
+                        <div class="vec-row"><span>X</span><input id="hipP0" type="number" step="0.005"></div>
+                        <div class="vec-row"><span>Y</span><input id="hipP1" type="number" step="0.005"></div>
+                        <div class="vec-row"><span>Z</span><input id="hipP2" type="number" step="0.005"></div>
+                        <label>旋轉 (弧度)</label>
+                        <div class="vec-row"><span>X</span><input id="hipR0" type="number" step="0.01"></div>
+                        <div class="vec-row"><span>Y</span><input id="hipR1" type="number" step="0.01"></div>
+                        <div class="vec-row"><span>Z</span><input id="hipR2" type="number" step="0.01"></div>
+                    </div>
+
+                    <div class="grp">
+                        <h3>瞄準姿態</h3>
+                        <label class="chk"><input type="checkbox" id="adsAuto"> 自動（依準心對齊）</label>
+                        <label>位置</label>
+                        <div class="vec-row"><span>X</span><input id="adsP0" type="number" step="0.005"></div>
+                        <div class="vec-row"><span>Y</span><input id="adsP1" type="number" step="0.005"></div>
+                        <div class="vec-row"><span>Z</span><input id="adsP2" type="number" step="0.005"></div>
+                        <label>旋轉</label>
+                        <div class="vec-row"><span>X</span><input id="adsR0" type="number" step="0.01"></div>
+                        <div class="vec-row"><span>Y</span><input id="adsR1" type="number" step="0.01"></div>
+                        <div class="vec-row"><span>Z</span><input id="adsR2" type="number" step="0.01"></div>
+                    </div>
+
+                    <div class="grp">
+                        <h3>準心 / 槍口（武器本地）</h3>
+                        <label>準心位置</label>
+                        <div class="vec-row"><span>X</span><input id="sightP0" type="number" step="0.005"></div>
+                        <div class="vec-row"><span>Y</span><input id="sightP1" type="number" step="0.005"></div>
+                        <div class="vec-row"><span>Z</span><input id="sightP2" type="number" step="0.005"></div>
+                        <label>槍口位置</label>
+                        <div class="vec-row"><span>X</span><input id="muzzleLocal0" type="number" step="0.005"></div>
+                        <div class="vec-row"><span>Y</span><input id="muzzleLocal1" type="number" step="0.005"></div>
+                        <div class="vec-row"><span>Z</span><input id="muzzleLocal2" type="number" step="0.005"></div>
+                    </div>
+
+                    <div class="grp">
+                        <h3>右手握把</h3>
+                        <div class="vec-row"><span>X</span><input id="gripRP0" type="number" step="0.005"></div>
+                        <div class="vec-row"><span>Y</span><input id="gripRP1" type="number" step="0.005"></div>
+                        <div class="vec-row"><span>Z</span><input id="gripRP2" type="number" step="0.005"></div>
+                        <div class="vec-row"><span>RX</span><input id="gripRR0" type="number" step="0.01"></div>
+                        <div class="vec-row"><span>RY</span><input id="gripRR1" type="number" step="0.01"></div>
+                        <div class="vec-row"><span>RZ</span><input id="gripRR2" type="number" step="0.01"></div>
+                    </div>
+
+                    <div class="grp">
+                        <h3>左手握把</h3>
+                        <div class="vec-row"><span>X</span><input id="gripLP0" type="number" step="0.005"></div>
+                        <div class="vec-row"><span>Y</span><input id="gripLP1" type="number" step="0.005"></div>
+                        <div class="vec-row"><span>Z</span><input id="gripLP2" type="number" step="0.005"></div>
+                        <div class="vec-row"><span>RX</span><input id="gripLR0" type="number" step="0.01"></div>
+                        <div class="vec-row"><span>RY</span><input id="gripLR1" type="number" step="0.01"></div>
+                        <div class="vec-row"><span>RZ</span><input id="gripLR2" type="number" step="0.01"></div>
+                    </div>
+
+                    <div class="grp">
+                        <h3>肩膀（手臂骨骼）</h3>
+                        <label>左肩</label>
+                        <div class="vec-row"><span>X</span><input id="shoulderL0" type="number" step="0.01"></div>
+                        <div class="vec-row"><span>Y</span><input id="shoulderL1" type="number" step="0.01"></div>
+                        <div class="vec-row"><span>Z</span><input id="shoulderL2" type="number" step="0.01"></div>
+                        <label>右肩</label>
+                        <div class="vec-row"><span>X</span><input id="shoulderR0" type="number" step="0.01"></div>
+                        <div class="vec-row"><span>Y</span><input id="shoulderR1" type="number" step="0.01"></div>
+                        <div class="vec-row"><span>Z</span><input id="shoulderR2" type="number" step="0.01"></div>
+                    </div>
+                </section>
+
+                <!-- ---------- PAGE: SCOPE ---------- -->
+                <section class="page" data-page="scope" id="page-scope">
+                    <h2>瞄準鏡模式</h2>
+                    <select id="wScopeMode">
+                        <option value="none">無瞄準鏡（腰射準心）</option>
+                        <option value="sniper">狙擊鏡（全螢幕，可隱藏槍枝）</option>
+                        <option value="inline">內嵌鏡（僅鏡片放大）</option>
+                    </select>
+
+                    <h2>顯示選項</h2>
+                    <label class="chk"><input type="checkbox" id="wHideWeaponOnAds">
+                        全槍於瞄準時隱藏（適用狙擊鏡）</label>
+                    <label class="chk"><input type="checkbox" id="wHideScopeOnAds">
+                        瞄準鏡零件於瞄準時隱藏（內嵌鏡）</label>
+
+                    <div id="scopeSniperFields" style="display:none">
+                        <h2>狙擊鏡設定</h2>
+                        <div class="row">
+                            <div><label>視野角</label><input id="wScopeFov" type="number"></div>
+                            <div><label>靈敏度 ×</label><input id="wScopeSens" type="number" step="0.05"></div>
+                        </div>
+                    </div>
+
+                    <div id="scopeInlineFields" style="display:none">
+                        <h2>內嵌鏡設定</h2>
+                        <div class="vec-row"><span>FOV</span><input id="wInlineFov" type="number" step="0.5"></div>
+                        <div class="vec-row"><span>R</span><input id="wInlineRadius" type="number" step="0.001"></div>
+                        <label>鏡片位置（武器本地）</label>
+                        <div class="vec-row"><span>X</span><input id="inlineLensP0" type="number" step="0.005"></div>
+                        <div class="vec-row"><span>Y</span><input id="inlineLensP1" type="number" step="0.005"></div>
+                        <div class="vec-row"><span>Z</span><input id="inlineLensP2" type="number" step="0.005"></div>
+                    </div>
+
+                    <div class="hint">
+                        <b>瞄準鏡零件</b> 需在「模型零件」頁勾選 <b>SCOPE</b> 標記。<br>
+                        <b>SCOPE VIEW</b> 按鈕可預覽瞄準時的隱藏效果。<br>
+                        <b>狙擊鏡</b> 於遊戲中全螢幕顯示，透過 vignette 遮罩。
+                    </div>
+                </section>
+
+                <!-- ---------- PAGE: ICON ---------- -->
+                <section class="page" data-page="icon" id="page-icon">
+                    <div class="panel" style="margin-bottom:12px">
+                        <h2>圖示預覽</h2>
+                        <div class="icon-info" id="iconInfo">武器格：3×1</div>
+                        <div id="iconPreviewWrap"><canvas id="iconPreview"></canvas></div>
+                        <button id="btnIconReset" style="margin-top:10px">重設為自動</button>
+                        <div class="hint">
+                            <b>Z 旋轉 = 0</b> 啟用自動貼合（模型自動轉正）。<br>
+                            <b>旋轉 ≠ 0</b> 停用自動旋轉。<br>
+                            <b>偏移</b>與<b>縮放</b>作用於鏡頭對焦後。
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <h2>圖示調整</h2>
+                        <label>旋轉 (弧度)</label>
+                        <div class="vec-row"><span>X</span><input id="iconR0" type="number" step="0.05"></div>
+                        <div class="vec-row"><span>Y</span><input id="iconR1" type="number" step="0.05"></div>
+                        <div class="vec-row"><span>Z</span><input id="iconR2" type="number" step="0.05"></div>
+
+                        <label>偏移 (公尺)</label>
+                        <div class="vec-row"><span>X</span><input id="iconP0" type="number" step="0.01"></div>
+                        <div class="vec-row"><span>Y</span><input id="iconP1" type="number" step="0.01"></div>
+                        <div class="vec-row"><span>Z</span><input id="iconP2" type="number" step="0.01"></div>
+
+                        <label>縮放</label>
+                        <div class="vec-row"><span>S</span><input id="iconScale" type="number" step="0.05"></div>
+                    </div>
+                </section>
             </div>
-
-            <!-- ============ TAB: ICON ============ -->
-            <div class="tab-pane" data-pane="icon">
-                <div class="icon-info" id="iconInfo">武器格：3×1</div>
-                <div id="iconPreviewWrap">
-                    <canvas id="iconPreview"></canvas>
-                </div>
-                <button id="btnIconReset" style="margin-bottom:10px">重設為自動</button>
-
-                <label>旋轉 (弧度)</label>
-                <div class="vec-row"><span>X</span><input id="iconR0" type="number" step="0.05"></div>
-                <div class="vec-row"><span>Y</span><input id="iconR1" type="number" step="0.05"></div>
-                <div class="vec-row"><span>Z</span><input id="iconR2" type="number" step="0.05"></div>
-
-                <label>偏移 (公尺)</label>
-                <div class="vec-row"><span>X</span><input id="iconP0" type="number" step="0.01"></div>
-                <div class="vec-row"><span>Y</span><input id="iconP1" type="number" step="0.01"></div>
-                <div class="vec-row"><span>Z</span><input id="iconP2" type="number" step="0.01"></div>
-
-                <label>縮放</label>
-                <div class="vec-row"><span>S</span><input id="iconScale" type="number" step="0.05"></div>
-
-                <div class="hint">
-                    <b>Z 旋轉 = 0</b> 啟用自動貼合（模型自動轉正）。<br>
-                    <b>旋轉 ≠ 0</b> 停用自動旋轉。<br>
-                    <b>偏移</b>與<b>縮放</b>作用於鏡頭對焦後。
-                </div>
-            </div>
-
-            <!-- VIEW OPTIONS -->
-            <h2 style="margin-top:18px">檢視</h2>
-            <label>背景顏色</label>
-            <input type="color" id="bgColor" value="#05070a">
-            <div class="hint" style="margin-top:8px">
-                <b>Shift / Ctrl + 點擊</b> 零件列可多選。<br>
-                <b>左鍵拖曳</b> 旋轉 · <b>右鍵拖曳</b> 平移 · 滾輪縮放。
-            </div>
-
-            <!-- FILE ACTIONS -->
-            <h2 style="margin-top:18px">檔案</h2>
-            <div class="row">
-                <button id="btnNew">新增</button>
-                <button id="btnSave">儲存</button>
-                <button id="btnLoadSaved">載入…</button>
-            </div>
-            <div class="row" style="margin-top:6px">
-                <button id="btnImport">匯入 JSON</button>
-                <button id="btnExport">匯出 JSON</button>
-            </div>
-            <div class="row" style="margin-top:6px">
-                <button id="btnCopy">複製設定</button>
-            </div>
-            <textarea id="jsonOut" rows="5" style="margin-top:8px"
-                placeholder="武器 JSON 預覽 — 使用「匯出 JSON」下載檔案。"></textarea>
-            <div id="status"></div>
         </div>
-
-        <!-- ================= MIDDLE: 3D viewport ================= -->
-        <div id="viewport">
-            <div id="viewTabs">
-                <button data-tab="hands" class="active">雙手 + 槍</button>
-                <button data-tab="gun">僅槍枝</button>
-                <button data-tab="scope" class="scope">SCOPE VIEW</button>
-            </div>
-            <div id="scopeBanner">◈ 瞄準鏡檢視 ◈</div>
-
-            <div id="hud">
-                <b style="color:#e8c86a">黃色</b> = 眼睛 / 位置箭頭<br>
-                <b style="color:#ff60c0">洋紅</b> = 準心 / 旋轉箭頭<br>
-                <b style="color:#60ff60">綠色</b> = 肩膀<br>
-                <b style="color:#6ac8e8">青色</b> = 尺寸箭頭<br>
-                拖曳 = 旋轉 · 滾輪 = 縮放
-            </div>
-            <div id="camPresets">
-                <button data-cam="fp" class="active">第一人視角</button>
-                <button data-cam="side">側視</button>
-                <button data-cam="top">俯視</button>
-            </div>
-            <div id="readout">準心於 fpRoot：—</div>
-        </div>
-
-        <!-- ================= RIGHT: parts ================= -->
-        <div class="col">
-            <h1>模型零件</h1>
-
-            <div id="selInfo" style="font-size:10px;color:#6ac8e8;margin-bottom:8px;letter-spacing:1px;">
-                已選 <b>1</b> 個零件
-            </div>
-
-            <div class="row">
-                <button id="btnSelAll">全選</button>
-                <button id="btnSelNone">取消全選</button>
-            </div>
-
-            <div class="row" style="margin-top:6px">
-                <button id="btnAddPart">+ 零件</button>
-                <button id="btnDupPart">複製</button>
-                <button id="btnDelPart">刪除</button>
-            </div>
-
-            <div style="margin-top:10px" id="partsList"></div>
-        </div>
-
     </div>
+
+
+    <div id="drop">放開以匯入 .json</div>
+    <div id="toast"></div>
+    <input type="file" id="filePicker" accept=".json,application/json" multiple style="display:none">
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
         (function () {
             'use strict';
 
-            /* ============================================================
-               DEFAULT WEAPON
-               ============================================================ */
+            /* ============================================================================
+               0.  HELPERS
+               ========================================================================= */
+            const $ = id => document.getElementById(id);
+            const clone = o => JSON.parse(JSON.stringify(o));
+            const colorHex = n => '#' + (n >>> 0 & 0xffffff).toString(16).padStart(6, '0');
+            function colorInt(s) {
+                const v = String(s).trim().replace(/^#/, '').replace(/^0x/i, '');
+                const n = parseInt(v, 16);
+                return Number.isFinite(n) ? (n & 0xffffff) : 0xff00ff;
+            }
+            let toastTimer = 0;
+            function toast(msg, isErr) {
+                const t = $('toast');
+                t.textContent = msg;
+                t.className = 'on' + (isErr ? ' err' : '');
+                clearTimeout(toastTimer);
+                toastTimer = setTimeout(() => { t.className = isErr ? 'err' : ''; }, 2400);
+            }
+
+            /* ============================================================================
+               1.  DEFAULT WEAPON
+               ========================================================================= */
             const DEFAULT_W = {
                 key: 'pistol', name: 'M9 PISTOL', icon: '⌐', color: '#6a6a72',
                 ammoType: '9mm', magSize: 12, fireRate: 0.16, reloadTime: 1.35,
@@ -853,59 +1292,99 @@
 
             const STORAGE_KEY = 'arive-weapons-v1';
 
-            let W = JSON.parse(JSON.stringify(DEFAULT_W));
+            /* ============================================================================
+               2.  STATE
+               ========================================================================= */
+            let W = clone(DEFAULT_W);
+            W.model.forEach(p => { if (!p.r) p.r = [0, 0, 0]; });
+
+            const library = new Map();       // key -> { data, source:'disk'|'local'|'import', file }
+            let currentKey = 'pistol';
+            let currentSource = 'new';
+            let currentFile = null;
+            let dirty = false;
+
             const selectedParts = new Set([0]);
-            let selectedPart = 0;      // anchor / primary
+            let anchorPart = 0;
             let blendT = 0;
+            let scopePreview = false;
+            let viewTab = 'hands';
+            let currentPage = 'browser';
 
-            /* Centralised selection setter.  `additive` = shift/ctrl click. */
-            function setSelected(idx, additive) {
-                if (idx < 0 || idx >= W.model.length) return;
-                if (additive) {
-                    if (selectedParts.has(idx)) {
-                        if (selectedParts.size > 1) {
-                            selectedParts.delete(idx);
-                            if (selectedPart === idx) {
-                                selectedPart = selectedParts.values().next().value;
-                            }
-                        }
-                    } else {
-                        selectedParts.add(idx);
-                        selectedPart = idx;
-                    }
-                } else {
-                    selectedParts.clear();
-                    selectedParts.add(idx);
-                    selectedPart = idx;
+            function markDirty() { dirty = true; }
+
+            /* ============================================================================
+               3.  PAGE NAVIGATION
+               ========================================================================= */
+            function showPage(name) {
+                currentPage = name;
+                document.querySelectorAll('#pagenav button')
+                    .forEach(x => x.classList.toggle('active', x.dataset.page === name));
+                document.querySelectorAll('.page')
+                    .forEach(p => p.classList.toggle('active', p.dataset.page === name));
+
+                // Widen side panel for model page (parts list + props)
+                const side = document.getElementById('sidePanel');
+                if (side) side.classList.toggle('wide', name === 'model');
+
+                // Ensure viewport is always in the persistent area
+                const area = document.getElementById('viewportArea');
+                if (area && viewportBox.parentElement !== area) {
+                    area.appendChild(viewportBox);
                 }
-                rebuildPartsList();
-                updateSelectedHighlight();
-                updateSelInfo();
+
+                requestAnimationFrame(() => {
+                    resizeViewport();
+                    if (name === 'icon') requestIconRedraw();
+                });
+                if (name === 'model') rebuildPartsList();
             }
+            document.querySelectorAll('#pagenav button').forEach(b => {
+                b.addEventListener('click', () => showPage(b.dataset.page));
+            });
 
-            function updateSelInfo() {
-                const el = document.getElementById('selInfo');
-                if (!el) return;
-                const n = selectedParts.size;
-                el.innerHTML = '已選 <b>' + n + '</b> 個零件' +
-                    (n > 1 ? '（多選）' : '');
-            }
+            /* ============================================================================
+               4.  THREE.JS — MAIN VIEWPORT
+               ========================================================================= */
+            const viewportBox = document.createElement('div');
+            viewportBox.id = 'viewportBox';
+            viewportBox.innerHTML = `
+    <div id="viewTabs">
+        <button data-tab="hands" class="active">雙手 + 槍</button>
+        <button data-tab="gun">僅槍枝</button>
+        <button data-tab="scope" class="scope">SCOPE VIEW</button>
+    </div>
+    <div id="scopeBanner">◈ 瞄準鏡檢視 ◈</div>
+    <div id="hud">
+        <b style="color:#e8c86a">黃色</b> = 眼睛 / 位置箭頭<br>
+        <b style="color:#ff60c0">洋紅</b> = 準心 / 旋轉箭頭<br>
+        <b style="color:#60ff60">綠色</b> = 肩膀<br>
+        <b style="color:#6ac8e8">青色</b> = 尺寸箭頭<br>
+        拖曳 = 旋轉 · 右鍵 = 平移 · 滾輪 = 縮放<br>
+        <b style="color:#e8c86a">點擊零件 = 選取</b>
+    </div>
+    <div id="camPresets">
+        <button data-cam="fp" class="active">第一人視角</button>
+        <button data-cam="side">側視</button>
+        <button data-cam="top">俯視</button>
+        <button data-cam="gunOnly">槍枝特寫</button>
+    </div>
+    <div id="readout">準心於 fpRoot：—</div>
+`;
 
-            let activeView = 'hip';
-            let viewTab = 'hands';           // 'hands' | 'gun' | 'scope'
-            let scopePreview = false;         // true when SCOPE VIEW is active
+            // Attach to persistent viewport area immediately
+            (function attachViewport() {
+                const area = document.getElementById('viewportArea');
+                if (area) area.appendChild(viewportBox);
+            })();
 
-            /* ============================================================
-               THREE SETUP
-               ============================================================ */
-            const wrap = document.getElementById('viewport');
             const renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
             renderer.setClearColor(0x05070a, 1);
-            wrap.appendChild(renderer.domElement);
+            viewportBox.appendChild(renderer.domElement);
 
             const scene = new THREE.Scene();
-            const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 50);
+            const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 60);
 
             scene.add(new THREE.AmbientLight(0xffffff, 0.55));
             const keyLight = new THREE.DirectionalLight(0xffffff, 1.0);
@@ -917,84 +1396,72 @@
             grid.position.y = -0.6;
             scene.add(grid);
 
-            /* ============================================================
-               RIG
-               ============================================================ */
+            /* --- rig --------------------------------------------------------------- */
             const fpRoot = new THREE.Group();
             scene.add(fpRoot);
-
             const weaponRig = new THREE.Group();
             fpRoot.add(weaponRig);
 
-            let weaponMesh = null;         // group holding regular parts
-            let scopePartsGroup = null;    // group holding scope-tagged parts
+            const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1);
+            const partMeshes = [];
             let sightMarker = null;
             let muzzleMarker = null;
 
-            /* Selection highlight — a group of box outlines, one per selected part */
+            /* --- selection highlight ------------------------------------------------ */
             const selectedHighlightGroup = new THREE.Group();
-            selectedHighlightGroup.visible = false;
             weaponRig.add(selectedHighlightGroup);
-
-            const highlightGeometry =
-                new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
+            const highlightGeometry = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
             const highlightMaterial = new THREE.LineBasicMaterial({
                 color: 0xe8c86a, transparent: true, opacity: 0.95,
                 depthTest: false, depthWrite: false, fog: false
             });
 
             function updateSelectedHighlight() {
-                /* Detach existing boxes (geometry/material are shared, don't dispose) */
-                while (selectedHighlightGroup.children.length > 0) {
+                const indices = Array.from(selectedParts);
+                while (selectedHighlightGroup.children.length > indices.length) {
                     selectedHighlightGroup.remove(selectedHighlightGroup.children[0]);
                 }
-                let any = false;
-                for (const idx of selectedParts) {
-                    const p = W.model[idx];
-                    if (!p || !p.p || !p.s) continue;
+                while (selectedHighlightGroup.children.length < indices.length) {
                     const h = new THREE.LineSegments(highlightGeometry, highlightMaterial);
-                    h.position.set(p.p[0], p.p[1], p.p[2]);
-                    if (p.r) h.rotation.set(p.r[0], p.r[1], p.r[2]);
-                    else h.rotation.set(0, 0, 0);
-                    h.scale.set(p.s[0] * 1.10, p.s[1] * 1.10, p.s[2] * 1.10);
                     h.renderOrder = 250;
                     selectedHighlightGroup.add(h);
-                    any = true;
                 }
-                selectedHighlightGroup.visible = any;
+                indices.forEach((idx, k) => {
+                    const h = selectedHighlightGroup.children[k];
+                    const p = W.model[idx];
+                    if (!p) { h.visible = false; return; }
+                    h.visible = true;
+                    h.position.set(p.p[0], p.p[1], p.p[2]);
+                    const r = p.r || [0, 0, 0];
+                    h.rotation.set(r[0], r[1], r[2]);
+                    h.scale.set(p.s[0] * 1.10, p.s[1] * 1.10, p.s[2] * 1.10);
+                });
+                selectedHighlightGroup.visible = indices.length > 0 && !scopePreview;
             }
 
-            /* Hands */
+            /* --- hands / arms ------------------------------------------------------- */
             const SKIN_MAT = new THREE.MeshLambertMaterial({ color: 0xd4a686 });
             const SLEEVE_MAT = new THREE.MeshLambertMaterial({ color: 0x3a4a30 });
-
             const HAND = {
                 palmW: 0.065, palmH: 0.13, palmD: 0.14,
                 thumbW: 0.04, thumbH: 0.05, thumbD: 0.07,
-                thumbX: -0.03, thumbY: 0.06, thumbZ: 0.02,
+                thumbX: -0.03, thumbY: 0.06, thumbZ: 0.02
             };
 
             function buildPalm(side) {
                 const g = new THREE.Group();
-                const palm = new THREE.Mesh(
-                    new THREE.BoxGeometry(HAND.palmW, HAND.palmH, HAND.palmD),
-                    SKIN_MAT);
+                const palm = new THREE.Mesh(new THREE.BoxGeometry(HAND.palmW, HAND.palmH, HAND.palmD), SKIN_MAT);
                 palm.position.set(0, 0, -HAND.palmD * 0.5);
                 g.add(palm);
-                const thumb = new THREE.Mesh(
-                    new THREE.BoxGeometry(HAND.thumbW, HAND.thumbH, HAND.thumbD),
-                    SKIN_MAT);
-                thumb.position.set(HAND.thumbX * side, HAND.thumbY,
-                    HAND.thumbZ - HAND.palmD * 0.5);
+                const thumb = new THREE.Mesh(new THREE.BoxGeometry(HAND.thumbW, HAND.thumbH, HAND.thumbD), SKIN_MAT);
+                thumb.position.set(HAND.thumbX * side, HAND.thumbY, HAND.thumbZ - HAND.palmD * 0.5);
                 g.add(thumb);
                 return g;
             }
             const handR = buildPalm(+1); fpRoot.add(handR);
             const handL = buildPalm(-1); fpRoot.add(handL);
 
-            const ARM_SEG_W = 0.10;
-            const UPPER_ARM_BASE_LEN = 0.26;
-            const FOREARM_BASE_LEN = 0.28;
+            const ARM_SEG_W = 0.10, UPPER_ARM_BASE_LEN = 0.26, FOREARM_BASE_LEN = 0.28;
             function buildBone(baseLen) {
                 const m = new THREE.Mesh(
                     new THREE.BoxGeometry(ARM_SEG_W, baseLen, ARM_SEG_W), SLEEVE_MAT);
@@ -1021,9 +1488,7 @@
             const shoulderMarkerL = buildShoulderMarker();
             const shoulderMarkerR = buildShoulderMarker();
 
-            /* ============================================================
-               DIRECTION ARROW (position / size / rotation indicators)
-               ============================================================ */
+            /* --- direction arrows --------------------------------------------------- */
             const dirArrow = new THREE.Group();
             dirArrow.visible = false;
             weaponRig.add(dirArrow);
@@ -1033,25 +1498,20 @@
                 color: 0xffe060, transparent: true, opacity: 0.85,
                 depthTest: false, depthWrite: false, fog: false
             });
-            const arrowShaft = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.0035, 0.0035, 0.11, 8), ARROW_MAT);
+            const arrowShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.0035, 0.0035, 0.11, 8), ARROW_MAT);
             arrowShaft.position.y = 0.055; dirArrow.add(arrowShaft);
-            const arrowHead = new THREE.Mesh(
-                new THREE.ConeGeometry(0.014, 0.032, 12), ARROW_MAT);
+            const arrowHead = new THREE.Mesh(new THREE.ConeGeometry(0.014, 0.032, 12), ARROW_MAT);
             arrowHead.position.y = 0.126; dirArrow.add(arrowHead);
-            const arrowOrigin = new THREE.Mesh(
-                new THREE.SphereGeometry(0.008, 8, 6), ARROW_MAT);
+            const arrowOrigin = new THREE.Mesh(new THREE.SphereGeometry(0.008, 8, 6), ARROW_MAT);
             dirArrow.add(arrowOrigin);
             dirArrow.traverse(o => { o.renderOrder = 200; });
 
             const backArrow = new THREE.Group();
             backArrow.visible = false;
             weaponRig.add(backArrow);
-            const backShaft = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.0025, 0.0025, 0.08, 8), ARROW_MAT);
+            const backShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.0025, 0.0025, 0.08, 8), ARROW_MAT);
             backShaft.position.y = -0.04; backArrow.add(backShaft);
-            const backHead = new THREE.Mesh(
-                new THREE.ConeGeometry(0.011, 0.024, 12), ARROW_MAT);
+            const backHead = new THREE.Mesh(new THREE.ConeGeometry(0.011, 0.024, 12), ARROW_MAT);
             backHead.position.y = -0.092; backHead.rotation.z = Math.PI;
             backArrow.add(backHead);
 
@@ -1079,106 +1539,110 @@
                 backArrow.quaternion.copy(dirArrow.quaternion);
                 backArrow.visible = (kind === 'size');
             }
-            function hideDirArrow() {
-                dirArrow.visible = false;
-                backArrow.visible = false;
-            }
+            function hideDirArrow() { dirArrow.visible = false; backArrow.visible = false; }
 
-            /* ============================================================
-               VIEW TAB SWITCHING
-               ============================================================ */
-            const scopeBanner = document.getElementById('scopeBanner');
-
-            function applyViewTab() {
-                const showRig = (viewTab === 'hands');
-                handL.visible = showRig;
-                handR.visible = showRig;
-                armLUpper.visible = showRig;
-                armLFore.visible = showRig;
-                armRUpper.visible = showRig;
-                armRFore.visible = showRig;
-                shoulderMarkerL.visible = showRig;
-                shoulderMarkerR.visible = showRig;
-                eyeMarker.visible = showRig;
-
-                /* Highlight is meaningless in scope view when parts are hidden */
-                if (scopePreview) {
-                    selectedHighlightGroup.visible = false;
-                    hideDirArrow();
-                }
-
-                scopeBanner.classList.toggle('on', scopePreview);
-                applyWeaponVisibility();
-            }
-
-            /* ============================================================
-               WEAPON VISIBILITY — driven by SCOPE VIEW + flags
-               ============================================================ */
-            function applyWeaponVisibility() {
-                if (!weaponMesh) return;
-
-                const hideGun = scopePreview && W.hideWeaponOnAds === true;
-                const hideScope =
-                    scopePreview &&
-                    W.hideScopeOnAds === true &&
-                    (W.scopeMode === 'inline' || W.scopeMode === 'sniper');
-
-                weaponMesh.visible = !hideGun;
-                if (scopePartsGroup) scopePartsGroup.visible = !hideGun && !hideScope;
-            }
-
-            /* ============================================================
-               BUILD WEAPON MESH
-               ============================================================ */
-            function disposeRecursive(o) {
-                o.traverse(x => {
-                    if (x.geometry) x.geometry.dispose();
-                    if (x.material) {
-                        const ms = Array.isArray(x.material) ? x.material : [x.material];
-                        ms.forEach(m => m.dispose());
-                    }
+            /* --- weapon meshes ------------------------------------------------------ */
+            function disposeMaterials() {
+                partMeshes.forEach(m => {
+                    if (m.parent) m.parent.remove(m);
+                    m.material.dispose();
                 });
+                partMeshes.length = 0;
+
+                // 保險：清掉任何殘留的非 marker 子物件
+                for (let i = weaponRig.children.length - 1; i >= 0; i--) {
+                    const c = weaponRig.children[i];
+                    if (c === selectedHighlightGroup || c === dirArrow || c === backArrow) continue;
+                    if (c === muzzleMarker || c === sightMarker) continue;
+                    if (c.isMesh) weaponRig.remove(c);
+                }
             }
 
             function rebuildWeapon() {
-                if (weaponMesh) {
-                    weaponRig.remove(weaponMesh);
-                    disposeRecursive(weaponMesh);
-                }
-                weaponMesh = new THREE.Group();
-                weaponRig.add(weaponMesh);
-
-                scopePartsGroup = new THREE.Group();
-                weaponMesh.add(scopePartsGroup);
-
+                disposeMaterials();
                 for (const part of W.model) {
-                    const geo = new THREE.BoxGeometry(part.s[0], part.s[1], part.s[2]);
                     const mat = new THREE.MeshLambertMaterial({ color: part.c | 0 });
-                    const m = new THREE.Mesh(geo, mat);
-                    m.position.set(part.p[0], part.p[1], part.p[2]);
-                    if (part.r) m.rotation.set(part.r[0], part.r[1], part.r[2]);
-                    if (part.scope === true) scopePartsGroup.add(m);
-                    else weaponMesh.add(m);
+                    const m = new THREE.Mesh(UNIT_BOX, mat);
+                    weaponRig.add(m);
+                    partMeshes.push(m);
                 }
+                if (muzzleMarker) { weaponRig.remove(muzzleMarker); muzzleMarker = null; }
+                if (sightMarker) { weaponRig.remove(sightMarker); sightMarker = null; }
 
                 muzzleMarker = new THREE.Mesh(
                     new THREE.SphereGeometry(0.014, 10, 8),
                     new THREE.MeshBasicMaterial({ color: 0xff4060 }));
                 muzzleMarker.position.fromArray(W.muzzleLocal);
-                weaponMesh.add(muzzleMarker);
+                weaponRig.add(muzzleMarker);
 
                 sightMarker = new THREE.Mesh(
                     new THREE.SphereGeometry(0.010, 10, 8),
                     new THREE.MeshBasicMaterial({ color: 0xff60c0 }));
                 sightMarker.position.fromArray(W.sightLocal);
-                weaponMesh.add(sightMarker);
+                weaponRig.add(sightMarker);
 
+                syncWeaponMeshes();
+            }
+
+            function syncWeaponMeshes() {
+                for (let i = 0; i < W.model.length; i++) {
+                    const part = W.model[i];
+                    const m = partMeshes[i];
+                    if (!m) continue;
+                    m.position.set(part.p[0], part.p[1], part.p[2]);
+                    const r = part.r || [0, 0, 0];
+                    m.rotation.set(r[0], r[1], r[2]);
+                    m.scale.set(part.s[0], part.s[1], part.s[2]);
+                    if (m.material.color.getHex() !== (part.c | 0)) m.material.color.setHex(part.c | 0);
+                }
+                applyWeaponVisibility();
+                updateSelectedHighlight();
+            }
+
+            function applyWeaponVisibility() {
+                const hideGun = scopePreview && W.hideWeaponOnAds === true;
+                const hideScope = scopePreview &&
+                    W.hideScopeOnAds === true &&
+                    (W.scopeMode === 'inline' || W.scopeMode === 'sniper');
+                for (let i = 0; i < partMeshes.length; i++) {
+                    const p = W.model[i];
+                    partMeshes[i].visible = !hideGun && !(hideScope && p && p.scope === true);
+                }
+                if (muzzleMarker) muzzleMarker.visible = !hideGun;
+                if (sightMarker) sightMarker.visible = !hideGun;
+            }
+
+            /* --- view tab ----------------------------------------------------------- */
+            function applyViewTab() {
+                const showRig = (viewTab === 'hands');
+                handL.visible = handR.visible = showRig;
+                armLUpper.visible = armLFore.visible = showRig;
+                armRUpper.visible = armRFore.visible = showRig;
+                shoulderMarkerL.visible = shoulderMarkerR.visible = showRig;
+                eyeMarker.visible = showRig;
+
+                if (scopePreview) { selectedHighlightGroup.visible = false; hideDirArrow(); }
+                const sb = viewportBox.querySelector('#scopeBanner');
+                if (sb) sb.classList.toggle('on', scopePreview);
                 applyWeaponVisibility();
             }
 
-            /* ============================================================
-               POSE / GRIP / BONES
-               ============================================================ */
+            viewportBox.querySelectorAll('#viewTabs button').forEach(b => {
+                b.addEventListener('click', () => {
+                    viewTab = b.dataset.tab;
+                    scopePreview = (viewTab === 'scope');
+                    viewportBox.querySelectorAll('#viewTabs button')
+                        .forEach(x => x.classList.toggle('active', x === b));
+                    applyViewTab();
+                    if (scopePreview || viewTab === 'gun') applyCameraPreset('gunOnly');
+                    else applyCameraPreset('fp');
+                    viewportBox.querySelectorAll('#camPresets button')
+                        .forEach(x => x.classList.remove('active'));
+                    updateRig();
+                });
+            });
+
+            /* --- pose --------------------------------------------------------------- */
             function computeAdsPose() {
                 if (!W.adsAuto) return W.adsPose;
                 const s = W.sightLocal;
@@ -1189,6 +1653,9 @@
             const _tmpE = new THREE.Euler();
             const _tmpQ = new THREE.Quaternion();
             const _up = new THREE.Vector3(0, 1, 0);
+            const _elbow = new THREE.Vector3();
+            const _dir = new THREE.Vector3();
+            const _mid = new THREE.Vector3();
 
             function applyGrip(hand, grip, rig) {
                 _tmpV.set(grip.p[0], grip.p[1], grip.p[2]);
@@ -1198,10 +1665,6 @@
                 _tmpQ.setFromEuler(_tmpE);
                 hand.quaternion.copy(rig.quaternion).multiply(_tmpQ);
             }
-
-            const _elbow = new THREE.Vector3();
-            const _dir = new THREE.Vector3();
-            const _mid = new THREE.Vector3();
 
             function updateBone(upper, fore, shoulder, handPos, side) {
                 _mid.copy(shoulder).add(handPos).multiplyScalar(0.5);
@@ -1221,8 +1684,6 @@
             function updateRig() {
                 const hip = W.hipPose;
                 const ads = computeAdsPose();
-
-                /* In scope view force blend to 1 (full ADS). */
                 const t = scopePreview ? 1 : blendT;
 
                 weaponRig.position.set(
@@ -1249,270 +1710,16 @@
                     const p = new THREE.Vector3().copy(sightMarker.position);
                     p.applyQuaternion(weaponRig.quaternion);
                     p.add(weaponRig.position);
-                    document.getElementById('readout').textContent =
-                        '準心於 fpRoot：(' +
-                        p.x.toFixed(3) + ', ' + p.y.toFixed(3) + ', ' + p.z.toFixed(3) + ')';
+                    const ro = viewportBox.querySelector('#readout');
+                    if (ro) ro.textContent =
+                        '準心於 fpRoot：(' + p.x.toFixed(3) + ', ' + p.y.toFixed(3) + ', ' + p.z.toFixed(3) + ')';
                 }
 
-                applyWeaponVisibility();
-                updateSelectedHighlight();
+                syncWeaponMeshes();
                 requestIconRedraw();
             }
 
-            /* ============================================================
-               UI HELPERS
-               ============================================================ */
-            const $ = id => document.getElementById(id);
-            function colorHex(n) { return '#' + (n | 0).toString(16).padStart(6, '0'); }
-            function colorInt(s) {
-                const v = String(s).trim().replace(/^#/, '').replace(/^0x/i, '');
-                const n = parseInt(v, 16);
-                return Number.isFinite(n) ? n : 0xff00ff;
-            }
-
-            /* Slider upgrade */
-            const SLIDER_SPECS = [
-                ['hipP0', -0.5, 0.5, 0.005], ['hipP1', -0.5, 0.5, 0.005], ['hipP2', -0.5, 0.5, 0.005],
-                ['hipR0', -1.6, 1.6, 0.01], ['hipR1', -1.6, 1.6, 0.01], ['hipR2', -1.6, 1.6, 0.01],
-                ['adsP0', -0.5, 0.5, 0.005], ['adsP1', -0.5, 0.5, 0.005], ['adsP2', -0.5, 0.5, 0.005],
-                ['adsR0', -1.6, 1.6, 0.01], ['adsR1', -1.6, 1.6, 0.01], ['adsR2', -1.6, 1.6, 0.01],
-                ['sightP0', -0.5, 0.5, 0.005], ['sightP1', -0.5, 0.5, 0.005], ['sightP2', -0.5, 0.5, 0.005],
-                ['gripRP0', -0.5, 0.5, 0.005], ['gripRP1', -0.5, 0.5, 0.005], ['gripRP2', -0.5, 0.5, 0.005],
-                ['gripRR0', -1.6, 1.6, 0.01], ['gripRR1', -1.6, 1.6, 0.01], ['gripRR2', -1.6, 1.6, 0.01],
-                ['gripLP0', -0.5, 0.5, 0.005], ['gripLP1', -0.5, 0.5, 0.005], ['gripLP2', -0.5, 0.5, 0.005],
-                ['gripLR0', -1.6, 1.6, 0.01], ['gripLR1', -1.6, 1.6, 0.01], ['gripLR2', -1.6, 1.6, 0.01],
-                ['shoulderL0', -0.5, 0.5, 0.005], ['shoulderL1', -0.5, 0.5, 0.005], ['shoulderL2', -0.5, 0.5, 0.005],
-                ['shoulderR0', -0.5, 0.5, 0.005], ['shoulderR1', -0.5, 0.5, 0.005], ['shoulderR2', -0.5, 0.5, 0.005],
-                ['wAnimSw', -1.5, 1.5, 0.01],
-                ['wAnimKc', -0.2, 0.2, 0.005],
-                ['muzzleLocal0', -0.5, 0.5, 0.005],
-                ['muzzleLocal1', -0.5, 0.5, 0.005],
-                ['muzzleLocal2', -0.5, 0.5, 0.005],
-                ['iconR0', -3.2, 3.2, 0.02], ['iconR1', -3.2, 3.2, 0.02], ['iconR2', -3.2, 3.2, 0.02],
-                ['iconP0', -0.5, 0.5, 0.005], ['iconP1', -0.5, 0.5, 0.005], ['iconP2', -0.5, 0.5, 0.005],
-                ['iconScale', 0.1, 5.0, 0.05],
-                ['wInlineFov', 2, 40, 0.5],
-                ['wInlineRadius', 0.002, 0.03, 0.001],
-                ['inlineLensP0', -0.5, 0.5, 0.005],
-                ['inlineLensP1', -0.5, 0.5, 0.005],
-                ['inlineLensP2', -0.5, 0.5, 0.005],
-            ];
-            function upgradeSliders() {
-                for (const [id, min, max, step] of SLIDER_SPECS) {
-                    const num = $(id);
-                    if (!num) continue;
-                    const sld = document.createElement('input');
-                    sld.type = 'range';
-                    sld.id = id + 'Sld';
-                    sld.min = min; sld.max = max; sld.step = step;
-                    sld.value = num.value || 0;
-                    num.parentElement.insertBefore(sld, num);
-                }
-            }
-            function bindPair(id, onChange) {
-                const num = $(id);
-                const sld = $(id + 'Sld');
-                const commit = (raw) => {
-                    const v = parseFloat(raw);
-                    if (!isFinite(v)) return;
-                    if (num) num.value = v;
-                    if (sld) sld.value = v;
-                    onChange(v);
-                };
-                if (num) num.addEventListener('input', () => commit(num.value));
-                if (sld) sld.addEventListener('input', () => commit(sld.value));
-            }
-            function setValue(id, v) {
-                const num = $(id); const sld = $(id + 'Sld');
-                if (num) num.value = v; if (sld) sld.value = v;
-            }
-            function setVec(pfx, arr) {
-                for (let i = 0; i < 3; i++) setValue(pfx + i, arr[i]);
-            }
-
-            /* ============================================================
-               TABS
-               ============================================================ */
-            document.querySelectorAll('.tabs button[data-tab]').forEach(b => {
-                b.addEventListener('click', () => {
-                    const tab = b.dataset.tab;
-                    document.querySelectorAll('.tabs button[data-tab]')
-                        .forEach(x => x.classList.toggle('active', x === b));
-                    document.querySelectorAll('.tab-pane').forEach(p => {
-                        p.classList.toggle('active', p.dataset.pane === tab);
-                    });
-                });
-            });
-
-            /* ============================================================
-               SCALAR BINDINGS
-               ============================================================ */
-            const scalarBindings = [
-                ['wKey', 'key', v => String(v)],
-                ['wName', 'name', v => String(v)],
-                ['wIcon', 'icon', v => String(v)],
-                ['wColor', 'color', v => String(v)],
-                ['wAmmo', 'ammoType', v => String(v)],
-                ['wMag', 'magSize', v => parseFloat(v)],
-                ['wRate', 'fireRate', v => parseFloat(v)],
-                ['wRel', 'reloadTime', v => parseFloat(v)],
-                ['wDmg', 'damage', v => parseFloat(v)],
-                ['wAuto', 'auto', v => v === '1'],
-                ['wSpread', 'spread', v => parseFloat(v)],
-                ['wRecoil', 'recoilKick', v => parseFloat(v)],
-                ['wBSpeed', 'bulletSpeed', v => parseFloat(v)],
-                ['wBSize', 'bulletSize', v => parseFloat(v)],
-                ['wBColor', 'bulletColor', v => colorInt(v)],
-                ['wScopeFov', 'scopeFov', v => parseFloat(v)],
-                ['wScopeSens', 'scopeSens', v => parseFloat(v)],
-            ];
-            function setNested(path, val) {
-                const parts = path.split('.');
-                let o = W;
-                for (let i = 0; i < parts.length - 1; i++) o = o[parts[i]];
-                o[parts[parts.length - 1]] = val;
-            }
-            for (const [id, key, cast] of scalarBindings) {
-                const el = $(id); if (!el) continue;
-                el.addEventListener('input', e => {
-                    const v = cast(e.target.value);
-                    if (v === v) setNested(key, v);
-                });
-            }
-
-            function bindPoseVec(pfx, poseKey, field) {
-                for (let i = 0; i < 3; i++) {
-                    bindPair(pfx + i, v => {
-                        W[poseKey][field][i] = v;
-                        updateRig();
-                    });
-                }
-            }
-            function bindArrayVec(pfx, arrayKey) {
-                for (let i = 0; i < 3; i++) {
-                    bindPair(pfx + i, v => {
-                        W[arrayKey][i] = v;
-                        if (arrayKey === 'sightLocal' && sightMarker)
-                            sightMarker.position.fromArray(W.sightLocal);
-                        if (arrayKey === 'muzzleLocal' && muzzleMarker)
-                            muzzleMarker.position.fromArray(W.muzzleLocal);
-                        updateRig();
-                    });
-                }
-            }
-
-            bindPair('wAnimSw', v => { W.anim.swing = v; });
-            bindPair('wAnimKc', v => { W.anim.kick = v; });
-
-            upgradeSliders();
-
-            bindPoseVec('hipP', 'hipPose', 'p');
-            bindPoseVec('hipR', 'hipPose', 'r');
-            bindPoseVec('adsP', 'adsPose', 'p');
-            bindPoseVec('adsR', 'adsPose', 'r');
-            bindPoseVec('gripRP', 'gripR', 'p');
-            bindPoseVec('gripRR', 'gripR', 'r');
-            bindPoseVec('gripLP', 'gripL', 'p');
-            bindPoseVec('gripLR', 'gripL', 'r');
-
-            bindArrayVec('sightP', 'sightLocal');
-            bindArrayVec('muzzleLocal', 'muzzleLocal');
-            bindArrayVec('inlineLensP', 'inlineLensLocal');
-            bindPair('wInlineFov', v => { W.inlineFov = v; });
-            bindPair('wInlineRadius', v => { if (v > 0) W.inlineLensRadius = v; });
-
-            $('adsAuto').addEventListener('change', e => {
-                W.adsAuto = e.target.checked;
-                toggleAdsInputs();
-                updateRig();
-            });
-
-            $('wScopeMode').addEventListener('change', e => {
-                W.scopeMode = e.target.value;
-                updateScopeModeVisibility();
-                applyWeaponVisibility();
-                requestIconRedraw();
-            });
-
-            $('wHideWeaponOnAds').addEventListener('change', e => {
-                W.hideWeaponOnAds = e.target.checked;
-                applyWeaponVisibility();
-            });
-            $('wHideScopeOnAds').addEventListener('change', e => {
-                W.hideScopeOnAds = e.target.checked;
-                applyWeaponVisibility();
-            });
-
-            function updateScopeModeVisibility() {
-                const m = W.scopeMode || 'none';
-                const s = $('scopeSniperFields');
-                const i = $('scopeInlineFields');
-                if (s) s.style.display = (m === 'sniper') ? 'block' : 'none';
-                if (i) i.style.display = (m === 'inline') ? 'block' : 'none';
-            }
-            function toggleAdsInputs() {
-                const dis = W.adsAuto;
-                for (let i = 0; i < 3; i++) {
-                    const ids = ['adsP' + i, 'adsR' + i];
-                    for (const id of ids) {
-                        const n = $(id); const s = $(id + 'Sld');
-                        if (n) n.disabled = dis;
-                        if (s) s.disabled = dis;
-                    }
-                }
-            }
-
-            $('blend').addEventListener('input', e => {
-                blendT = parseFloat(e.target.value);
-                $('blendVal').textContent = blendT.toFixed(2);
-                updateRig();
-            });
-
-            document.querySelectorAll('.posetabs button, .tabs button[data-view]').forEach(b => {
-                b.addEventListener('click', () => {
-                    const v = b.dataset.view;
-                    activeView = v;
-                    document.querySelectorAll('.posetabs button, .tabs button[data-view]')
-                        .forEach(x => x.classList.toggle('active', x === b));
-                    let t = 0;
-                    if (v === 'ads') t = 1;
-                    else if (v === 'blend') t = blendT;
-                    if (v !== 'blend') {
-                        blendT = t;
-                        $('blend').value = t;
-                        $('blendVal').textContent = t.toFixed(2);
-                    }
-                    updateRig();
-                });
-            });
-
-            /* View tabs */
-            document.querySelectorAll('#viewTabs button').forEach(b => {
-                b.addEventListener('click', () => {
-                    const t = b.dataset.tab;
-                    viewTab = t;
-                    scopePreview = (t === 'scope');
-                    document.querySelectorAll('#viewTabs button')
-                        .forEach(x => x.classList.toggle('active', x === b));
-
-                    /* gunOnly and scope both hide hands; hands shows them. */
-                    applyViewTab();
-                    if (scopePreview) {
-                        applyCameraPreset('gunOnly');
-                    } else if (viewTab === 'gun') {
-                        applyCameraPreset('gunOnly');
-                    } else {
-                        applyCameraPreset('fp');
-                    }
-                    document.querySelectorAll('#camPresets button')
-                        .forEach(x => x.classList.toggle('active', false));
-                    updateRig();
-                });
-            });
-
-            /* ============================================================
-               CAMERA PRESETS
-               ============================================================ */
+            /* --- camera ------------------------------------------------------------- */
             let camYaw = 0, camPitch = 0, camDist = 0.5;
             let orbitTarget = { x: 0, y: 0, z: -0.05 };
 
@@ -1532,15 +1739,13 @@
                 }
                 updateCamera();
             }
-
-            document.querySelectorAll('#camPresets button').forEach(b => {
+            viewportBox.querySelectorAll('#camPresets button').forEach(b => {
                 b.addEventListener('click', () => {
-                    document.querySelectorAll('#camPresets button')
+                    viewportBox.querySelectorAll('#camPresets button')
                         .forEach(x => x.classList.toggle('active', x === b));
                     applyCameraPreset(b.dataset.cam);
                 });
             });
-
             function updateCamera() {
                 const t = orbitTarget;
                 camera.position.set(
@@ -1550,351 +1755,625 @@
                 camera.lookAt(t.x, t.y, t.z);
             }
 
+            /* --- input -------------------------------------------------------------- */
             let dragging = false, panning = false, lastX = 0, lastY = 0;
+            let downX = 0, downY = 0, downT = 0, moved = false;
 
             renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
-
-            renderer.domElement.addEventListener('mousedown', e => {
-                if (e.button === 0) {
-                    dragging = true;
-                    lastX = e.clientX; lastY = e.clientY;
-                    document.querySelectorAll('#camPresets button')
-                        .forEach(x => x.classList.remove('active'));
-                } else if (e.button === 2) {
-                    panning = true;
-                    lastX = e.clientX; lastY = e.clientY;
-                    e.preventDefault();
-                    document.querySelectorAll('#camPresets button')
-                        .forEach(x => x.classList.remove('active'));
-                }
+            renderer.domElement.addEventListener('pointerdown', e => {
+                moved = false;
+                downX = e.clientX; downY = e.clientY; downT = performance.now();
+                if (e.button === 0) { dragging = true; lastX = e.clientX; lastY = e.clientY; }
+                else if (e.button === 2) { panning = true; lastX = e.clientX; lastY = e.clientY; e.preventDefault(); }
+                viewportBox.querySelectorAll('#camPresets button').forEach(x => x.classList.remove('active'));
+                try { renderer.domElement.setPointerCapture(e.pointerId); } catch (x) { }
             });
 
-            window.addEventListener('mousemove', e => {
+            renderer.domElement.addEventListener('pointermove', e => {
                 const dx = e.clientX - lastX;
                 const dy = e.clientY - lastY;
+                if (Math.abs(e.clientX - downX) + Math.abs(e.clientY - downY) > 5) moved = true;
 
                 if (dragging) {
                     camYaw -= dx * 0.006;
-                    camPitch += dy * 0.006;
-                    camPitch = Math.max(-1.5, Math.min(1.5, camPitch));
+                    camPitch = Math.max(-1.5, Math.min(1.5, camPitch + dy * 0.006));
                     lastX = e.clientX; lastY = e.clientY;
                     updateCamera();
                 } else if (panning) {
-                    /* Pan the orbit target in the camera's local right / up axes.
-                       Scale by camDist so the drag feels consistent at any zoom. */
                     const factor = camDist * 0.0018;
-                    const right = new THREE.Vector3();
-                    const up = new THREE.Vector3();
-                    const fwd = new THREE.Vector3();
+                    const right = new THREE.Vector3(), up = new THREE.Vector3(), fwd = new THREE.Vector3();
                     camera.matrixWorld.extractBasis(right, up, fwd);
-
                     orbitTarget.x -= (right.x * dx - up.x * dy) * factor;
                     orbitTarget.y -= (right.y * dx - up.y * dy) * factor;
                     orbitTarget.z -= (right.z * dx - up.z * dy) * factor;
-
                     lastX = e.clientX; lastY = e.clientY;
                     updateCamera();
                 }
             });
 
-            window.addEventListener('mouseup', () => {
-                dragging = false;
-                panning = false;
+            renderer.domElement.addEventListener('pointerup', e => {
+                const wasDrag = moved || (performance.now() - downT) > 400;
+                dragging = false; panning = false;
+                try { renderer.domElement.releasePointerCapture(e.pointerId); } catch (x) { }
+
+                if (wasDrag || e.button !== 0) return;
+                /* click-to-select a part */
+                const rect = renderer.domElement.getBoundingClientRect();
+                const ndc = new THREE.Vector2(
+                    ((e.clientX - rect.left) / rect.width) * 2 - 1,
+                    -((e.clientY - rect.top) / rect.height) * 2 + 1);
+                const ray = new THREE.Raycaster();
+                ray.setFromCamera(ndc, camera);
+                const visible = partMeshes.filter(m => m.visible !== false);
+                const hits = ray.intersectObjects(visible, false);
+                if (hits.length) {
+                    const idx = partMeshes.indexOf(hits[0].object);
+                    if (idx >= 0) {
+                        setSelected(idx, e.shiftKey || e.ctrlKey || e.metaKey);
+                        showPage('model');
+                    }
+                }
             });
 
             renderer.domElement.addEventListener('wheel', e => {
                 e.preventDefault();
-                camDist *= (e.deltaY > 0 ? 1.08 : 0.92);
-                camDist = Math.max(0.15, Math.min(3.0, camDist));
+                camDist = Math.max(0.15, Math.min(3.0, camDist * (e.deltaY > 0 ? 1.08 : 0.92)));
                 updateCamera();
             }, { passive: false });
 
-            function resize() {
-                const w = wrap.clientWidth, h = wrap.clientHeight;
+            const viewportRO = new ResizeObserver(resizeViewport);
+            viewportRO.observe(viewportBox);
+            function resizeViewport() {
+                const w = viewportBox.clientWidth, h = viewportBox.clientHeight;
+                if (!w || !h) return;
                 renderer.setSize(w, h, false);
                 camera.aspect = w / h;
                 camera.updateProjectionMatrix();
             }
-            window.addEventListener('resize', resize);
 
-            /* ============================================================
-               PARTS PANEL
-               ============================================================ */
-            const partsList = $('partsList');
-            const PART_POS_MIN = -0.5, PART_POS_MAX = 0.5, PART_POS_STEP = 0.005;
-            const PART_SIZE_MIN = 0.005, PART_SIZE_MAX = 0.5, PART_SIZE_STEP = 0.005;
-            const PART_ROT_MIN = -1.6, PART_ROT_MAX = 1.6, PART_ROT_STEP = 0.01;
-            const AXIS_LABELS = ['X', 'Y', 'Z'];
-            const SIZE_LABELS = ['寬', '高', '深'];
-            const ROT_LABELS = ['RX', 'RY', 'RZ'];
+            /* ============================================================================
+               5.  THUMBNAIL RENDERER (for the parts list)
+               ========================================================================= */
+            const thumbRenderer = new THREE.WebGLRenderer({
+                antialias: true, alpha: true, preserveDrawingBuffer: true
+            });
+            thumbRenderer.setPixelRatio(1);
+            thumbRenderer.setSize(64, 64, false);
+            thumbRenderer.setClearColor(0x000000, 0);
 
-            function partRow(idx, group, axis, label, value, min, max, step) {
-                return '' +
-                    '<div class="vec-row">' +
-                    '<span>' + label + '</span>' +
-                    '<input type="range" data-part="' + idx + '" data-group="' + group +
-                    '" data-axis="' + axis + '" min="' + min + '" max="' + max +
-                    '" step="' + step + '" value="' + value + '">' +
-                    '<input type="number" data-part="' + idx + '" data-group="' + group +
-                    '" data-axis="' + axis + '" min="' + min + '" max="' + max +
-                    '" step="' + step + '" value="' + value + '">' +
-                    '</div>';
+            const thumbScene = new THREE.Scene();
+            thumbScene.add(new THREE.AmbientLight(0xffffff, 0.72));
+            {
+                const a = new THREE.DirectionalLight(0xffffff, 1.0); a.position.set(1.2, 1.6, 1.4);
+                thumbScene.add(a);
+                const b = new THREE.DirectionalLight(0x8899bb, 0.55); b.position.set(-1.2, -0.4, -1.0);
+                thumbScene.add(b);
+            }
+            const thumbCamera = new THREE.PerspectiveCamera(34, 1, 0.01, 50);
+
+            const thumbCache = new Map();
+            const _thumbDir = new THREE.Vector3(0.85, 0.62, 1.0).normalize();
+
+            function partSig(p) {
+                return (p.p.join(',')) + '|' + (p.s.join(',')) + '|' + ((p.r || [0, 0, 0]).join(',')) + '|' + (p.c | 0);
+            }
+
+            function renderPartThumb(part) {
+                const geo = new THREE.BoxGeometry(part.s[0], part.s[1], part.s[2]);
+                const mat = new THREE.MeshLambertMaterial({ color: part.c | 0 });
+                const mesh = new THREE.Mesh(geo, mat);
+                if (part.r) mesh.rotation.set(part.r[0], part.r[1], part.r[2]);
+                thumbScene.add(mesh);
+
+                const box = new THREE.Box3().setFromObject(mesh);
+                const c = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+                const radius = Math.max(size.length() * 0.5, 0.0008);
+                const dist = radius / Math.sin(thumbCamera.fov * Math.PI / 360) * 1.25;
+
+                thumbCamera.position.copy(c).addScaledVector(_thumbDir, dist);
+                thumbCamera.lookAt(c);
+                thumbCamera.updateProjectionMatrix();
+                thumbRenderer.render(thumbScene, thumbCamera);
+
+                const url = thumbRenderer.domElement.toDataURL();
+                thumbScene.remove(mesh);
+                geo.dispose(); mat.dispose();
+                return url;
+            }
+
+            function getThumb(part) {
+                const sig = partSig(part);
+                let url = thumbCache.get(sig);
+                if (url) return url;
+                try { url = renderPartThumb(part); }
+                catch (e) { console.warn(e); url = ''; }
+                if (thumbCache.size > 600) thumbCache.clear();
+                thumbCache.set(sig, url);
+                return url;
+            }
+
+            /* ============================================================================
+               6.  PARTS LIST + PROPERTIES
+               ========================================================================= */
+            const partsListEl = $('partsList');
+
+            function setSelected(idx, additive) {
+                if (idx < 0 || idx >= W.model.length) return;
+                if (additive) {
+                    if (selectedParts.has(idx)) {
+                        if (selectedParts.size > 1) {
+                            selectedParts.delete(idx);
+                            if (anchorPart === idx) anchorPart = selectedParts.values().next().value;
+                        }
+                    } else { selectedParts.add(idx); anchorPart = idx; }
+                } else {
+                    selectedParts.clear(); selectedParts.add(idx); anchorPart = idx;
+                }
+                rebuildPartsList();
+                renderPartProps();
+                updateSelectedHighlight();
+                updateSelInfo();
+            }
+
+            function updateSelInfo() {
+                const el = $('selInfo');
+                const n = selectedParts.size;
+                el.innerHTML = '已選 <b>' + n + '</b> 個零件' + (n > 1 ? '（多選）' : '');
             }
 
             function rebuildPartsList() {
-                partsList.innerHTML = '';
+                partsListEl.innerHTML = '';
                 W.model.forEach((part, i) => {
                     if (!part.r) part.r = [0, 0, 0];
-
-                    const el = document.createElement('div');
-                    const isSel = selectedParts.has(i);
-                    el.className = 'part' + (isSel ? ' sel open' : '');
-
-                    let html = '' +
-                        '<div class="hd">' +
-                        '<span><span class="idx">#' + i + '</span></span>' +
-                        '<div class="badges">' +
+                    const d = document.createElement('div');
+                    d.className = 'part' + (selectedParts.has(i) ? ' sel' : '');
+                    d.dataset.i = i;
+                    d.innerHTML =
+                        '<img class="thumb" src="' + getThumb(part) + '" alt="">' +
+                        '<div class="meta">' +
+                        '<div class="pname"><b>#' + i + '</b>' +
                         (part.scope ? '<span class="badge">SCOPE</span>' : '') +
-                        '<span class="sw" style="background:' + colorHex(part.c | 0) + '"></span>' +
                         '</div>' +
+                        '<div class="pdim">' + part.s.map(v => v.toFixed(3)).join(' × ') + '</div>' +
                         '</div>' +
-                        '<div class="body">';
-
-                    html += '<div class="sec">位置</div>';
-                    for (let a = 0; a < 3; a++)
-                        html += partRow(i, 'p', a, AXIS_LABELS[a], part.p[a],
-                            PART_POS_MIN, PART_POS_MAX, PART_POS_STEP);
-
-                    html += '<div class="sec">尺寸</div>';
-                    for (let a = 0; a < 3; a++)
-                        html += partRow(i, 's', a, SIZE_LABELS[a], part.s[a],
-                            PART_SIZE_MIN, PART_SIZE_MAX, PART_SIZE_STEP);
-
-                    html += '<div class="sec">旋轉</div>';
-                    for (let a = 0; a < 3; a++)
-                        html += partRow(i, 'r', a, ROT_LABELS[a], part.r[a],
-                            PART_ROT_MIN, PART_ROT_MAX, PART_ROT_STEP);
-
-                    html += '<div class="sec">顏色 / 標記</div>' +
-                        '<input data-part="' + i + '" data-f="color" type="color" value="' +
-                        colorHex(part.c | 0) + '">' +
-                        '<label class="chk"><input type="checkbox" data-part="' + i +
-                        '" data-f="scope"' + (part.scope ? ' checked' : '') +
-                        '> 標記為瞄準鏡零件</label>';
-
-                    html += '</div>';
-
-                    el.innerHTML = html;
-
-                    el.querySelector('.hd').addEventListener('click', (ev) => {
-                        if (ev.target.closest('input,label')) return;
-                        const additive = ev.shiftKey || ev.ctrlKey || ev.metaKey;
-                        setSelected(i, additive);
+                        '<span class="sw" style="background:' + colorHex(part.c | 0) + '"></span>';
+                    d.addEventListener('click', ev => {
+                        setSelected(i, ev.shiftKey || ev.ctrlKey || ev.metaKey);
                     });
+                    partsListEl.appendChild(d);
+                });
+                updateSelInfo();
+            }
 
-                    el.querySelectorAll('[data-part]').forEach(inp => {
-                        const partIdx = parseInt(inp.dataset.part, 10);
-                        const group = inp.dataset.group;
-                        const axis = inp.dataset.axis !== undefined
-                            ? parseInt(inp.dataset.axis, 10) : -1;
+            function updatePartRow(i) {
+                const row = partsListEl.querySelector('.part[data-i="' + i + '"]');
+                const part = W.model[i];
+                if (!row || !part) return;
+                row.querySelector('.thumb').src = getThumb(part);
+                row.querySelector('.pdim').textContent = part.s.map(v => v.toFixed(3)).join(' × ');
+                row.querySelector('.sw').style.background = colorHex(part.c | 0);
+                const badge = row.querySelector('.badge');
+                if (part.scope && !badge) {
+                    const b = document.createElement('span');
+                    b.className = 'badge'; b.textContent = 'SCOPE';
+                    row.querySelector('.pname').appendChild(b);
+                } else if (!part.scope && badge) badge.remove();
+            }
 
-                        if (inp.dataset.f === 'color') {
-                            inp.addEventListener('input', ev => {
-                                const v = colorInt(ev.target.value);
-                                W.model[partIdx].c = v;
-                                const sw = el.querySelector('.hd .sw');
-                                if (sw) sw.style.background = colorHex(v);
-                                rebuildWeapon(); updateRig();
-                            });
-                            return;
-                        }
-                        if (inp.dataset.f === 'scope') {
-                            inp.addEventListener('change', ev => {
-                                W.model[partIdx].scope = ev.target.checked;
-                                rebuildWeapon();
-                                /* refresh badge */
-                                rebuildPartsList();
-                                updateRig();
-                            });
-                            return;
-                        }
+            /* --- property panel ----------------------------------------------------- */
+            const PROP_SPECS = [
+                ['pp0', -0.5, 0.5, 0.005], ['pp1', -0.5, 0.5, 0.005], ['pp2', -0.5, 0.5, 0.005],
+                ['ps0', 0.005, 0.5, 0.005], ['ps1', 0.005, 0.5, 0.005], ['ps2', 0.005, 0.5, 0.005],
+                ['pr0', -1.6, 1.6, 0.01], ['pr1', -1.6, 1.6, 0.01], ['pr2', -1.6, 1.6, 0.01],
+            ];
 
-                        inp.addEventListener('input', () => {
-                            const v = parseFloat(inp.value);
-                            if (!isFinite(v)) return;
-                            const p = W.model[partIdx];
+            function vecRowHTML(prefix, axis, label, value) {
+                return '<div class="vec-row"><span>' + label + '</span>' +
+                    '<input id="' + prefix + axis + '" type="number" step="0.005" value="' + value + '"></div>';
+            }
 
-                            /* Snapshot the anchor's old value BEFORE writing — that gives us
-                               the delta to push onto every OTHER selected part. */
-                            let oldV;
-                            if (group === 'p') oldV = p.p[axis];
-                            else if (group === 's') oldV = p.s[axis];
-                            else oldV = p.r[axis];
-                            const delta = v - oldV;
+            function renderPartProps() {
+                const host = $('partProps');
+                const p = W.model[anchorPart];
+                if (!p) {
+                    host.innerHTML = '<div class="dim" style="padding:6px">沒有零件</div>';
+                    return;
+                }
+                if (!p.r) p.r = [0, 0, 0];
 
-                            /* Write the anchor. */
-                            if (group === 'p') p.p[axis] = v;
-                            else if (group === 's') p.s[axis] = v;
-                            else p.r[axis] = v;
+                host.innerHTML =
+                    '<div class="phd">零件 <b>#' + anchorPart + '</b>' +
+                    (selectedParts.size > 1 ? ' <span class="dim">（多選 ' + selectedParts.size + '）</span>' : '') +
+                    '</div>' +
+                    '<div class="sec">位置</div>' +
+                    vecRowHTML('pp', 0, 'X', p.p[0]) + vecRowHTML('pp', 1, 'Y', p.p[1]) + vecRowHTML('pp', 2, 'Z', p.p[2]) +
+                    '<div class="sec">尺寸</div>' +
+                    vecRowHTML('ps', 0, '寬', p.s[0]) + vecRowHTML('ps', 1, '高', p.s[1]) + vecRowHTML('ps', 2, '深', p.s[2]) +
+                    '<div class="sec">旋轉</div>' +
+                    vecRowHTML('pr', 0, 'RX', p.r[0]) + vecRowHTML('pr', 1, 'RY', p.r[1]) + vecRowHTML('pr', 2, 'RZ', p.r[2]) +
+                    '<div class="sec">顏色 / 標記</div>' +
+                    '<input id="pc" type="color" value="' + colorHex(p.c | 0) + '">' +
+                    '<label class="chk"><input type="checkbox" id="pscope"' + (p.scope ? ' checked' : '') +
+                    '> 標記為瞄準鏡零件</label>';
 
-                            /* Multi-edit: shift every other selected part by the same delta. */
-                            const multi = selectedParts.size > 1 && delta !== 0;
-                            if (multi) {
-                                for (const idx of selectedParts) {
-                                    if (idx === partIdx) continue;
-                                    const op = W.model[idx];
-                                    if (!op) continue;
-                                    if (group === 'p') op.p[axis] += delta;
-                                    else if (group === 's') op.s[axis] += delta;
-                                    else op.r[axis] += delta;
-                                }
-                            }
+                upgradeSliders(PROP_SPECS);
+                bindPartProp('pp', 'p');
+                bindPartProp('ps', 's');
+                bindPartProp('pr', 'r');
 
-                            /* Sync the mirrored slider / number input on EVERY affected row. */
-                            const affected = multi ? Array.from(selectedParts) : [partIdx];
-                            for (const idx of affected) {
-                                const ip = W.model[idx];
-                                if (!ip) continue;
-                                const iv = group === 'p' ? ip.p[axis]
-                                    : group === 's' ? ip.s[axis]
-                                        : ip.r[axis];
-                                partsList.querySelectorAll(
-                                    '[data-part="' + idx + '"]' +
-                                    '[data-group="' + group + '"]' +
-                                    '[data-axis="' + axis + '"]'
-                                ).forEach(sib => { sib.value = iv; });
-                            }
-
-                            rebuildWeapon(); updateRig();
-
-                            if (document.activeElement === inp) {
-                                showDirArrow(partIdx, axis,
-                                    group === 's' ? 'size' : group === 'r' ? 'rot' : 'pos');
-                            }
-                        });
-
-                        inp.addEventListener('focus', () => {
-                            if (group && axis >= 0) {
-                                showDirArrow(partIdx, axis,
-                                    group === 's' ? 'size' : group === 'r' ? 'rot' : 'pos');
-                            }
-                        });
-                    });
-
-                    el.addEventListener('focusout', () => {
-                        setTimeout(() => {
-                            if (!el.contains(document.activeElement)) hideDirArrow();
-                        }, 30);
-                    });
-
-                    partsList.appendChild(el);
+                $('pc').addEventListener('input', e => {
+                    const v = colorInt(e.target.value);
+                    for (const idx of selectedParts) {
+                        const op = W.model[idx];
+                        if (op) { op.c = v; updatePartRow(idx); }
+                    }
+                    syncWeaponMeshes();
+                    markDirty();
+                });
+                $('pscope').addEventListener('change', e => {
+                    W.model[anchorPart].scope = e.target.checked;
+                    updatePartRow(anchorPart);
+                    applyWeaponVisibility();
+                    markDirty();
                 });
             }
 
+            function bindPartProp(prefix, group) {
+                for (let a = 0; a < 3; a++) {
+                    const id = prefix + a;
+                    bindPair(id, v => {
+                        const p = W.model[anchorPart];
+                        if (!p) return;
+                        const arr = group === 'p' ? p.p : group === 's' ? p.s : p.r;
+                        const oldV = arr[a];
+                        const delta = v - oldV;
+                        arr[a] = v;
+
+                        const multi = selectedParts.size > 1 && delta !== 0;
+                        if (multi) {
+                            for (const idx of selectedParts) {
+                                if (idx === anchorPart) continue;
+                                const op = W.model[idx];
+                                if (!op) continue;
+                                const oa = group === 'p' ? op.p : group === 's' ? op.s : op.r;
+                                oa[a] += delta;
+                            }
+                        }
+                        const affected = multi ? Array.from(selectedParts) : [anchorPart];
+                        affected.forEach(i => updatePartRow(i));
+
+                        syncWeaponMeshes();
+                        updateRig();
+                        markDirty();
+                        showDirArrow(anchorPart, a, group === 's' ? 'size' : group === 'r' ? 'rot' : 'pos');
+                    });
+                }
+            }
+
+            /* --- part actions ------------------------------------------------------- */
             $('btnAddPart').onclick = () => {
-                W.model.push({
-                    p: [0, 0, 0], s: [0.05, 0.05, 0.05], r: [0, 0, 0], c: 0x808080
-                });
+                W.model.push({ p: [0, 0, 0], s: [0.05, 0.05, 0.05], r: [0, 0, 0], c: 0x808080 });
                 selectedParts.clear();
                 selectedParts.add(W.model.length - 1);
-                selectedPart = W.model.length - 1;
-                rebuildPartsList(); rebuildWeapon(); updateRig(); updateSelInfo();
+                anchorPart = W.model.length - 1;
+                rebuildWeapon();
+                rebuildPartsList();
+                renderPartProps();
+                updateRig();
+                markDirty();
             };
 
             $('btnDupPart').onclick = () => {
                 const indices = Array.from(selectedParts).sort((a, b) => a - b);
                 if (!indices.length) return;
-                const newIndices = [];
+                const newIdx = [];
                 for (const idx of indices) {
                     const p = W.model[idx]; if (!p) continue;
-                    const copy = {
-                        p: [...p.p], s: [...p.s],
-                        r: p.r ? [...p.r] : [0, 0, 0], c: p.c
-                    };
+                    const copy = { p: p.p.slice(), s: p.s.slice(), r: (p.r || [0, 0, 0]).slice(), c: p.c };
                     if (p.scope) copy.scope = true;
                     W.model.push(copy);
-                    newIndices.push(W.model.length - 1);
+                    newIdx.push(W.model.length - 1);
                 }
                 selectedParts.clear();
-                for (const i of newIndices) selectedParts.add(i);
-                selectedPart = newIndices[newIndices.length - 1];
-                rebuildPartsList(); rebuildWeapon(); updateRig(); updateSelInfo();
+                newIdx.forEach(i => selectedParts.add(i));
+                anchorPart = newIdx[newIdx.length - 1];
+                rebuildWeapon(); rebuildPartsList(); renderPartProps(); updateRig(); markDirty();
             };
 
             $('btnDelPart').onclick = () => {
-                if (selectedParts.size === 0) return;
-                /* Never let the model end up empty. */
-                if (W.model.length <= selectedParts.size) return;
+                if (!selectedParts.size) return;
+                if (W.model.length <= selectedParts.size) { toast('不能刪除全部零件', true); return; }
                 const indices = Array.from(selectedParts).sort((a, b) => b - a);
                 for (const i of indices) W.model.splice(i, 1);
-                const keep = Math.max(0,
-                    Math.min(indices[indices.length - 1], W.model.length - 1));
-                selectedParts.clear();
-                selectedParts.add(keep);
-                selectedPart = keep;
-                rebuildPartsList(); rebuildWeapon(); updateRig(); updateSelInfo();
+                const keep = Math.max(0, Math.min(indices[indices.length - 1], W.model.length - 1));
+                selectedParts.clear(); selectedParts.add(keep); anchorPart = keep;
+                rebuildWeapon(); rebuildPartsList(); renderPartProps(); updateRig(); markDirty();
                 hideDirArrow();
             };
 
             $('btnSelAll').onclick = () => {
                 selectedParts.clear();
                 for (let i = 0; i < W.model.length; i++) selectedParts.add(i);
-                selectedPart = 0;
-                rebuildPartsList(); updateSelectedHighlight(); updateSelInfo();
+                anchorPart = 0;
+                rebuildPartsList(); renderPartProps(); updateSelectedHighlight();
             };
-
             $('btnSelNone').onclick = () => {
-                selectedParts.clear();
-                selectedParts.add(0);
-                selectedPart = 0;
-                rebuildPartsList(); updateSelectedHighlight(); updateSelInfo();
+                selectedParts.clear(); selectedParts.add(0); anchorPart = 0;
+                rebuildPartsList(); renderPartProps(); updateSelectedHighlight();
             };
 
-            /* ============================================================
-               EXPORT / LOAD
-               ============================================================ */
-            function buildExportJSON() {
-                const out = {
-                    key: W.key, name: W.name, icon: W.icon, color: W.color,
-                    scopeMode: W.scopeMode,
-                    hideWeaponOnAds: !!W.hideWeaponOnAds,
-                    hideScopeOnAds: !!W.hideScopeOnAds,
-                    ammoType: W.ammoType, magSize: W.magSize,
-                    fireRate: W.fireRate, reloadTime: W.reloadTime,
-                    damage: W.damage, bulletSpeed: W.bulletSpeed,
-                    spread: W.spread, auto: W.auto,
-                    recoilKick: W.recoilKick, scopeFov: W.scopeFov,
-                    scopeSens: W.scopeSens,
-                    muzzleLocal: W.muzzleLocal.slice(),
-                    bulletColor: W.bulletColor, bulletSize: W.bulletSize,
-                    sightLocal: W.sightLocal.slice(),
-                    hipPose: { p: W.hipPose.p.slice(), r: W.hipPose.r.slice() },
-                    adsPose: W.adsAuto ? null
-                        : { p: W.adsPose.p.slice(), r: W.adsPose.r.slice() },
-                    adsAuto: !!W.adsAuto,
-                    gripR: { p: W.gripR.p.slice(), r: W.gripR.r.slice() },
-                    gripL: { p: W.gripL.p.slice(), r: W.gripL.r.slice() },
-                    shoulderL: W.shoulderL.slice(),
-                    shoulderR: W.shoulderR.slice(),
-                    anim: { swing: W.anim.swing, kick: W.anim.kick },
-                    iconR: W.iconR.slice(),
-                    iconP: W.iconP.slice(),
-                    iconScale: W.iconScale,
-                    model: W.model.map(m => {
-                        const hasRot = m.r && (m.r[0] || m.r[1] || m.r[2]);
-                        const o = { p: m.p.slice(), s: m.s.slice(), c: m.c };
-                        if (hasRot) o.r = m.r.slice();
-                        if (m.scope) o.scope = true;
-                        return o;
-                    })
-                };
-                /* Inline scope block */
-                if (W.scopeMode === 'inline') {
-                    out.inlineFov = W.inlineFov;
-                    out.inlineLensLocal = W.inlineLensLocal.slice();
-                    out.inlineLensRadius = W.inlineLensRadius;
+            /* ============================================================================
+               7.  SLIDER / BINDING INFRASTRUCTURE
+               ========================================================================= */
+            const SLIDER_SPECS = [
+                ['hipP0', -0.5, 0.5, 0.005], ['hipP1', -0.5, 0.5, 0.005], ['hipP2', -0.5, 0.5, 0.005],
+                ['hipR0', -1.6, 1.6, 0.01], ['hipR1', -1.6, 1.6, 0.01], ['hipR2', -1.6, 1.6, 0.01],
+                ['adsP0', -0.5, 0.5, 0.005], ['adsP1', -0.5, 0.5, 0.005], ['adsP2', -0.5, 0.5, 0.005],
+                ['adsR0', -1.6, 1.6, 0.01], ['adsR1', -1.6, 1.6, 0.01], ['adsR2', -1.6, 1.6, 0.01],
+                ['sightP0', -0.5, 0.5, 0.005], ['sightP1', -0.5, 0.5, 0.005], ['sightP2', -0.5, 0.5, 0.005],
+                ['muzzleLocal0', -0.5, 0.5, 0.005], ['muzzleLocal1', -0.5, 0.5, 0.005], ['muzzleLocal2', -0.5, 0.5, 0.005],
+                ['gripRP0', -0.5, 0.5, 0.005], ['gripRP1', -0.5, 0.5, 0.005], ['gripRP2', -0.5, 0.5, 0.005],
+                ['gripRR0', -1.6, 1.6, 0.01], ['gripRR1', -1.6, 1.6, 0.01], ['gripRR2', -1.6, 1.6, 0.01],
+                ['gripLP0', -0.5, 0.5, 0.005], ['gripLP1', -0.5, 0.5, 0.005], ['gripLP2', -0.5, 0.5, 0.005],
+                ['gripLR0', -1.6, 1.6, 0.01], ['gripLR1', -1.6, 1.6, 0.01], ['gripLR2', -1.6, 1.6, 0.01],
+                ['shoulderL0', -0.5, 0.5, 0.005], ['shoulderL1', -0.5, 0.5, 0.005], ['shoulderL2', -0.5, 0.5, 0.005],
+                ['shoulderR0', -0.5, 0.5, 0.005], ['shoulderR1', -0.5, 0.5, 0.005], ['shoulderR2', -0.5, 0.5, 0.005],
+                ['wAnimSw', -1.5, 1.5, 0.01],
+                ['wAnimKc', -0.2, 0.2, 0.005],
+                ['iconR0', -3.2, 3.2, 0.02], ['iconR1', -3.2, 3.2, 0.02], ['iconR2', -3.2, 3.2, 0.02],
+                ['iconP0', -0.5, 0.5, 0.005], ['iconP1', -0.5, 0.5, 0.005], ['iconP2', -0.5, 0.5, 0.005],
+                ['iconScale', 0.1, 5.0, 0.05],
+                ['wInlineFov', 2, 40, 0.5],
+                ['wInlineRadius', 0.002, 0.03, 0.001],
+                ['inlineLensP0', -0.5, 0.5, 0.005],
+                ['inlineLensP1', -0.5, 0.5, 0.005],
+                ['inlineLensP2', -0.5, 0.5, 0.005],
+            ];
+
+            function upgradeSliders(specs) {
+                for (const [id, min, max, step] of (specs || SLIDER_SPECS)) {
+                    const num = $(id);
+                    if (!num) continue;
+                    if (document.getElementById(id + 'Sld')) continue;
+                    const sld = document.createElement('input');
+                    sld.type = 'range';
+                    sld.id = id + 'Sld';
+                    sld.min = min; sld.max = max; sld.step = step;
+                    sld.value = num.value || 0;
+                    num.parentElement.insertBefore(sld, num);
                 }
-                return JSON.stringify(out, null, 4);
+            }
+
+            function bindPair(id, onChange) {
+                const num = $(id);
+                const sld = $(id + 'Sld');
+                const commit = raw => {
+                    const v = parseFloat(raw);
+                    if (!isFinite(v)) return;
+                    if (num) num.value = v;
+                    if (sld) sld.value = v;
+                    onChange(v);
+                };
+                if (num) num.addEventListener('input', () => commit(num.value));
+                if (sld) sld.addEventListener('input', () => commit(sld.value));
+            }
+
+            function setValue(id, v) {
+                const num = $(id); const sld = $(id + 'Sld');
+                if (num) num.value = v;
+                if (sld) sld.value = v;
+            }
+            function setVec(pfx, arr) { for (let i = 0; i < 3; i++) setValue(pfx + i, arr[i]); }
+
+            /* ============================================================================
+               8.  SCALAR BINDINGS (data page)
+               ========================================================================= */
+            const scalarBindings = [
+                ['wKey', 'key', String], ['wName', 'name', String], ['wIcon', 'icon', String],
+                ['wColor', 'color', String], ['wAmmo', 'ammoType', String],
+                ['wMag', 'magSize', parseFloat], ['wRate', 'fireRate', parseFloat],
+                ['wRel', 'reloadTime', parseFloat], ['wDmg', 'damage', parseFloat],
+                ['wAuto', 'auto', v => v === '1'], ['wSpread', 'spread', parseFloat],
+                ['wRecoil', 'recoilKick', parseFloat], ['wBSpeed', 'bulletSpeed', parseFloat],
+                ['wBSize', 'bulletSize', parseFloat], ['wBColor', 'bulletColor', colorInt],
+                ['wScopeFov', 'scopeFov', parseFloat], ['wScopeSens', 'scopeSens', parseFloat],
+                ['wType', 'weaponType', String],
+                ['wPellets', 'pellets', v => { const n = parseInt(v, 10); return (isFinite(n) && n > 0) ? n : 1; }],
+                ['wSoundKey', 'soundKey', String],
+                ["wCarveRadius", "carveRadius", v => { const n = parseFloat(v); return (isFinite(n) && n > 0) ? n : 1.1; }],
+                ["wCarveDebris", "carveDebris", v => { const n = parseFloat(v); return isFinite(n) ? Math.max(0, Math.min(1, n)) : 0.12; }],
+            ];
+            scalarBindings.forEach(([id, key, cast]) => {
+                const el = $(id); if (!el) return;
+                el.addEventListener('input', e => {
+                    const v = cast(e.target.value);
+                    if (v === v) { W[key] = v; markDirty(); refreshWeaponSelectLabels(); }
+                });
+            });
+
+            /* pose vectors */
+            function bindPoseVec(pfx, poseKey, field) {
+                for (let i = 0; i < 3; i++) {
+                    bindPair(pfx + i, v => {
+                        W[poseKey][field][i] = v;
+                        updateRig(); markDirty();
+                    });
+                }
+            }
+            function bindArrayVec(pfx, arrayKey, after) {
+                for (let i = 0; i < 3; i++) {
+                    bindPair(pfx + i, v => {
+                        W[arrayKey][i] = v;
+                        if (after) after();
+                        updateRig(); markDirty();
+                    });
+                }
+            }
+
+            upgradeSliders();
+
+            bindPoseVec('hipP', 'hipPose', 'p');
+            bindPoseVec('hipR', 'hipPose', 'r');
+            bindPoseVec('adsP', 'adsPose', 'p');
+            bindPoseVec('adsR', 'adsPose', 'r');
+            bindPoseVec('gripRP', 'gripR', 'p');
+            bindPoseVec('gripRR', 'gripR', 'r');
+            bindPoseVec('gripLP', 'gripL', 'p');
+            bindPoseVec('gripLR', 'gripL', 'r');
+
+            bindArrayVec('sightP', 'sightLocal', () => {
+                if (sightMarker) sightMarker.position.fromArray(W.sightLocal);
+            });
+            bindArrayVec('muzzleLocal', 'muzzleLocal', () => {
+                if (muzzleMarker) muzzleMarker.position.fromArray(W.muzzleLocal);
+            });
+            bindArrayVec('inlineLensP', 'inlineLensLocal');
+            bindPair('wInlineFov', v => { W.inlineFov = v; markDirty(); });
+            bindPair('wInlineRadius', v => { if (v > 0) W.inlineLensRadius = v; markDirty(); });
+            bindPair('wAnimSw', v => { W.anim.swing = v; markDirty(); });
+            bindPair('wAnimKc', v => { W.anim.kick = v; markDirty(); });
+
+            /* ============================================================================
+               9.  POSE PAGE CONTROLS
+               ========================================================================= */
+            $('adsAuto').addEventListener('change', e => {
+                W.adsAuto = e.target.checked;
+                toggleAdsInputs();
+                updateRig(); markDirty();
+            });
+            $('wScopeMode').addEventListener('change', e => {
+                W.scopeMode = e.target.value;
+                updateScopeModeVisibility();
+                applyWeaponVisibility();
+                requestIconRedraw();
+                markDirty();
+            });
+            $('wHideWeaponOnAds').addEventListener('change', e => {
+                W.hideWeaponOnAds = e.target.checked; applyWeaponVisibility(); markDirty();
+            });
+            $('wHideScopeOnAds').addEventListener('change', e => {
+                W.hideScopeOnAds = e.target.checked; applyWeaponVisibility(); markDirty();
+            });
+            $("wCarvePenetrate").addEventListener("change", e => {
+                W.carvePenetrate = e.target.checked;
+                markDirty();
+            });
+
+            function updateScopeModeVisibility() {
+                const m = W.scopeMode || 'none';
+                $('scopeSniperFields').style.display = (m === 'sniper') ? 'block' : 'none';
+                $('scopeInlineFields').style.display = (m === 'inline') ? 'block' : 'none';
+            }
+            function toggleAdsInputs() {
+                const dis = !!W.adsAuto;
+                for (let i = 0; i < 3; i++) {
+                    for (const id of ['adsP' + i, 'adsR' + i]) {
+                        const n = $(id), s = $(id + 'Sld');
+                        if (n) n.disabled = dis;
+                        if (s) s.disabled = dis;
+                    }
+                }
+            }
+
+            $('blend').addEventListener('input', e => {
+                blendT = parseFloat(e.target.value);
+                $('blendVal').textContent = blendT.toFixed(2);
+                updateRig();
+            });
+
+            document.querySelectorAll('[data-view]').forEach(b => {
+                b.addEventListener('click', () => {
+                    const v = b.dataset.view;
+                    document.querySelectorAll('[data-view]')
+                        .forEach(x => x.classList.toggle('active', x === b));
+                    let t = 0;
+                    if (v === 'ads') t = 1;
+                    else if (v === 'blend') t = blendT;
+                    if (v !== 'blend') {
+                        blendT = t;
+                        $('blend').value = t;
+                        $('blendVal').textContent = t.toFixed(2);
+                    }
+                    updateRig();
+                });
+            });
+
+            /* ============================================================================
+               10.  LIBRARY / AUTO LOAD
+               ========================================================================= */
+            const INDEX_CANDIDATES = [
+                '../assets/model/weaponModel/',
+                './assets/model/weaponModel/',
+                './weaponModel/',
+                '../weaponModel/',
+                './',
+                '../',
+            ];
+
+            function setLoadInfo(txt) { $('loadInfo').textContent = txt; }
+
+            async function fetchText(url) {
+                const res = await fetch(url, { cache: 'no-store' });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return await res.text();
+            }
+            async function fetchJSON(url) {
+                const res = await fetch(url, { cache: 'no-store' });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return await res.json();
+            }
+
+            async function tryLoadIndex(base) {
+                const text = await fetchText(base + 'index.js');
+                if (!/ARIVE_WEAPON_FILES/.test(text)) throw new Error('no ARIVE_WEAPON_FILES');
+                /* indirect eval → runs in global scope, sets window.ARIVE_WEAPON_FILES */
+                (0, eval)(text);
+                const files = window.ARIVE_WEAPON_FILES;
+                if (!Array.isArray(files)) throw new Error('bad list');
+                return files;
+            }
+
+            async function autoLoadLibrary() {
+                setLoadInfo('搜尋 index.js …');
+                let loaded = 0;
+
+                for (const base of INDEX_CANDIDATES) {
+                    let files;
+                    try { files = await tryLoadIndex(base); }
+                    catch (e) { continue; }
+
+                    for (const f of files) {
+                        try {
+                            const data = await fetchJSON(base + f);
+                            const k = data.key || f.replace(/\.json$/i, '');
+                            library.set(k, { data, source: 'disk', file: f });
+                            loaded++;
+                        } catch (e) {
+                            console.warn('[weapon] failed to load', f, e);
+                        }
+                    }
+                    if (loaded) {
+                        setLoadInfo('已載入 ' + loaded + ' 個武器 · ' + base);
+                        mergeLocalSaved();
+                        refreshWeaponSelect();
+                        renderBrowser();
+                        if (!dirty) {
+                            const first = Array.from(library.values()).find(v => v.source === 'disk');
+                            if (first) loadWeaponInto(first.data, first.data.key || '', first.source, first.file);
+                        }
+                        return true;
+                    }
+                    setLoadInfo('index.js 找到但沒有可載入的武器');
+                }
+
+                setLoadInfo(location.protocol === 'file:'
+                    ? 'file:// 模式 — 請拖放 .json 或按「匯入 JSON」'
+                    : '找不到 index.js — 請按「↻ 重新載入」或拖放檔案');
+                mergeLocalSaved();
+                refreshWeaponSelect();
+                renderBrowser();
+                return false;
             }
 
             function getSaved() {
@@ -1902,146 +2381,317 @@
                 catch (e) { return []; }
             }
             function setSaved(a) {
-                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(a)); }
-                catch (e) { }
+                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(a)); } catch (e) { }
+            }
+            function mergeLocalSaved() {
+                const list = getSaved();
+                for (const obj of list) {
+                    const k = obj.key;
+                    if (!k) continue;
+                    if (library.has(k) && library.get(k).source === 'disk') continue;
+                    library.set(k, { data: obj, source: 'local', file: k + '.json' });
+                }
             }
 
-            function loadFromObject(def) {
-                if (def.heldPose && !def.hipPose) def.hipPose = def.heldPose;
-                if (def.scopePose && !def.adsPose) def.adsPose = def.scopePose;
+            /* --- load a weapon into the editor -------------------------------------- */
+            function loadWeaponInto(data, key, source, file) {
+                W = Object.assign(clone(DEFAULT_W), clone(data));
+                normalizeW();
 
-                W = Object.assign(JSON.parse(JSON.stringify(DEFAULT_W)), def);
+                /* Capture any keys the editor doesn't explicitly manage so they
+                   survive the next export. */
+                const KNOWN_KEYS = new Set([
+                    'key', 'name', 'icon', 'color', 'scopeMode', 'hideWeaponOnAds', 'hideScopeOnAds',
+                    'ammoType', 'magSize', 'fireRate', 'reloadTime', 'damage', 'bulletSpeed',
+                    'spread', 'auto', 'recoilKick', 'scopeFov', 'scopeSens',
+                    'muzzleLocal', 'bulletColor', 'bulletSize', 'sightLocal',
+                    'hipPose', 'adsPose', 'adsAuto', 'gripR', 'gripL',
+                    'shoulderL', 'shoulderR', 'anim', 'iconR', 'iconP', 'iconScale', 'model',
+                    'inlineFov', 'inlineLensLocal', 'inlineLensRadius',
+                    /* fields the editor now understands natively: */
+                    'weaponType', 'pellets', 'soundKey',
+                    /* legacy aliases we may want to consume on load: */
+                    'heldPose', 'scopePose', 'hasScope', 'inspectProfile', 'inspectDur',
+                    'inspectContinuous', 'inspectLoopDuration',
+                ]);
+                W._extras = {};
+                for (const k of Object.keys(data)) {
+                    if (!KNOWN_KEYS.has(k)) W._extras[k] = clone(data[k]);
+                }
+                currentKey = key || W.key || 'weapon';
+                currentSource = source;
+                currentFile = file;
+                dirty = false;
 
-                if (!W.hipPose || !Array.isArray(W.hipPose.p)) {
+                selectedParts.clear(); selectedParts.add(0); anchorPart = 0;
+                blendT = 0; $('blend').value = 0; $('blendVal').textContent = '0.00';
+                scopePreview = false;
+                viewTab = 'hands';
+                viewportBox.querySelectorAll('#viewTabs button')
+                    .forEach(x => x.classList.toggle('active', x.dataset.tab === 'hands'));
+
+                rebuildWeapon();
+                rebuildPartsList();
+                renderPartProps();
+                syncUI();
+                updateRig();
+                applyViewTab();
+                requestIconRedraw();
+            }
+
+            function normalizeW() {
+                if (!W.hipPose || !Array.isArray(W.hipPose.p))
                     W.hipPose = { p: [0.14, -0.16, -0.24], r: [0.10, 0.20, -0.04] };
-                }
-                if (!W.adsPose || !Array.isArray(W.adsPose.p)) {
+                if (!W.adsPose || !Array.isArray(W.adsPose.p))
                     W.adsPose = { p: [0, 0, -0.02], r: [0, 0, 0] };
-                }
-                if (!W.gripR || !Array.isArray(W.gripR.p)) {
+                if (!W.gripR || !Array.isArray(W.gripR.p))
                     W.gripR = { p: [0, -0.03, 0.02], r: [0.10, 0, 0] };
-                }
-                if (!W.gripL || !Array.isArray(W.gripL.p)) {
+                if (!W.gripL || !Array.isArray(W.gripL.p))
                     W.gripL = { p: [-0.035, -0.03, -0.01], r: [0.10, 0.20, 0.15] };
-                }
                 if (!Array.isArray(W.sightLocal)) W.sightLocal = [0, 0.078, -0.10];
                 if (!Array.isArray(W.muzzleLocal)) W.muzzleLocal = [0, 0.055, -0.30];
                 if (!Array.isArray(W.shoulderL)) W.shoulderL = [-0.18, -0.06, 0.04];
                 if (!Array.isArray(W.shoulderR)) W.shoulderR = [0.18, -0.06, 0.04];
-
-                if (!W.anim || typeof W.anim.swing !== 'number')
-                    W.anim = { swing: 0.10, kick: 0.04 };
-
-                if (typeof W.adsAuto !== 'boolean') W.adsAuto = !def.adsPose;
-                if (typeof W.scopeMode !== 'string') {
-                    W.scopeMode = def.hasScope === true ? 'sniper'
-                        : (def.inlineFov ? 'inline' : 'none');
-                }
-                if (typeof W.hideWeaponOnAds !== 'boolean')
-                    W.hideWeaponOnAds = false;
-                if (typeof W.hideScopeOnAds !== 'boolean')
-                    W.hideScopeOnAds = (W.scopeMode === 'inline'); // sensible default
+                if (!W.anim || typeof W.anim.swing !== 'number') W.anim = { swing: 0.10, kick: 0.04 };
+                if (typeof W.adsAuto !== 'boolean') W.adsAuto = true;
+                if (typeof W.scopeMode !== 'string') W.scopeMode = 'none';
+                if (typeof W.hideWeaponOnAds !== 'boolean') W.hideWeaponOnAds = false;
+                if (typeof W.hideScopeOnAds !== 'boolean') W.hideScopeOnAds = (W.scopeMode === 'inline');
                 if (typeof W.inlineFov !== 'number') W.inlineFov = 8;
                 if (!Array.isArray(W.inlineLensLocal)) W.inlineLensLocal = [0, 0.150, -0.100];
                 if (typeof W.inlineLensRadius !== 'number') W.inlineLensRadius = 0.0095;
-
                 if (!Array.isArray(W.iconR)) W.iconR = [0, 0, 0];
                 if (!Array.isArray(W.iconP)) W.iconP = [0, 0, 0];
                 if (typeof W.iconScale !== 'number' || W.iconScale <= 0) W.iconScale = 1;
-
                 if (!Array.isArray(W.model)) W.model = [];
+
+                /* Weapon type — used by weapons.js for sound lookup, inspect profile,
+                   and shotgun pellet fallback. */
+                if (typeof W.weaponType !== 'string') {
+                    const k = (W.key || '').toLowerCase();
+                    if (k.indexOf('pistol') >= 0) W.weaponType = 'pistol';
+                    else if (k.indexOf('smg') >= 0) W.weaponType = 'smg';
+                    else if (k.indexOf('shotgun') >= 0) W.weaponType = 'shotgun';
+                    else if (k.indexOf('sniper') >= 0) W.weaponType = 'sniper';
+                    else W.weaponType = 'rifle';
+                }
+
+                /* Shotgun pellets — default to 8 so a stray save never turns the
+                   shotgun into a single-slug weapon again. */
+                if (W.weaponType === 'shotgun') {
+                    if (typeof W.pellets !== 'number' || W.pellets < 1) W.pellets = 8;
+                } else if (typeof W.pellets !== 'number' || W.pellets < 1) {
+                    W.pellets = 1;
+                }
+
+                /* Optional sound override key. */
+                if (typeof W.soundKey !== 'string') W.soundKey = '';
+
+                if (typeof W.carveRadius !== "number" || W.carveRadius <= 0) {
+                    W.carveRadius = (W.weaponType === "sniper") ? 1.8
+                        : (W.weaponType === "shotgun") ? 1.6
+                            : (W.weaponType === "pistol") ? 0.6
+                                : 1.1;
+                }
+                if (typeof W.carveDebris !== "number") W.carveDebris = 0.12;
+                if (typeof W.carvePenetrate !== "boolean") W.carvePenetrate = false;
+
                 W.model.forEach(p => {
                     if (!Array.isArray(p.p)) p.p = [0, 0, 0];
                     if (!Array.isArray(p.s)) p.s = [0.05, 0.05, 0.05];
                     if (!Array.isArray(p.r)) p.r = [0, 0, 0];
                 });
-
-                selectedParts.clear();
-                selectedParts.add(0);
-                selectedPart = 0;
-                syncUI();
-                rebuildWeapon();
-                rebuildPartsList();
-                updateRig();
             }
 
-            $('btnNew').onclick = () => {
-                if (W.model.length && !confirm('放棄目前的武器？')) return;
-                W = JSON.parse(JSON.stringify(DEFAULT_W));
-                W.model.forEach(p => { if (!p.r) p.r = [0, 0, 0]; });
-                syncUI(); rebuildWeapon(); rebuildPartsList(); updateRig();
-                setStatus('新武器');
-            };
+            /* --- weapon select ------------------------------------------------------ */
+            function refreshWeaponSelect() {
+                const sel = $('weaponSelect');
+                const prev = sel.value;
+                sel.innerHTML = '';
+                const groups = { disk: [], local: [], import: [], new: [] };
+                for (const [k, v] of library) groups[v.source] ? groups[v.source].push(k) : groups.local.push(k);
 
-            $('btnSave').onclick = () => {
-                const obj = JSON.parse(buildExportJSON());
-                const list = getSaved();
-                const i = list.findIndex(o => o.key === obj.key);
-                if (i >= 0) list[i] = obj; else list.push(obj);
-                setSaved(list);
-                setStatus('已儲存：' + obj.key);
-            };
-
-            $('btnLoadSaved').onclick = () => {
-                const list = getSaved();
-                if (!list.length) { setStatus('沒有已儲存的武器'); return; }
-                const keys = list.map(o => o.key);
-                const pick = prompt('要載入哪一個？\n' + keys.join('\n'), keys[0]);
-                if (!pick) return;
-                const found = list.find(o => o.key === pick);
-                if (found) { loadFromObject(found); setStatus('已載入：' + pick); }
-            };
-
-            $('btnImport').onclick = () => {
-                const inp = document.createElement('input');
-                inp.type = 'file';
-                inp.accept = '.json,application/json';
-                inp.onchange = () => {
-                    const f = inp.files[0]; if (!f) return;
-                    const r = new FileReader();
-                    r.onload = () => {
-                        try { loadFromObject(JSON.parse(r.result)); setStatus('已匯入：' + f.name); }
-                        catch (e) { setStatus('匯入失敗：' + e.message); }
-                    };
-                    r.readAsText(f);
-                };
-                inp.click();
-            };
-
-            $('btnExport').onclick = () => {
-                const obj = JSON.parse(buildExportJSON());
-                $('jsonOut').value = buildExportJSON();
-                const blob = new Blob([JSON.stringify(obj, null, 2)],
-                    { type: 'application/json' });
-                const a = document.createElement('a');
-                a.href = URL.createObjectURL(blob);
-                a.download = obj.key + '.json';
-                a.click();
-                URL.revokeObjectURL(a.href);
-                setStatus('已匯出：' + obj.key + '.json → 放入 weaponModel/');
-            };
-
-            $('btnCopy').onclick = () => {
-                const out = buildExportJSON();
-                navigator.clipboard.writeText(out).then(
-                    () => setStatus('已複製 ✓'),
-                    () => {
-                        $('jsonOut').value = out; $('jsonOut').select();
-                        document.execCommand('copy');
-                        setStatus('已複製（備援）✓');
+                const addGroup = (label, keys) => {
+                    if (!keys.length) return;
+                    const og = document.createElement('optgroup');
+                    og.label = label;
+                    keys.sort().forEach(k => {
+                        const o = document.createElement('option');
+                        o.value = k;
+                        const d = library.get(k).data;
+                        o.textContent = (d.name || k) + '  (' + k + ')';
+                        og.appendChild(o);
                     });
-            };
+                    sel.appendChild(og);
+                };
+                addGroup('磁碟 (index.js)', groups.disk);
+                addGroup('本機儲存', groups.local);
+                addGroup('已匯入', groups.import);
+                addGroup('新增', groups.new);
 
-            let statusTimer = 0;
-            function setStatus(msg) {
-                $('status').textContent = msg;
-                clearTimeout(statusTimer);
-                statusTimer = setTimeout(() => $('status').textContent = '', 2400);
+                if (Array.from(sel.options).some(o => o.value === currentKey)) sel.value = currentKey;
+                else if (sel.options.length) sel.value = sel.options[0].value;
+            }
+            function refreshWeaponSelectLabels() {
+                const sel = $('weaponSelect');
+                const o = Array.from(sel.options).find(x => x.value === currentKey);
+                if (o) o.textContent = (W.name || currentKey) + '  (' + currentKey + ')';
             }
 
-            /* ============================================================
-               SYNC UI
-               ============================================================ */
+            $('weaponSelect').addEventListener('change', e => {
+                const k = e.target.value;
+                const entry = library.get(k);
+                if (!entry) return;
+                if (dirty && !confirm('目前武器尚未儲存，確定要切換嗎？')) {
+                    e.target.value = currentKey;
+                    return;
+                }
+                loadWeaponInto(entry.data, k, entry.source, entry.file);
+                toast('已載入 ' + (entry.data.name || k));
+            });
+
+            /* ============================================================================
+               11.  BROWSER PAGE
+               ========================================================================= */
+            function weaponCard(key, entry) {
+                const d = entry.data;
+                const card = document.createElement('div');
+                card.className = 'wcard' + (key === currentKey ? ' cur' : '');
+                const nParts = Array.isArray(d.model) ? d.model.length : 0;
+                card.innerHTML =
+                    '<div class="info">' +
+                    '<div class="wname">' + (d.name || key) + '<span class="wkey">' + key + '</span></div>' +
+                    '<div class="wmeta">' + (entry.file || '—') + ' · ' + nParts + ' 零件 · ' +
+                    (d.damage != null ? 'DMG ' + d.damage : '') + '</div>' +
+                    '</div>' +
+                    '<div class="acts">' +
+                    '<button data-a="load">載入</button>' +
+                    '<button data-a="dup">複製</button>' +
+                    '<button data-a="del">刪除</button>' +
+                    '</div>';
+
+                card.querySelector('[data-a="load"]').onclick = () => {
+                    if (dirty && !confirm('目前武器尚未儲存，確定要切換嗎？')) return;
+                    loadWeaponInto(d, key, entry.source, entry.file);
+                    toast('已載入 ' + (d.name || key));
+                    refreshWeaponSelect();
+                    renderBrowser();
+                };
+                card.querySelector('[data-a="dup"]').onclick = () => {
+                    const copy = clone(d);
+                    copy.key = uniqueKey(key + '_copy');
+                    copy.name = (d.name || key) + ' COPY';
+                    library.set(copy.key, { data: copy, source: 'new', file: null });
+                    refreshWeaponSelect();
+                    renderBrowser();
+                    toast('已複製為 ' + copy.key);
+                };
+                card.querySelector('[data-a="del"]').onclick = () => {
+                    if (entry.source === 'disk') { toast('磁碟武器請直接刪除檔案', true); return; }
+                    if (!confirm('刪除「' + key + '」？')) return;
+                    library.delete(key);
+                    if (entry.source === 'local') {
+                        setSaved(getSaved().filter(o => o.key !== key));
+                    }
+                    refreshWeaponSelect();
+                    renderBrowser();
+                    toast('已刪除 ' + key);
+                };
+                return card;
+            }
+
+            function renderBrowser() {
+                const dl = $('diskList'), ll = $('localList');
+                dl.innerHTML = ''; ll.innerHTML = '';
+                let nDisk = 0, nLocal = 0;
+                for (const [k, v] of library) {
+                    if (v.source === 'disk') { dl.appendChild(weaponCard(k, v)); nDisk++; }
+                    else { ll.appendChild(weaponCard(k, v)); nLocal++; }
+                }
+                if (!nDisk) dl.innerHTML = '<div class="dim" style="padding:10px">尚未載入任何磁碟武器</div>';
+                if (!nLocal) ll.innerHTML = '<div class="dim" style="padding:10px">沒有本機儲存的武器</div>';
+            }
+
+            function uniqueKey(base) {
+                base = base.replace(/[^\w\-]/g, '_');
+                let n = base, i = 2;
+                while (library.has(n)) n = base + '_' + (i++);
+                return n;
+            }
+
+            $('btnNewWeapon').onclick = () => {
+                if (dirty && !confirm('放棄目前的變更？')) return;
+                const k = uniqueKey('new_weapon');
+                const d = clone(DEFAULT_W);
+                d.key = k; d.name = 'NEW WEAPON';
+                library.set(k, { data: d, source: 'new', file: null });
+                loadWeaponInto(d, k, 'new', null);
+                refreshWeaponSelect();
+                renderBrowser();
+                showPage('data');
+                toast('已建立新武器');
+            };
+
+            /* --- import ------------------------------------------------------------- */
+            $('btnImportJSON').onclick = () => { $('filePicker').click(); };
+
+            $('filePicker').addEventListener('change', async ev => {
+                const files = Array.from(ev.target.files || []);
+                await importFiles(files);
+                ev.target.value = '';
+            });
+
+            async function importFiles(files) {
+                let n = 0;
+                for (const f of files) {
+                    if (!/\.json$/i.test(f.name)) continue;
+                    try {
+                        const data = JSON.parse(await f.text());
+                        const k = data.key || f.name.replace(/\.json$/i, '');
+                        library.set(k, { data, source: 'import', file: f.name });
+                        n++;
+                    } catch (e) {
+                        console.warn('import failed', f.name, e);
+                    }
+                }
+                if (!n) { toast('沒有成功匯入任何檔案', true); return; }
+                refreshWeaponSelect();
+                renderBrowser();
+                toast('已匯入 ' + n + ' 個武器');
+                if (n === 1) {
+                    const first = Array.from(library.values()).find(v => v.source === 'import');
+                    if (first) loadWeaponInto(first.data, first.data.key, 'import', first.file);
+                }
+            }
+
+            /* --- drag & drop -------------------------------------------------------- */
+            let dragDepth = 0;
+            const dropEl = $('drop');
+            window.addEventListener('dragenter', e => {
+                e.preventDefault(); dragDepth++; dropEl.classList.add('on');
+            });
+            window.addEventListener('dragleave', () => {
+                if (--dragDepth <= 0) { dragDepth = 0; dropEl.classList.remove('on'); }
+            });
+            window.addEventListener('dragover', e => e.preventDefault());
+            window.addEventListener('drop', async e => {
+                e.preventDefault(); dragDepth = 0; dropEl.classList.remove('on');
+                await importFiles(Array.from(e.dataTransfer.files || []));
+            });
+
+            const dz = $('dropZone');
+            dz.addEventListener('click', () => $('filePicker').click());
+            dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+            dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+            dz.addEventListener('drop', async e => {
+                e.preventDefault(); e.stopPropagation();
+                dz.classList.remove('over'); dropEl.classList.remove('on'); dragDepth = 0;
+                await importFiles(Array.from(e.dataTransfer.files || []));
+            });
+
+            /* ============================================================================
+               12.  SYNC UI
+               ========================================================================= */
             function syncUI() {
                 $('wKey').value = W.key;
                 $('wName').value = W.name;
@@ -2072,7 +2722,6 @@
                 setVec('gripRP', W.gripR.p); setVec('gripRR', W.gripR.r);
                 setVec('gripLP', W.gripL.p); setVec('gripLR', W.gripL.r);
                 setVec('shoulderL', W.shoulderL); setVec('shoulderR', W.shoulderR);
-
                 setValue('wAnimSw', W.anim.swing);
                 setValue('wAnimKc', W.anim.kick);
 
@@ -2084,23 +2733,133 @@
                 setVec('inlineLensP', W.inlineLensLocal);
                 updateScopeModeVisibility();
 
-                if (!Array.isArray(W.iconR)) W.iconR = [0, 0, 0];
-                if (!Array.isArray(W.iconP)) W.iconP = [0, 0, 0];
-                if (typeof W.iconScale !== 'number' || W.iconScale <= 0) W.iconScale = 1;
                 setVec('iconR', W.iconR);
                 setVec('iconP', W.iconP);
+
+                if ($("wCarveRadius")) $("wCarveRadius").value = W.carveRadius;
+                if ($("wCarveDebris")) $("wCarveDebris").value = W.carveDebris;
+                if ($("wCarvePenetrate")) $("wCarvePenetrate").checked = !!W.carvePenetrate;
+
+                if ($('wType')) $('wType').value = W.weaponType || 'rifle';
+                if ($('wPellets')) $('wPellets').value = W.pellets;
+                if ($('wSoundKey')) $('wSoundKey').value = W.soundKey || '';
                 setValue('iconScale', W.iconScale);
             }
 
-            /* ============================================================
-               ICON PREVIEW
-               ============================================================ */
-            const ICON_TILE_W = 3;
-            const ICON_TILE_H = 1;
-            const ICON_CELL = 44;
-            const ICON_INSET_X = 4;
-            const ICON_INSET_TOP = 4;
-            const ICON_INSET_BOTTOM = 14;
+            /* ============================================================================
+               13.  EXPORT / SAVE
+               ========================================================================= */
+            function buildExportObject() {
+                const out = {
+                    key: W.key, name: W.name, icon: W.icon, color: W.color,
+                    scopeMode: W.scopeMode,
+                    hideWeaponOnAds: !!W.hideWeaponOnAds,
+                    hideScopeOnAds: !!W.hideScopeOnAds,
+                    ammoType: W.ammoType, magSize: W.magSize,
+                    fireRate: W.fireRate, reloadTime: W.reloadTime,
+                    damage: W.damage, bulletSpeed: W.bulletSpeed,
+                    spread: W.spread, auto: W.auto,
+                    carveRadius: W.carveRadius,
+                    carveDebris: W.carveDebris,
+                    carvePenetrate: !!W.carvePenetrate,
+                    recoilKick: W.recoilKick, scopeFov: W.scopeFov, scopeSens: W.scopeSens,
+                    weaponType: W.weaponType || 'rifle',
+                    pellets: (typeof W.pellets === 'number' && W.pellets > 0) ? (W.pellets | 0) : 1,
+                    soundKey: W.soundKey || undefined,
+                    muzzleLocal: W.muzzleLocal.slice(),
+                    bulletColor: W.bulletColor, bulletSize: W.bulletSize,
+                    sightLocal: W.sightLocal.slice(),
+                    hipPose: { p: W.hipPose.p.slice(), r: W.hipPose.r.slice() },
+                    adsPose: W.adsAuto ? null : { p: W.adsPose.p.slice(), r: W.adsPose.r.slice() },
+                    adsAuto: !!W.adsAuto,
+                    gripR: { p: W.gripR.p.slice(), r: W.gripR.r.slice() },
+                    gripL: { p: W.gripL.p.slice(), r: W.gripL.r.slice() },
+                    shoulderL: W.shoulderL.slice(),
+                    shoulderR: W.shoulderR.slice(),
+                    anim: { swing: W.anim.swing, kick: W.anim.kick },
+                    iconR: W.iconR.slice(),
+                    iconP: W.iconP.slice(),
+                    iconScale: W.iconScale,
+                    model: W.model.map(m => {
+                        const hasRot = m.r && (m.r[0] || m.r[1] || m.r[2]);
+                        const o = { p: m.p.slice(), s: m.s.slice(), c: m.c };
+                        if (hasRot) o.r = m.r.slice();
+                        if (m.scope) o.scope = true;
+                        return o;
+                    })
+                };
+                if (W.scopeMode === 'inline') {
+                    out.inlineFov = W.inlineFov;
+                    out.inlineLensLocal = W.inlineLensLocal.slice();
+                    out.inlineLensRadius = W.inlineLensRadius;
+                }
+
+                /* Re-emit any fields the editor didn't explicitly manage so we never
+                   silently drop data that weapons.js reads. */
+                if (W._extras && typeof W._extras === 'object') {
+                    for (const k of Object.keys(W._extras)) {
+                        if (!(k in out)) out[k] = clone(W._extras[k]);
+                    }
+                }
+
+                return out;
+            }
+            function buildExportJSON() { return JSON.stringify(buildExportObject(), null, 4); }
+
+            $('btnSaveLocal').onclick = () => {
+                const obj = buildExportObject();
+                const list = getSaved();
+                const i = list.findIndex(o => o.key === obj.key);
+                if (i >= 0) list[i] = obj; else list.push(obj);
+                setSaved(list);
+                library.set(obj.key, { data: obj, source: 'local', file: obj.key + '.json' });
+                currentKey = obj.key;
+                currentSource = 'local';
+                dirty = false;
+                refreshWeaponSelect();
+                renderBrowser();
+                toast('已儲存到瀏覽器：' + obj.key);
+            };
+
+            $('btnExport').onclick = () => {
+                const obj = buildExportObject();
+                const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = (obj.key || 'weapon') + '.json';
+                a.click();
+                URL.revokeObjectURL(a.href);
+                dirty = false;
+                toast('已匯出 ' + obj.key + '.json → 放入 weaponModel/');
+            };
+
+            $('btnCopy').onclick = () => {
+                const out = buildExportJSON();
+                navigator.clipboard.writeText(out).then(
+                    () => toast('已複製武器 JSON ✓'),
+                    () => toast('剪貼簿被阻擋', true));
+            };
+
+            $('btnReloadLib').onclick = () => {
+                library.clear();
+                autoLoadLibrary().then(ok => {
+                    if (ok) toast('已重新載入武器庫');
+                    else toast('重新載入失敗', true);
+                });
+            };
+
+            window.addEventListener('keydown', e => {
+                if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+                    e.preventDefault();
+                    $('btnExport').click();
+                }
+            });
+
+            /* ============================================================================
+               14.  ICON PREVIEW
+               ========================================================================= */
+            const ICON_TILE_W = 3, ICON_TILE_H = 1, ICON_CELL = 44;
+            const ICON_INSET_X = 4, ICON_INSET_TOP = 4, ICON_INSET_BOTTOM = 14;
             const ICON_PREVIEW_W = 300;
 
             function iconInnerSize() {
@@ -2109,10 +2868,9 @@
                 return { innerW, innerH, aspect: innerW / innerH };
             }
 
-            const iconCanvasEl = document.getElementById('iconPreview');
+            const iconCanvasEl = $('iconPreview');
             const iconRenderer = new THREE.WebGLRenderer({
-                canvas: iconCanvasEl, antialias: true, alpha: true,
-                preserveDrawingBuffer: true
+                canvas: iconCanvasEl, antialias: true, alpha: true, preserveDrawingBuffer: true
             });
             iconRenderer.setPixelRatio(1);
             iconRenderer.setClearColor(0x000000, 0);
@@ -2127,13 +2885,15 @@
                 iconScene.add(new THREE.AmbientLight(0xffffff, 0.55));
             }
 
-            let iconMesh = null;
-            let iconPivot = null;
+            let iconMesh = null, iconPivot = null;
 
             function buildIconMesh() {
                 if (iconMesh) {
                     iconScene.remove(iconMesh);
-                    disposeRecursive(iconMesh);
+                    iconMesh.traverse(x => {
+                        if (x.geometry && x.geometry !== UNIT_BOX) x.geometry.dispose();
+                        if (x.material && x.material.dispose) x.material.dispose();
+                    });
                     iconMesh = null;
                 }
                 if (!Array.isArray(W.model) || !W.model.length) return;
@@ -2141,16 +2901,11 @@
                 let mnX = Infinity, mnY = Infinity, mnZ = Infinity;
                 let mxX = -Infinity, mxY = -Infinity, mxZ = -Infinity;
                 for (const b of W.model) {
-                    if (b.p[0] - b.s[0] * 0.5 < mnX) mnX = b.p[0] - b.s[0] * 0.5;
-                    if (b.p[0] + b.s[0] * 0.5 > mxX) mxX = b.p[0] + b.s[0] * 0.5;
-                    if (b.p[1] - b.s[1] * 0.5 < mnY) mnY = b.p[1] - b.s[1] * 0.5;
-                    if (b.p[1] + b.s[1] * 0.5 > mxY) mxY = b.p[1] + b.s[1] * 0.5;
-                    if (b.p[2] - b.s[2] * 0.5 < mnZ) mnZ = b.p[2] - b.s[2] * 0.5;
-                    if (b.p[2] + b.s[2] * 0.5 > mxZ) mxZ = b.p[2] + b.s[2] * 0.5;
+                    mnX = Math.min(mnX, b.p[0] - b.s[0] * 0.5); mxX = Math.max(mxX, b.p[0] + b.s[0] * 0.5);
+                    mnY = Math.min(mnY, b.p[1] - b.s[1] * 0.5); mxY = Math.max(mxY, b.p[1] + b.s[1] * 0.5);
+                    mnZ = Math.min(mnZ, b.p[2] - b.s[2] * 0.5); mxZ = Math.max(mxZ, b.p[2] + b.s[2] * 0.5);
                 }
-                const cx = (mnX + mxX) * 0.5;
-                const cy = (mnY + mxY) * 0.5;
-                const cz = (mnZ + mxZ) * 0.5;
+                const cx = (mnX + mxX) * 0.5, cy = (mnY + mxY) * 0.5, cz = (mnZ + mxZ) * 0.5;
 
                 const inner = new THREE.Group();
                 for (const part of W.model) {
@@ -2177,8 +2932,7 @@
 
                 const r = W.iconR || [0, 0, 0];
                 const p = W.iconP || [0, 0, 0];
-                const s = (typeof W.iconScale === 'number' && W.iconScale > 0)
-                    ? W.iconScale : 1;
+                const s = (typeof W.iconScale === 'number' && W.iconScale > 0) ? W.iconScale : 1;
 
                 const pivot = new THREE.Group();
                 pivot.rotation.set(r[0], r[1], r[2] + autoZ);
@@ -2212,21 +2966,17 @@
                 let maxTanX = 0, maxTanY = 0;
                 const v = new THREE.Vector3();
                 for (let i = 0; i < 8; i++) {
-                    v.set(
-                        (i & 1) ? box.max.x : box.min.x,
+                    v.set((i & 1) ? box.max.x : box.min.x,
                         (i & 2) ? box.max.y : box.min.y,
                         (i & 4) ? box.max.z : box.min.z);
                     v.applyMatrix4(iconCamera.matrixWorldInverse);
                     const depth = -v.z;
                     if (depth <= 1e-3) continue;
-                    const tx = Math.abs(v.x) / depth;
-                    const ty = Math.abs(v.y) / depth;
-                    if (tx > maxTanX) maxTanX = tx;
-                    if (ty > maxTanY) maxTanY = ty;
+                    maxTanX = Math.max(maxTanX, Math.abs(v.x) / depth);
+                    maxTanY = Math.max(maxTanY, Math.abs(v.y) / depth);
                 }
                 const needTan = Math.max(maxTanY, maxTanX / aspect);
-                const vFOV = 2 * Math.atan(needTan * padding);
-                iconCamera.fov = vFOV * 180 / Math.PI;
+                iconCamera.fov = 2 * Math.atan(needTan * padding) * 180 / Math.PI;
                 iconCamera.aspect = aspect;
                 iconCamera.updateProjectionMatrix();
             }
@@ -2241,25 +2991,20 @@
                 iconCanvasEl.style.width = w + 'px';
                 iconCanvasEl.style.height = h + 'px';
 
-                const infoEl = document.getElementById('iconInfo');
-                if (infoEl) {
-                    infoEl.textContent = '武器格：' + ICON_TILE_W + '×' + ICON_TILE_H +
-                        '（' + innerW + '×' + innerH + ' 縮圖）';
-                }
+                $('iconInfo').textContent =
+                    '武器格：' + ICON_TILE_W + '×' + ICON_TILE_H + '（' + innerW + '×' + innerH + ' 縮圖）';
 
                 buildIconMesh();
 
                 if (iconPivot) {
-                    const savedPos = iconPivot.position.clone();
-                    const savedScale = iconPivot.scale.clone();
+                    const sp = iconPivot.position.clone();
+                    const ss = iconPivot.scale.clone();
                     iconPivot.position.set(0, 0, 0);
                     iconPivot.scale.setScalar(1);
                     fitIconCamera(aspect, 1.06);
-                    iconPivot.position.copy(savedPos);
-                    iconPivot.scale.copy(savedScale);
-                } else {
-                    fitIconCamera(aspect, 1.06);
-                }
+                    iconPivot.position.copy(sp);
+                    iconPivot.scale.copy(ss);
+                } else fitIconCamera(aspect, 1.06);
 
                 iconRenderer.setSize(w, h, false);
                 iconRenderer.render(iconScene, iconCamera);
@@ -2268,61 +3013,61 @@
             let iconDirty = true;
             function requestIconRedraw() { iconDirty = true; }
 
-            bindPair('iconR0', v => { W.iconR[0] = v; requestIconRedraw(); });
-            bindPair('iconR1', v => { W.iconR[1] = v; requestIconRedraw(); });
-            bindPair('iconR2', v => { W.iconR[2] = v; requestIconRedraw(); });
-            bindPair('iconP0', v => { W.iconP[0] = v; requestIconRedraw(); });
-            bindPair('iconP1', v => { W.iconP[1] = v; requestIconRedraw(); });
-            bindPair('iconP2', v => { W.iconP[2] = v; requestIconRedraw(); });
-            bindPair('iconScale', v => { if (v > 0) W.iconScale = v; requestIconRedraw(); });
+            bindPair('iconR0', v => { W.iconR[0] = v; requestIconRedraw(); markDirty(); });
+            bindPair('iconR1', v => { W.iconR[1] = v; requestIconRedraw(); markDirty(); });
+            bindPair('iconR2', v => { W.iconR[2] = v; requestIconRedraw(); markDirty(); });
+            bindPair('iconP0', v => { W.iconP[0] = v; requestIconRedraw(); markDirty(); });
+            bindPair('iconP1', v => { W.iconP[1] = v; requestIconRedraw(); markDirty(); });
+            bindPair('iconP2', v => { W.iconP[2] = v; requestIconRedraw(); markDirty(); });
+            bindPair('iconScale', v => { if (v > 0) { W.iconScale = v; requestIconRedraw(); markDirty(); } });
 
-            $('btnIconReset').addEventListener('click', () => {
+            $('btnIconReset').onclick = () => {
                 W.iconR = [0, 0, 0];
                 W.iconP = [0, 0, 0];
                 W.iconScale = 1;
                 setVec('iconR', W.iconR); setVec('iconP', W.iconP);
                 setValue('iconScale', W.iconScale);
                 requestIconRedraw();
-                setStatus('圖示已重設為自動');
-            });
+                markDirty();
+                toast('圖示已重設為自動');
+            };
 
-            /* ============================================================
-               BOOT
-               ============================================================ */
-            syncUI();
+            /* ============================================================================
+               15.  BOOT
+               ========================================================================= */
+            showPage('browser');
             rebuildWeapon();
             rebuildPartsList();
+            renderPartProps();
+            syncUI();
             updateRig();
-            resize();
             applyViewTab();
             applyCameraPreset('fp');
 
-            /* ---- Background colour picker ---- */
-            const bgColorEl = document.getElementById('bgColor');
-            if (bgColorEl) {
-                bgColorEl.addEventListener('input', e => {
-                    const c = colorInt(e.target.value);
-                    renderer.setClearColor(c, 1);
-                });
-            }
-
-            $('blend').value = 0;
-            $('blendVal').textContent = '0.00';
-            document.querySelector('.tabs button[data-view="hip"]').classList.add('active');
-
-            updateSelInfo();
-
-            (function loop() {
-                requestAnimationFrame(loop);
-                renderer.render(scene, camera);
+            renderer.setAnimationLoop(() => {
+                const w = viewportBox.clientWidth, h = viewportBox.clientHeight;
+                if (w > 0 && h > 0) renderer.render(scene, camera);
                 if (iconDirty) {
                     iconDirty = false;
-                    try { renderIconPreview(); }
-                    catch (e) { console.warn('[icon preview]', e); }
+                    try { renderIconPreview(); } catch (e) { console.warn('[icon]', e); }
                 }
-            })();
+            });
 
             requestIconRedraw();
+
+            /* auto-load index.js + local storage */
+            mergeLocalSaved();
+            refreshWeaponSelect();
+            renderBrowser();
+            autoLoadLibrary();
+
+            /* warn before closing with unsaved changes */
+            window.addEventListener('beforeunload', e => {
+                if (!dirty) return;
+                e.preventDefault();
+                e.returnValue = '';
+            });
+
         })();
     </script>
 </body>

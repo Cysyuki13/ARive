@@ -26,7 +26,7 @@
 
     function render(profile) {
         if (!ready) return;
-        const signedIn = !!profile;
+        const signedIn = !!profile && !profile.isAnonymous;
 
         guestEl.style.display = signedIn ? "none" : "flex";
         userEl.style.display = signedIn ? "flex" : "none";

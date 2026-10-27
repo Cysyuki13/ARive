@@ -87,12 +87,35 @@ body {
     gap: 8px;
 }
 
-.vlabel {
-    width: 48px;
-    font-size: 11px;
-    letter-spacing: 1px;
-    color: #9aa5b4;
-    text-shadow: 0 1px 0 #000;
+.vicon {
+    width: 20px;
+    height: 16px;
+    flex: 0 0 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* follow the SVG silhouette instead of a rectangle */
+    filter: drop-shadow(1px 1px 0 #000);
+}
+
+.vicon svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+/* Per-icon tint — sits a touch brighter than the matching
+   bar fill so the icon reads before the bar does. */
+.vicon.hp svg {
+    color: #e07070;
+}
+
+.vicon.food svg {
+    color: #e8b050;
+}
+
+.vicon.water svg {
+    color: #5aa8e0;
 }
 
 .bar {
@@ -1122,4 +1145,181 @@ body {
     color: #7a6e5e;
     font: 11px 'Courier New', monospace;
     letter-spacing: 2px;
+}
+
+/* ===== SURVIVAL HUD ===== */
+#waveHud {
+    position: fixed;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 340px;
+    padding: 10px 16px 12px;
+    background: rgba(10, 13, 18, 0.82);
+    border: 2px solid #3a2e26;
+    box-shadow: 0 0 0 2px #05070a, 0 8px 22px rgba(0, 0, 0, 0.6);
+    font-family: "Courier New", monospace;
+    color: #e8c86a;
+    text-align: center;
+    pointer-events: none;
+    z-index: 7;
+    display: none;
+}
+
+#waveHud .wh-state {
+    font-size: 12px;
+    letter-spacing: 3px;
+    color: #f6dd8b;
+    margin-bottom: 2px;
+}
+
+#waveHud .wh-wave {
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: #b9c2ce;
+    margin-bottom: 6px;
+}
+
+#waveHud .wh-bar {
+    width: 100%;
+    height: 8px;
+    background: #14100e;
+    border: 1px solid #2a201a;
+}
+
+#waveHud .wh-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(to right, #c8843a, #f6dd8b);
+    transition: width .1s linear;
+}
+
+#waveHud .wh-hint {
+    margin-top: 6px;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: #7a6e5e;
+    display: none;
+}
+
+#bossBar {
+    position: fixed;
+    top: 92px;
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 420px;
+    padding: 8px 14px 10px;
+    background: rgba(10, 6, 6, 0.85);
+    border: 2px solid #8a2020;
+    box-shadow: 0 0 12px rgba(208, 48, 48, 0.35), 0 0 0 2px #05070a;
+    font-family: "Courier New", monospace;
+    color: #ffb060;
+    text-align: center;
+    pointer-events: none;
+    z-index: 7;
+    display: none;
+}
+
+#bossBar .bb-name {
+    font-size: 13px;
+    letter-spacing: 4px;
+    color: #ffd070;
+    margin-bottom: 5px;
+    text-shadow: 0 0 8px rgba(255, 120, 60, 0.4);
+}
+
+#bossBar .bb-bar {
+    width: 100%;
+    height: 10px;
+    background: #200505;
+    border: 1px solid #4a1010;
+}
+
+#bossBar .bb-fill {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(to right, #a02020, #ff8040);
+    transition: width .1s linear;
+}
+
+/* ===== ARive map card — NORMAL / SURVIVAL selector ===== */
+.map-card-arive {
+    /* It's a <div> now — keep the layout the .map-card class already gives
+       it, but make sure clicks on non-button areas don't look "pressable". */
+    cursor: default;
+}
+
+.map-card-arive:hover {
+    /* Suppress the shared .map-card:hover border highlight — the buttons
+       inside provide their own hover feedback. */
+    border-color: #2a201a;
+    background: #14100e;
+}
+
+.map-card-arive:active {
+    transform: none;
+}
+
+.map-mode-row {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+    margin-top: 4px;
+}
+
+.map-mode-btn {
+    flex: 1;
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    padding: 8px 4px;
+    color: #dfe4ea;
+    background: #1c1611;
+    border: 2px solid #2a201a;
+    cursor: pointer;
+    transition: border-color .12s, background .12s, color .12s,
+        box-shadow .12s;
+}
+
+.map-mode-btn:hover {
+    border-color: #e8c86a;
+    background: #2a201a;
+    color: #f6dd8b;
+    box-shadow: 0 0 10px rgba(232, 200, 106, .25);
+}
+
+.map-mode-btn:active {
+    transform: translateY(1px);
+}
+
+/* Survival gets a slightly red/orange accent so it reads as "harder". */
+.map-mode-btn[data-mode="survival"] {
+    color: #e8a070;
+    border-color: #4a2e1a;
+}
+
+.map-mode-btn[data-mode="survival"]:hover {
+    color: #ffb060;
+    border-color: #c06030;
+    background: #2a1810;
+    box-shadow: 0 0 10px rgba(224, 96, 48, .30);
+}
+
+@keyframes hpPulse {
+
+    0%,
+    100% {
+        color: #e07070;
+        filter: drop-shadow(1px 1px 0 #000);
+    }
+
+    50% {
+        color: #ff4040;
+        filter: drop-shadow(1px 1px 0 #000) drop-shadow(0 0 6px rgba(255, 64, 64, .8));
+    }
+}
+
+.vicon.hp.low svg {
+    animation: hpPulse 0.9s ease-in-out infinite;
 }

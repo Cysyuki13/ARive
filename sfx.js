@@ -12,6 +12,7 @@
      Sfx.preload({ name: url, ... })   bulk Sfx.load
      Sfx.has(name)                     true if a generator or file exists
      Sfx.setVolume(cat, v)             'master'|'ui'|'world'|'player'
+     Sfx.setLoopSlice(name, dur, opts) slice a long loop into short one-shots
      Sfx.mute(bool) / Sfx.unlock() / Sfx.bindAutoUnlock()
 
    Catalog (procedural):
@@ -24,6 +25,7 @@
    ========================================================================= */
 (function () {
     'use strict';
+    const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
     /* ------------------------------------------------------------------
        Core context + category buses
@@ -87,8 +89,8 @@
     }
 
     /* Convenience: set ui + world + player buses with one call.
-   Master is intentionally separate so an SE slider can ride on
-   top of an overall master. */
+       Master is intentionally separate so an SE slider can ride on
+       top of an overall master. */
     function setSeVolume(v) {
         setVolume('ui', v);
         setVolume('world', v);
@@ -425,6 +427,92 @@
     }
 
     /* ------------------------------------------------------------------
+       Loop-slice config
+       ------------------------------------------------------------------
+       Maps a sound name to a { duration, randomStart, start } config.
+       When set, Sfx.play(name) plays only `duration` seconds of the
+       loaded buffer, starting at a random (or fixed) offset.  Use this
+       for continuous audio loops (walk cycles, ambience) that need to
+       be used as short one-shots.
+       ------------------------------------------------------------------ */
+    const LOOP_CONFIG = new Map();
+
+    /**
+     * Sfx.setLoopSlice(name, duration, options)
+     *   name        sound name ('footstep', ...)
+     *   duration    length in seconds of each slice
+     *   options     { randomStart?: bool (default true), start?: number }
+     * Pass duration <= 0 (or null) to clear.
+     */
+    function setLoopSlice(name, duration, options) {
+        if (!name) return;
+        if (typeof duration !== 'number' || duration <= 0) {
+            LOOP_CONFIG.delete(name);
+            return;
+        }
+        const opts = options || {};
+        LOOP_CONFIG.set(name, {
+            duration,
+            randomStart: opts.randomStart !== false,
+            start: typeof opts.start === 'number' ? opts.start : 0,
+        });
+    }
+
+    /* ------------------------------------------------------------------
+       Voice limiting
+       ------------------------------------------------------------------
+       Limits how many concurrent voices of a given sound can be alive at
+       once.  A new play() over the limit softly fades out the oldest one
+       and stops it.  This is the fix for footsteps/jumps piling up into
+       a continuous drone when fired faster than the buffer duration.
+       ------------------------------------------------------------------ */
+    const VOICE_LIMIT = {
+        footstep: 1,      // only one step audible at a time
+        jump: 2,
+        land: 2,
+        hurt: 2,
+        death: 1,
+        voxel_break: 3,
+        voxel_place: 2,
+        explosion: 3,
+        splash: 2,
+    };
+
+    const ACTIVE = new Map();  // name -> Array<{ src, gain, ended }>
+
+    function _trackVoice(name, src, gain) {
+        const lim = VOICE_LIMIT[name];
+        if (!lim || lim <= 0) return;
+
+        let list = ACTIVE.get(name);
+        if (!list) { list = []; ACTIVE.set(name, list); }
+
+        /* Drop entries that already finished naturally. */
+        for (let i = list.length - 1; i >= 0; i--) {
+            if (list[i].ended) list.splice(i, 1);
+        }
+
+        /* Steal the oldest if we're over the limit. */
+        while (list.length >= lim) {
+            const old = list.shift();
+            try {
+                const c = ensureCtx();
+                if (c) {
+                    const t = c.currentTime;
+                    old.gain.gain.cancelScheduledValues(t);
+                    old.gain.gain.setTargetAtTime(0.0001, t, 0.008);
+                    old.src.stop(t + 0.03);
+                }
+            } catch (e) { /* already stopped */ }
+            old.ended = true;
+        }
+
+        const entry = { src, gain, ended: false };
+        list.push(entry);
+        src.addEventListener('ended', function () { entry.ended = true; });
+    }
+
+    /* ------------------------------------------------------------------
        Registry + playback
        ------------------------------------------------------------------ */
     const PROC = {
@@ -450,6 +538,28 @@
     const PENDING = new Map();    // name -> Promise
     const URL_BY_NAME = new Map();// name -> url (for dedupe of identical files)
 
+    function resolveSlice(name, buf, opts) {
+        /* Explicit per-call override (opts.start / opts.duration). */
+        if (opts && (typeof opts.duration === 'number' || typeof opts.start === 'number')) {
+            const wantDur = typeof opts.duration === 'number' ? opts.duration : buf.duration;
+            const wantStart = typeof opts.start === 'number' ? opts.start : 0;
+            const maxStart = Math.max(0, buf.duration - wantDur);
+            const start = clamp(wantStart, 0, maxStart);
+            const duration = Math.min(wantDur, buf.duration - start);
+            return { start, duration };
+        }
+
+        const cfg = LOOP_CONFIG.get(name);
+        if (!cfg) return null;
+
+        const dur = Math.min(cfg.duration, buf.duration);
+        const maxStart = Math.max(0, buf.duration - dur);
+        const start = cfg.randomStart
+            ? Math.random() * maxStart
+            : clamp(cfg.start || 0, 0, maxStart);
+        return { start, duration: dur };
+    }
+
     function play(name, opts) {
         const c = ensureCtx();
         if (!c) return null;
@@ -463,10 +573,48 @@
             const src = c.createBufferSource();
             src.buffer = buf;
             src.playbackRate.value = rate;
+
+            /* Defensive — guarantee one-shot, never loop, even if some
+               previous session left state hanging around. */
+            src.loop = false;
+            src.loopStart = 0;
+            src.loopEnd = 0;
+
             const g = c.createGain();
-            g.gain.value = vol;
             src.connect(g).connect(bus(cat));
-            try { src.start(0); } catch (e) { return null; }
+
+            const slice = resolveSlice(name, buf, opts);
+
+            if (slice) {
+                /* Short gain envelope so the cut doesn't click. */
+                const t0 = c.currentTime;
+                const srcDur = Math.min(slice.duration, buf.duration - slice.start);
+                const wallDur = srcDur / rate;
+                const fadeIn = Math.min(0.004, wallDur * 0.10);
+                const fadeOut = Math.min(0.015, wallDur * 0.20);
+                const sustainEnd = Math.max(
+                    t0 + fadeIn + 0.001,
+                    t0 + wallDur - fadeOut,
+                );
+
+                g.gain.setValueAtTime(0, t0);
+                g.gain.linearRampToValueAtTime(vol, t0 + fadeIn);
+                g.gain.setValueAtTime(vol, sustainEnd);
+                g.gain.linearRampToValueAtTime(0, t0 + wallDur);
+
+                try {
+                    src.start(t0, slice.start, srcDur);
+                } catch (e) {
+                    return null;
+                }
+            } else {
+                g.gain.value = vol;
+                try { src.start(0); } catch (e) { return null; }
+            }
+
+            /* Voice limit: fade out the oldest sibling if we're over budget. */
+            _trackVoice(name, src, g);
+
             return { src: src, gain: g };
         }
 
@@ -493,7 +641,7 @@
         if (FILES.has(name) || PENDING.has(name)) return;
         const c = ensureCtx();
         if (!c) return;
-        const p = fetch(url, { cache: 'force-cache' })
+        const p = fetch(url, { cache: 'no-cache' })
             .then(function (r) {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.arrayBuffer();
@@ -503,7 +651,11 @@
                 FILES.set(name, dec);
                 PENDING.delete(name);
                 URL_BY_NAME.set(name, url);
-                console.log('[Sfx] \u2713 loaded', name, url);
+                console.log(
+                    '[Sfx] \u2713 loaded',
+                    name, url,
+                    '\u00b7 duration', dec.duration.toFixed(2) + 's',
+                );
             })
             .catch(function (e) {
                 PENDING.delete(name);
@@ -531,11 +683,27 @@
         has: has,
         setVolume: setVolume,
         setSeVolume: setSeVolume,
+        setLoopSlice: setLoopSlice,
         mute: mute,
         unlock: unlock,
         bindAutoUnlock: bindAutoUnlock,
         _catalog: Object.keys(PROC)
     };
+
+    /* ------------------------------------------------------------------
+       Real-file overrides
+       ------------------------------------------------------------------ */
+    if (typeof window !== 'undefined') {
+        // Single short step – no loop slice needed.
+        // If your step.mp3 is still a walk-cycle loop, uncomment the
+        // next line to slice a single step out of it:
+        // Sfx.setLoopSlice('footstep', 0.18, { randomStart: true });
+
+        window.addEventListener('load', function () {
+            Sfx.load('footstep', 'assets/sounds/step.mp3');
+            Sfx.load('jump', 'assets/sounds/jump.mp3');
+        });
+    }
 
     /* Wire auto-unlock immediately so the very first click anywhere in
        the page resumes the AudioContext. */

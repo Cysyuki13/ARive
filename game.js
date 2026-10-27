@@ -34,6 +34,10 @@
   }
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
+  function isCityLike(mapType) {
+    return mapType === "city" || mapType === "survival";
+  }
+
   /* =========================================================================
        2. WORLD CONSTANTS  — 0.10 m voxels
        ========================================================================= */
@@ -312,9 +316,10 @@
   const RES_SCALE = 0.62;
 
   const scene = new THREE.Scene();
-  const SKY = 0xa08060;
+  // NEW — burnt-amber apocalypse haze
+  const SKY = 0xa04a1a;
   scene.background = new THREE.Color(SKY);
-  scene.fog = new THREE.Fog(SKY, 14, 42);
+  scene.fog = new THREE.Fog(SKY, 8, 55);
 
   const camera = new THREE.PerspectiveCamera(76, 1, 0.04, 200);
   camera.rotation.order = "YXZ";
@@ -611,11 +616,12 @@
     depthWrite: false,
   });
 
-  const sun = new THREE.DirectionalLight(0xffe0b0, 0.75);
-  sun.position.set(0.55, 1.0, 0.35);
+  // NEW — low warm sun (long shadows), warm ambient, warm sky bounce
+  const sun = new THREE.DirectionalLight(0xffa050, 1.1);
+  sun.position.set(0.8, 0.25, 0.15);
   scene.add(sun);
-  scene.add(new THREE.AmbientLight(0x8090a8, 0.55));
-  scene.add(new THREE.HemisphereLight(0xa8b8c8, 0x403020, 0.35));
+  scene.add(new THREE.AmbientLight(0x6a3820, 0.55));
+  scene.add(new THREE.HemisphereLight(0xc06030, 0x1a0808, 0.5));
 
   function resizeRenderer() {
     const w = window.innerWidth,
@@ -2140,7 +2146,7 @@
   }
 
   function streamChunks(px, pz, force) {
-    if (!cityLayout || currentMapType !== "city") return;
+    if (!cityLayout || !isCityLike(currentMapType)) return;
 
     const pcx = Math.floor(px / (CHUNK * VOXEL));
     const pcz = Math.floor(pz / (CHUNK * VOXEL));
@@ -2170,7 +2176,7 @@
   }
 
   function unloadFarChunks(px, pz) {
-    if (!cityLayout || currentMapType !== "city") return;
+    if (!cityLayout || !isCityLike(currentMapType)) return;
 
     const pcx = Math.floor(px / (CHUNK * VOXEL));
     const pcz = Math.floor(pz / (CHUNK * VOXEL));
@@ -2225,7 +2231,7 @@
   }
 
   function updateChunkStreaming() {
-    if (!cityLayout || currentMapType !== "city") return;
+    if (!cityLayout || !isCityLike(currentMapType)) return;
     if (!player.alive) return;
 
     const px = player.pos.x,
@@ -4429,6 +4435,14 @@
       return;
     }
 
+    if (e.code === "KeyP") {
+      e.preventDefault();
+      if (gameRunning && player.alive && !inventory.isOpen && window.SurvivalMode) {
+        window.SurvivalMode.skipPrep();
+      }
+      return;
+    }
+
     if (gameRunning && !inventory.isOpen && e.code.startsWith("Digit")) {
       const n = parseInt(e.code.slice(5), 10);
       if (n === 1 || n === 2) {
@@ -5621,6 +5635,7 @@
     Minimap.close();
     if (heldPickup) releasePickup(0);
     document.exitPointerLock();
+    if (window.SurvivalMode) window.SurvivalMode.onPlayerDied();
     document.getElementById("deathMsg").textContent =
       player.thirst <= 0
         ? "You died of thirst in the ruins."
@@ -5649,6 +5664,10 @@
 
     if (window.Enemies) window.Enemies.clear();
     enemies.length = 0;
+
+    if (currentMapType === "survival" && window.SurvivalMode) {
+      window.SurvivalMode.start(20);
+    }
 
     document.getElementById("deathScreen").classList.add("hidden");
     document.getElementById("hud").classList.remove("hidden");
@@ -5717,6 +5736,8 @@
     fillHunger.style.width = player.hunger + "%";
     fillThirst.style.width = player.thirst + "%";
     numHealth.textContent = Math.ceil(player.health);
+    const hpIcon = document.querySelector('.vicon.hp');
+    if (hpIcon) hpIcon.classList.toggle('low', player.health < 30);
     numHunger.textContent = Math.ceil(player.hunger);
     numThirst.textContent = Math.ceil(player.thirst);
     scrapCount.textContent = scrap;
@@ -6177,6 +6198,11 @@
       sub: "Flat test map. Spawn anything with the dev panel.",
       note: "TAB bag · G dev tools · LMB use tool",
     },
+    survival: {
+      title: "ARIVE  ·  SURVIVAL MODE",
+      sub: "The city fell. Hold the line.",
+      note: "TAB bag · P skip prep · LMB use tool",
+    },
   };
 
   function getSpawnPoint() {
@@ -6213,6 +6239,8 @@
   }
 
   function clearWorld() {
+    if (window.SurvivalMode) window.SurvivalMode.stop(true);
+
     generatedChunks.clear();
     meshedChunks.clear();
     lastStreamedCx = -99999;
@@ -6437,9 +6465,10 @@
     }, 1800);
   }
 
-  document.querySelectorAll("#mapSelect .map-card").forEach((card) => {
-    card.addEventListener("click", () => {
-      const map = card.dataset.map;
+  document.querySelectorAll("#mapSelect [data-map]").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const map = el.dataset.map;
       mapSelectEl.classList.add("hidden");
       loadingEl.classList.remove("hidden");
       boot(map);
@@ -6481,6 +6510,7 @@
           window.Enemies.update(dt);
           window.Enemies.tickWaves(dt, currentMapType);
         }
+        if (window.SurvivalMode) window.SurvivalMode.update(dt);
         updateProjectiles(dt);
 
         net.update(dt);
@@ -6539,6 +6569,9 @@
         fpsAccum = 0;
         fpsFrames = 0;
       }
+      if (window.Atmosphere) window.Atmosphere.update(dt);
+      renderer.render(scene, camera);
+
       renderer.render(scene, camera);
     } catch (err) {
       console.error("Frame error:", err);
@@ -6613,11 +6646,8 @@
     }
   }
 
-  /* ---------------------------------------------------------------
-   Loads every static asset table the game needs.  Idempotent —
-   safe to call from boot() on the host AND from regenerateWorld()
-   on a joining client.
-   --------------------------------------------------------------- */
+  let iconsGenerated = false; // 加在函数外面
+
   async function initGameAssets() {
     await initItemsAndInventory();
     mergeLocalStructures();
@@ -6632,44 +6662,43 @@
       window.WeaponSkins.bindSkinSources(window.WEAPON_MODEL_DATA);
     }
 
-    /* Build per-weapon thumbnails (inventory slots need these). */
-    for (const def of window.WEAPON_MODEL_DATA || []) {
-      if (!Array.isArray(def.model)) continue;
-      try {
-        const w = Math.max(1, def.w | 0 || 3);
-        const h = Math.max(1, def.h | 0 || 1);
-        if (w !== h) {
-          def.iconImage = renderItemThumbnail(def, w, h);
-          def.iconImageRotated = renderItemThumbnail(def, h, w);
-        } else if (!def.iconImage) {
-          def.iconImage = renderItemThumbnail(def, w, h);
-        }
-      } catch (e) {
-        console.warn("[ARive] weapon thumbnail failed:", def.key, e);
+    // ✅ 修复：限制缩略图只生成一次，防止热更新时重复占用内存
+    if (!iconsGenerated) {
+      for (const def of window.WEAPON_MODEL_DATA || []) {
+        if (!Array.isArray(def.model)) continue;
+        try {
+          const w = Math.max(1, def.w | 0 || 3);
+          const h = Math.max(1, def.h | 0 || 1);
+          if (w !== h) {
+            def.iconImage = renderItemThumbnail(def, w, h);
+            def.iconImageRotated = renderItemThumbnail(def, h, w);
+          } else if (!def.iconImage) {
+            def.iconImage = renderItemThumbnail(def, w, h);
+          }
+        } catch (e) { }
       }
-    }
 
-    /* Skinned weapon thumbnails (same code that used to live in boot). */
-    if (window.WeaponSkins) {
-      for (const wkey in window.WeaponSkins.SKINS) {
-        const base = (window.WEAPON_MODEL_DATA || [])
-          .find((d) => d.key === wkey);
-        if (!base) continue;
-        for (const skin of window.WeaponSkins.getSkins(wkey)) {
-          try {
-            const skinned = window.WeaponSkins.applySkin(base, skin.id);
-            if (!Array.isArray(skinned.model)) continue;
-            const w = Math.max(1, skinned.w | 0 || 3);
-            const h = Math.max(1, skinned.h | 0 || 1);
-            if (w !== h) {
-              skinned.iconImage = renderItemThumbnail(skinned, w, h);
-              skinned.iconImageRotated = renderItemThumbnail(skinned, h, w);
-            } else {
-              skinned.iconImage = renderItemThumbnail(skinned, w, h);
-            }
-          } catch (e) { /* ignore */ }
+      if (window.WeaponSkins) {
+        for (const wkey in window.WeaponSkins.SKINS) {
+          const base = (window.WEAPON_MODEL_DATA || []).find((d) => d.key === wkey);
+          if (!base) continue;
+          for (const skin of window.WeaponSkins.getSkins(wkey)) {
+            try {
+              const skinned = window.WeaponSkins.applySkin(base, skin.id);
+              if (!Array.isArray(skinned.model)) continue;
+              const w = Math.max(1, skinned.w | 0 || 3);
+              const h = Math.max(1, skinned.h | 0 || 1);
+              if (w !== h) {
+                skinned.iconImage = renderItemThumbnail(skinned, w, h);
+                skinned.iconImageRotated = renderItemThumbnail(skinned, h, w);
+              } else {
+                skinned.iconImage = renderItemThumbnail(skinned, w, h);
+              }
+            } catch (e) { }
+          }
         }
       }
+      iconsGenerated = true; // 标记已完成
     }
 
     if (window.Weapons) window.Weapons.init();
@@ -6707,7 +6736,7 @@
 
     const sp = getSpawnPoint();
 
-    if (currentMapType === "city") {
+    if (isCityLike(currentMapType)) {
       const spawnCx = Math.floor(sp.x / (CHUNK * VOXEL));
       const spawnCz = Math.floor(sp.z / (CHUNK * VOXEL));
       generateChunkColumn(spawnCx, spawnCz);
@@ -6718,7 +6747,7 @@
 
     const list = [];
 
-    if (currentMapType === "city") {
+    if (isCityLike(currentMapType)) {
       const pcx = Math.floor(sp.x / (CHUNK * VOXEL));
       const pcz = Math.floor(sp.z / (CHUNK * VOXEL));
       const R = LOAD_RADIUS,
@@ -6748,7 +6777,7 @@
       for (let k = 0; k < batch && i < list.length; k++, i++) {
         const { cx, cz } = list[i];
 
-        if (currentMapType === "city") {
+        if (isCityLike(currentMapType)) {
           generateChunkColumn(cx, cz);
         } else {
           for (let cy = 0; cy < CHUNKS_Y; cy++) rebuildChunk(cx, cy, cz);
@@ -6817,6 +6846,18 @@
       Minimap.buildTerrainCache();
 
       loadingEl.classList.add("hidden");
+
+      if (currentMapType === "survival" && window.SurvivalMode) {
+        window.SurvivalMode.start(20);   // 20 waves — change later if you want menu selectable
+
+        window.SurvivalMode.onVictory = function () {
+          spawnToast("SURVIVED ALL WAVES");
+          gameRunning = false;
+          try { document.exitPointerLock(); } catch (e) { }
+          document.getElementById("overlay").classList.remove("hidden");
+        };
+      }
+
       if (window.__ariveAutoStart) {
         window.__ariveAutoStart = false;
         startGame();
@@ -7149,16 +7190,21 @@
       quietGeneration = true;
       if (currentMapType === "sandbox") {
         generateSandbox(seed);
-        for (let cx = 0; cx < CHUNKS_X; cx++)
-          for (let cy = 0; cy < CHUNKS_Y; cy++)
-            for (let cz = 0; cz < CHUNKS_Z; cz++) rebuildChunk(cx, cy, cz);
+        for (let cx = SANDBOX_CX0; cx < SANDBOX_CX1; cx++) {
+          for (let cz = SANDBOX_CZ0; cz < SANDBOX_CZ1; cz++) {
+            for (let cy = 0; cy < CHUNKS_Y; cy++) rebuildChunk(cx, cy, cz);
+            meshedChunks.add(cx + "," + cz);
+            generatedChunks.add(cx + "," + cz);
+            if (Minimap && Minimap.markExplored) Minimap.markExplored(cx, cz);
+          }
+        }
       } else {
         cityLayout = generateCityLayout(seed);
       }
 
       const sp = getSpawnPoint();
 
-      if (currentMapType === "city") {
+      if (isCityLike(currentMapType)) {
         const spawnCx = Math.floor(sp.x / (CHUNK * VOXEL));
         const spawnCz = Math.floor(sp.z / (CHUNK * VOXEL));
         generateChunkColumn(spawnCx, spawnCz);
@@ -7166,7 +7212,7 @@
 
       placePlayerOnGround(sp.x, sp.z);
 
-      if (currentMapType === "city") {
+      if (isCityLike(currentMapType)) {
         fillInitialRing(sp.x, sp.z, 4);
         lastStreamedCx = Math.floor(sp.x / (CHUNK * VOXEL));
         lastStreamedCz = Math.floor(sp.z / (CHUNK * VOXEL));
@@ -7190,6 +7236,22 @@
       _suppressPauseTimer = setTimeout(function () {
         suppressUnlockPause = false;
       }, 1500);
+    },
+
+    applyAvatar: function (fpvData, remoteData) {
+      // Update FPV material colors — this instantly re-colors the local player's hands/arms.
+      if (fpvData && fpvData.colors) {
+        try {
+          SKIN_MAT.color.setHex(fpvData.colors.skin);
+          PANTS_MAT.color.setHex(fpvData.colors.pants);
+          BOOT_MAT.color.setHex(fpvData.colors.boot);
+          SLEEVE_MAT.color.setHex(fpvData.colors.sleeve);
+        } catch (e) { console.warn('[Avatar] FPV color update failed:', e); }
+      }
+      // Store remote model data so any FUTURE remote-player spawn on this client
+      // uses the right colors. (Cannot retroactively change other players' mirrors —
+      // each player controls their own.)
+      window.__ariveMyRemoteAvatar = remoteData || null;
     },
 
     /* =============== MULTIPLAYER FLOW HOOKS =============== */
@@ -7386,4 +7448,12 @@
     },
     /* ---- end sandbox_menu hooks ---- */
   };
+  /* ---- Avatar customizer button ---- */
+  (function () {
+    const btn = document.getElementById('mapAvatarBtn');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      if (window.AvatarCustomizer) window.AvatarCustomizer.open();
+    });
+  })();
 })();

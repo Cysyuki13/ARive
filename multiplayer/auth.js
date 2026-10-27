@@ -64,7 +64,8 @@
             uid: user.uid,
             displayName: user.displayName || "Survivor",
             email: user.email || "",
-            photoURL: user.photoURL || ""
+            photoURL: user.photoURL || "",
+            isAnonymous: !!user.isAnonymous,
         };
     }
 
@@ -144,7 +145,21 @@
                 console.warn("[Auth] persistence not set:", e && (e.code || e.message));
             }
 
-            auth.onAuthStateChanged(function (user) {
+            let anonAttempted = false;
+
+            auth.onAuthStateChanged(async function (user) {
+                // 没人登录时自动拿一个匿名身份，这样访客也能写 Firestore（房间心跳）
+                if (!user && auth && !anonAttempted &&
+                    typeof auth.signInAnonymously === "function") {
+                    anonAttempted = true;
+                    try {
+                        await auth.signInAnonymously();
+                        return; // 会再触发一次 onAuthStateChanged（这次 user 是匿名用户）
+                    } catch (e) {
+                        console.warn("[Auth] anonymous sign-in failed:", e && (e.code || e.message));
+                    }
+                }
+                if (user && user.isAnonymous) anonAttempted = true;
                 publish(toProfile(user));
                 settle();
             });
@@ -218,7 +233,8 @@
         signOut: signOut,
 
         isConfigured: isConfigured,
-        isSignedIn: function () { return !!profile; },
+        isSignedIn: function () { return !!profile && !profile.isAnonymous; },
+        isAuthenticated: function () { return !!profile; },   // 新增：Firebase 层是否已认证（含匿名）
         getUser: function () { return profile ? Object.assign({}, profile) : null; },
         getDisplayName: function () {
             return (profile && profile.displayName) || "Survivor";

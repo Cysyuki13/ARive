@@ -34,12 +34,116 @@
     const GRAVITY = 22;
 
     /* ---- Hit-stagger tuning ---- */
-    const HIT_SLOW_DURATION = 0.85;  // seconds the debuff lasts after the last hit
-    const HIT_SLOW_MULTIPLIER = 0.35;  // speed × this while staggered (1 = no slow)
-    const HIT_SLOW_MIN_ADD = 0.25;  // min seconds added per hit
-    const HIT_SLOW_MAX_ADD = 0.55;  // max seconds added per hit
+    const HIT_SLOW_DURATION = 1.0;     // cap on total stacking (1 hit ≈ 0.5 s)
+    const HIT_SLOW_MULTIPLIER = 0.35;  // speed × this while staggered
+    const HIT_SLOW_MIN_ADD = 0.4;      // ≈ 0.5 s added per hit
+    const HIT_SLOW_MAX_ADD = 0.6;
 
     const ENEMY_VOXEL = 0.035;
+
+    /* ==== BEHAVIOR ARCHETYPES ==== */
+    const BEHAVIORS = {
+        rusher: {
+            speedMul: 1.2, weave: 0.15, pauseChance: 0, lungeChance: 0,
+            orbitRadius: 0, preferredRange: 0, strafeChance: 0,
+        },
+        circler: {
+            speedMul: 1.0, weave: 0.30, pauseChance: 0, lungeChance: 0,
+            orbitRadius: 3.5, preferredRange: 3.5, strafeChance: 0.75,
+        },
+        ambusher: {
+            speedMul: 1.15, weave: 0.55, pauseChance: 0, lungeChance: 0,
+            orbitRadius: 4.5, preferredRange: 4.0, strafeChance: 0.55,
+        },
+        shuffler: {
+            speedMul: 0.75, weave: 0.75, pauseChance: 0.45, lungeChance: 0,
+            orbitRadius: 0, preferredRange: 0, strafeChance: 0,
+        },
+        leaper: {
+            speedMul: 0.9, weave: 0.25, pauseChance: 0, lungeChance: 0.85,
+            orbitRadius: 2.0, preferredRange: 2.0, strafeChance: 0.35,
+        },
+        pack: {
+            speedMul: 1.05, weave: 0.2, pauseChance: 0, lungeChance: 0,
+            orbitRadius: 0, preferredRange: 1.6, strafeChance: 0.2,
+        },
+    };
+
+    const BEHAVIOR_BY_KIND = {
+        walker: 'shuffler', runner: 'rusher', crawler: 'ambusher',
+        brute: 'rusher', rotter: 'shuffler', hatty: 'circler',
+        blondie: 'leaper', beanie: 'circler', hooded: 'ambusher',
+        oldblood: 'shuffler', skull: 'rusher', capboy: 'pack',
+        formal: 'circler', vested: 'rusher', stripey: 'leaper',
+        demon: 'rusher',
+        /* aliens */
+        greyscout: 'leaper', blobtron: 'circler', trilens: 'rusher',
+        imp: 'rusher', wisp: 'circler', serpent: 'ambusher',
+        voidtwin: 'circler', bloom: 'leaper',
+        /* bosses (drafts) — they self-declare below */
+        __mini_boss__: 'rusher', __final_boss__: 'rusher',
+    };
+
+    function createBehavior(archetype) {
+        const profile = BEHAVIORS[archetype] || BEHAVIORS.shuffler;
+        return {
+            archetype, profile,
+            seed: Math.random() * 6.28,
+            weaveT: Math.random() * 6.28,
+            orbitDir: Math.random() < 0.5 ? -1 : 1,
+            pauseTimer: 0,
+            lungeTimer: 1 + Math.random() * 2.5,
+            lungeActive: 0,
+        };
+    }
+
+    function computeBehaviorMove(e, dx, dz, dist, dt) {
+        const B = e.behavior;
+        if (!B) return { x: dx / (dist || 1), z: dz / (dist || 1), speedMul: 1 };
+        const P = B.profile;
+
+        B.weaveT += dt;
+        B.lungeTimer -= dt;
+        B.lungeActive = Math.max(0, B.lungeActive - dt);
+        B.pauseTimer = Math.max(0, B.pauseTimer - dt);
+
+        let mx = dx / (dist || 1);
+        let mz = dz / (dist || 1);
+        let speedMul = P.speedMul;
+
+        /* 1. Orbit / strafe */
+        if (P.orbitRadius > 0 && dist < P.preferredRange + P.orbitRadius + 1) {
+            const prox = Math.max(0, Math.min(1,
+                (P.preferredRange + P.orbitRadius - dist) / P.orbitRadius));
+            const tx = -mz * B.orbitDir;
+            const tz = mx * B.orbitDir;
+            const k = prox * P.strafeChance;
+            mx = mx * (1 - k * 0.5) + tx * k;
+            mz = mz * (1 - k * 0.5) + tz * k;
+        }
+
+        /* 2. Weave */
+        const wv = Math.sin(B.weaveT * 1.7 + B.seed) * P.weave;
+        const cw = Math.cos(wv), sw = Math.sin(wv);
+        const wx = mx * cw - mz * sw;
+        const wz = mx * sw + mz * cw;
+
+        /* 3. Pause (shufflers) */
+        if (P.pauseChance > 0 && B.pauseTimer <= 0 && Math.random() < P.pauseChance * dt) {
+            B.pauseTimer = 0.35 + Math.random() * 0.65;
+        }
+        if (B.pauseTimer > 0) speedMul *= 0.15;
+
+        /* 4. Lunge (leapers) */
+        if (P.lungeChance > 0 && B.lungeTimer <= 0) {
+            B.lungeActive = 0.4;
+            B.lungeTimer = 2.0 + Math.random() * 1.3;
+        }
+        if (B.lungeActive > 0) speedMul *= 1.85;
+
+        const len = Math.hypot(wx, wz) || 1;
+        return { x: wx / len, z: wz / len, speedMul };
+    }
 
     function boxVoxels(x0, y0, z0, w, h, d, color) {
         const out = [];
@@ -345,15 +449,20 @@
 
             const F = preset.face || "default";
 
-            /* ---------- 2. Necrotic blotches on the skin ---------- */
+            /* Extra: cracked-bone patches + a slow drool on a random cheek */
             for (let x = -6; x <= 5; x++) {
-                for (let y = 0; y <= 10; y++) {
-                    const h = hash3(x * 13 + 7, y * 7 + 3, 11);
-                    if (h > 0.93 && h < 0.975) {
+                for (let y = 3; y <= 8; y++) {
+                    const h = hash3(x * 5 + 3, y * 9 + 5, 17);
+                    if (h > 0.965) {
                         const v = map.get(k3(x, y, -6));
-                        if (v && v[3] === C.skin) v[3] = C.necrosis;
+                        if (v && v[3] === C.skin) v[3] = C.skinDark;
                     }
                 }
+            }
+            /* Two thin drool strands under the mouth for extra dead-ness */
+            if (F !== "skull") {
+                setV(-2, 0, -6, C.drool);
+                setV(1, 0, -6, C.drool);
             }
 
             /* ---------- 3. Exposed brain + stitches ---------- */
@@ -676,6 +785,15 @@
                 return C.cloth;
             });
 
+            /* Ragged bottom hem */
+            for (let x = -7; x <= 7; x++) {
+                const h = hash3(x * 3 + 11, 3, 7);
+                if (h > 0.7) {
+                    const v = voxels.find(v => v[0] === x && v[1] === 3 && v[2] < 0);
+                    if (v && v[3] === C.cloth) v[3] = C.clothDark;
+                }
+            }
+
             return voxels;
         }
 
@@ -714,7 +832,7 @@
                     if (z <= 0) {
                         const h = hash3(x * 11, y * 5, z * 19);
                         if (h > 0.955) return null;             // hole
-                        if (h > 0.925) return C.clothFlesh;     // skin showing
+                        if (h > 0.905) return C.clothFlesh;     // skin showing
                         if (h > 0.875) return C.clothStain;     // stain
                         if (h > 0.840) return C.clothPatches;   // patch
                     }
@@ -1752,8 +1870,8 @@
         }),
 
         /* ============================================================
-   ALIEN TYPES — non-humanoid bodies (see buildAlien)
-   ============================================================ */
+       ALIEN TYPES — non-humanoid bodies (see buildAlien)
+       ============================================================ */
 
         greyscout: buildAlien({
             shape: "greenscout", voxelSize: 0.0325,
@@ -1838,6 +1956,167 @@
             attackDamage: 11, attackRange: 1.5,
         }),
     };
+
+    /* ==== BOSS DRAFTS ==== */
+
+    function _miniBoss() {
+        const m = buildZombie({
+            face: "shadow", voxelSize: 0.1, armLen: 34, legLen: 16, torsoH: 24,
+            palette: {
+                skin: 0x9a9a92, skinDark: 0x6a6a66, skinShade: 0x808080,
+                cloth: 0x2a2a2a, clothLight: 0x3a3a3a, clothDark: 0x1a1a1a,
+                pants: 0x1a1a1c, pantsDark: 0x0a0a0c,
+                eye: 0xff2020, eyeWhite: 0xff6020,
+                wound: 0x8a1818, flesh: 0xa02020, fleshDark: 0x6a1010,
+                teeth: 0xf0e0c0, mouth: 0x300808,
+                brain: 0xd04060, brainDark: 0x801828, brainLight: 0xf07090,
+                stitch: 0xd8d0c0,
+            },
+            hp: 4000, speedWalk: 0.4, speedRun: 2.0, attackDamage: 45,
+            attackRange: 3.0, colHW: 1.1, colH: 2.8,
+            hitHW: 1.5,        // was 1.2
+            hitHH: 2.2,        // was 1.6
+            hitCenterY: 2.2,   // was 1.6  → box now spans 0 m to 4.4 m
+        });
+
+        const torso = m.parts.torso.voxels;
+        const armL = m.parts.armL.voxels;
+        const armR = m.parts.armR.voxels;
+        const head = m.parts.head.voxels;
+
+        /* ---- 1. HULKING SHOULDERS & ARMS ---- */
+        for (const arm of [armL, armR]) {
+            const extraVoxels = [];
+            for (let i = 0; i < arm.length; i++) {
+                const v = arm[i];
+                // Expand the upper arm/shoulder area
+                if (v[1] > -16 && v[1] < -2) {
+                    extraVoxels.push([v[0] + (v[0] > 0 ? 1 : -1), v[1], v[2], v[3]]);
+                    if (Math.random() < 0.3) extraVoxels.push([v[0], v[1], v[2] + 1, v[3]]);
+                }
+                // Expand the forearms/fists
+                if (v[1] <= -16 && v[1] > -34) {
+                    extraVoxels.push([v[0] + (v[0] > 0 ? 1 : -1), v[1], v[2], v[3]]);
+                }
+            }
+            for (let i = 0; i < extraVoxels.length; i++) {
+                arm.push(extraVoxels[i]);
+            }
+        }
+
+        /* ---- 2. TEAL VEINS & BLOODY HANDS ---- */
+        for (const arm of [armL, armR]) {
+            for (const v of arm) {
+                if ((v[0] + v[1] + v[2]) % 7 === 0 && v[3] === 0x9a9a92) {
+                    v[3] = 0x40b0a0;
+                }
+                // Bloody hands/fists at the bottom
+                if (v[1] <= -28) {
+                    v[3] = 0x6a1010;
+                    if (Math.random() < 0.3) v[3] = 0xa02020;
+                }
+            }
+        }
+
+        /* ---- 3. EXPOSED RIBS ---- */
+        for (let y = 6; y < 24; y += 2) {
+            for (let x = -4; x <= 4; x++) {
+                if (Math.abs(x) < 2) continue;
+                if (y === 8 || y === 12 || y === 16 || y === 20) {
+                    torso.push([x, y, -5 - Math.floor(Math.abs(x) * 0.2), 0xd8d0c0]);
+                }
+            }
+        }
+
+        /* ---- 4. SMALL HEAD ON BIG BODY ---- */
+        for (let x = -4; x <= 3; x++) {
+            head.push([x, 2, -4, 0x2a2a2a]);
+            head.push([x, 1, -4, 0x1a1a1a]);
+        }
+        head.push([-2, 5, -5, 0xff2020]);
+        head.push([1, 5, -5, 0xff2020]);
+
+        /* ---- 5. HUNCHED POSTURE ---- */
+        for (const v of torso) v[2] -= 1;
+        for (const v of head) v[2] -= 1;
+
+        return m;
+    }
+
+    function _finalBoss() {
+        const m = buildZombie({
+            face: 'roar',
+            voxelSize: 0.12,
+            armLen: 32, legLen: 28, torsoH: 34,
+            palette: {
+                skin: 0x4a1010, skinDark: 0x2a0808, skinShade: 0x3a0a0a,
+                cloth: 0x0a0202, clothLight: 0x140404, clothDark: 0x000000,
+                pants: 0x0a0402, pantsDark: 0x000000,
+                eye: 0xffe020, eyeWhite: 0xffe880,
+                wound: 0x400808, flesh: 0x801010, fleshDark: 0x4a0808,
+                teeth: 0xfff0d0, mouth: 0x200404,
+                necrosis: 0x100404,
+                brain: 0x602040, brainDark: 0x401028, brainLight: 0x905060,
+                stitch: 0xa09070,
+            },
+            hp: 12000, speedWalk: 1.5, speedRun: 2.1,
+            attackDamage: 80, attackRange: 2.6,
+            colHW: 1.05, colH: 3.4,
+            hitHW: 1.2, hitHH: 2.0, hitCenterY: 2.0,
+        });
+
+        /* ---- Jagged back spine ---- */
+        const torso = m.parts.torso.voxels;
+        for (let y = 4; y < 30; y += 2) {
+            const h = Math.round(2 + Math.sin(y * 0.4) * 1.5);
+            for (let i = 0; i < h; i++) {
+                torso.push([0, y + i, 4 + i, i === 0 ? 0x101010 : 0x201010]);
+            }
+        }
+
+        /* ---- Barbed wing stubs on the shoulders ---- */
+        for (const sx of [-1, 1]) {
+            for (let i = 0; i < 5; i++) {
+                torso.push([sx * (9 + i), 20 - i, 0, 0x2a1010]);
+                torso.push([sx * (9 + i), 19 - i, 1, 0x1a0808]);
+            }
+        }
+
+        /* ---- Glowing rib-cage runes ---- */
+        for (let y = 10; y < 22; y += 2) {
+            for (let x = -5; x <= 5; x++) {
+                if (Math.abs(x) < 2) continue;
+                if ((x + y) % 3 === 0) {
+                    torso.push([x, y, -5 - Math.floor(Math.abs(x) * 0.2), 0xd04020]);
+                }
+            }
+        }
+
+        /* ---- Demon crown: gold with bone spikes ---- */
+        const head = m.parts.head.voxels;
+        for (let dx = -6; dx <= 6; dx++) {
+            head.push([dx, 14, 0, 0xd8b040]);
+            head.push([dx, 15, 0, 0xffd860]);
+            if (dx % 2 === 0) head.push([dx, 16, 0, 0xffd860]);
+        }
+        /* Bone horns curling forward */
+        for (const side of [-1, 1]) {
+            const hx0 = side * 6;
+            for (let i = 0; i < 8; i++) {
+                head.push([hx0 + side * Math.round(i * 0.4), 14 + i, -Math.round(i * 0.3), 0x1a0a06]);
+            }
+            head.push([hx0 + side * 3, 22, -3, 0xf0e0c0]);
+        }
+        /* Glowing eyes set into the crown base */
+        head.push([-3, 13, -5, 0xffe020]);
+        head.push([2, 13, -5, 0xffe020]);
+
+        return m;
+    }
+
+    /* wire into MODELS after ZOMBIE_TYPES is built */
+    ZOMBIE_TYPES.__mini_boss__ = _miniBoss();
+    ZOMBIE_TYPES.__final_boss__ = _finalBoss();
 
     const MODELS = ZOMBIE_TYPES;
 
@@ -2066,15 +2345,15 @@
             if (v[2] > mxZ) mxZ = v[2];
         }
         if (!isFinite(mnX)) return { cx: 0, cy: 0, cz: 0, radius: 0.08 };
+        const ex = (mxX - mnX + 1) * vs;
+        const ey = (mxY - mnY + 1) * vs;
+        const ez = (mxZ - mnZ + 1) * vs;
         return {
             cx: ((mnX + mxX + 1) * 0.5) * vs,
             cy: ((mnY + mxY + 1) * 0.5) * vs,
             cz: ((mnZ + mxZ + 1) * 0.5) * vs,
-            radius: 0.5 * Math.max(
-                (mxX - mnX + 1) * vs,
-                (mxY - mnY + 1) * vs,
-                (mxZ - mnZ + 1) * vs,
-            ),
+            // true bounding-sphere radius = half-diagonal
+            radius: 0.5 * Math.sqrt(ex * ex + ey * ey + ez * ez),
         };
     }
 
@@ -2083,6 +2362,50 @@
         const aabb = partVoxelAABB(part, vs);
         out.set(aabb.cx, aabb.cy, aabb.cz).applyMatrix4(part.mesh.matrixWorld);
         return out;
+    }
+
+    /* Compute the local Y of the lowest remaining voxel in the whole rig,
+   walking the part → parent chain and adding each pivot's Y. */
+    function computeLowestVoxelY(e) {
+        const vs = e.model.voxelSize;
+        let lowest = Infinity;
+
+        function visit(partKey, parentY) {
+            const p = e.parts[partKey];
+            if (!p) return;
+            const thisY = parentY + p.basePivot[1];
+            if (p.connected && p.voxels.length > 0) {
+                const voxels = p.voxels;
+                for (let i = 0; i < voxels.length; i++) {
+                    const wy = thisY + voxels[i][1] * vs;
+                    if (wy < lowest) lowest = wy;
+                }
+            }
+            for (const ck in e.parts) {
+                if (e.parts[ck].parent === partKey) visit(ck, thisY);
+            }
+        }
+
+        for (const key in e.parts) {
+            if (e.parts[key].parent === "root") visit(key, 0);
+        }
+        return lowest;
+    }
+
+    /* Record a baseline at spawn (0 offset), then only shift when parts get
+       carved AWAY.  This preserves existing look for crawlers (which start
+       with empty legs on purpose). */
+    function updateVisualGroundOffset(e) {
+        if (!e || !e.model) return;
+        const current = computeLowestVoxelY(e);
+        if (!isFinite(current)) { e._visualYOffset = 0; return; }
+        if (e._groundBaseline == null) {
+            e._groundBaseline = current;
+            e._visualYOffset = 0;
+            return;
+        }
+        const delta = current - e._groundBaseline;
+        e._visualYOffset = delta > 0 ? -delta : 0;
     }
 
     /* =========================================================================
@@ -2415,6 +2738,8 @@
             } catch (err) { }
         }
 
+        if (part.owner) updateVisualGroundOffset(part.owner);
+
         return removed;
     }
 
@@ -2425,6 +2750,586 @@
     if (!Hooks.enemies) Hooks.enemies = enemies;
     const MAX_ENEMIES = 16;
     const DETACHED_PARTS = [];
+
+    /* --- Boss Projectiles (Thrown Blocks) --- */
+    const bossProjectiles = [];
+    const MAX_BOSS_PROJECTILES = 5;
+    const blockGeo = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+    const blockMat = new THREE.MeshLambertMaterial({ color: 0x6a6a66, fog: true });
+
+    // ─── Tunables ─────────────────────────────────────────────
+    const BOSS_THROW_SPEED = 9;    // horizontal m/s — lower = slower + higher arc
+    const BOSS_THROW_BLAST = 1.5;  // impact blast radius in METRES (was 0.3 m!)
+    const BOSS_THROW_HIT_R = 2.0;  // trigger radius vs. player (metres, was ~1.2 m)
+
+    /* ---- MINI-BOSS THROW: find & break a nearby world voxel CLUSTER ---- */
+
+    /* Convert the raw voxel value from getV() into a usable hex colour.
+       If it looks like a packed 0xRRGGBB we use it directly; otherwise
+       (i.e. it's just a small type index) fall back to the stone colour. */
+    function voxelValueToColor(val) {
+        if (val === 0) return 0x6a6a66;
+        if (val >= 0x10000 && val <= 0xffffff) return val;
+        return 0x6a6a66;
+    }
+
+    function findNearbyVoxelClusterForThrow(e) {
+        const toPlayerX = player.pos.x - e.pos.x;
+        const toPlayerZ = player.pos.z - e.pos.z;
+        const dist = Math.hypot(toPlayerX, toPlayerZ) || 1;
+        const fx = toPlayerX / dist, fz = toPlayerZ / dist;
+
+        const forwardOffset = Math.min(2.0, Math.max(1.0, dist * 0.35));
+        const baseX = e.pos.x + fx * forwardOffset;
+        const baseZ = e.pos.z + fz * forwardOffset;
+        const baseY = e.pos.y;
+
+        const bvx = Math.floor(baseX / VOXEL);
+        const bvy = Math.floor(baseY / VOXEL);
+        const bvz = Math.floor(baseZ / VOXEL);
+
+        // Locate the nearest solid voxel to anchor the cluster
+        let centerVX = null, centerVY = null, centerVZ = null;
+        let bestDist = Infinity;
+        for (let dy = -2; dy <= 2; dy++) {
+            for (let dx = -3; dx <= 3; dx++) {
+                for (let dz = -3; dz <= 3; dz++) {
+                    const vx = bvx + dx, vy = bvy + dy, vz = bvz + dz;
+                    if (getV(vx, vy, vz) !== 0) {
+                        const d = dx * dx + dy * dy + dz * dz;
+                        if (d < bestDist) {
+                            bestDist = d;
+                            centerVX = vx; centerVY = vy; centerVZ = vz;
+                        }
+                    }
+                }
+            }
+        }
+        if (centerVX === null) return null;
+
+        // *** Radius of the collected / carved chunk, in VOXEL units. ***
+        // This single number now drives BOTH the block size AND the hole size.
+        const R = 10;
+
+        // Collect every solid voxel INSIDE the sphere of radius R.
+        // Restricting to a sphere (not a cube) makes the held block exactly
+        // match what carveSphere will remove from the terrain.
+        const voxels = [];
+        const R2 = R * R;
+        for (let dy = -R; dy <= R; dy++) {
+            for (let dx = -R; dx <= R; dx++) {
+                for (let dz = -R; dz <= R; dz++) {
+                    if (dx * dx + dy * dy + dz * dz > R2) continue;
+                    const vx = centerVX + dx;
+                    const vy = centerVY + dy;
+                    const vz = centerVZ + dz;
+                    const val = getV(vx, vy, vz);
+                    if (val !== 0) {
+                        voxels.push({ vx, vy, vz, color: voxelValueToColor(val) });
+                    }
+                }
+            }
+        }
+        if (voxels.length < 6) return null;
+
+        return { voxels, centerVX, centerVY, centerVZ, R };
+    }
+
+    /* Build a single merged BufferGeometry from the cluster's world voxels,
+       translated so its AABB centre is at the mesh origin. */
+    function buildClusterGeometry(voxels, vs) {
+        if (!voxels.length) return null;
+
+        let mnX = Infinity, mnY = Infinity, mnZ = Infinity;
+        let mxX = -Infinity, mxY = -Infinity, mxZ = -Infinity;
+        for (const v of voxels) {
+            if (v.vx < mnX) mnX = v.vx;
+            if (v.vx > mxX) mxX = v.vx;
+            if (v.vy < mnY) mnY = v.vy;
+            if (v.vy > mxY) mxY = v.vy;
+            if (v.vz < mnZ) mnZ = v.vz;
+            if (v.vz > mxZ) mxZ = v.vz;
+        }
+
+        const sizeX = mxX - mnX + 1;
+        const sizeY = mxY - mnY + 1;
+        const sizeZ = mxZ - mnZ + 1;
+
+        const localVoxels = voxels.map(v => [
+            v.vx - mnX,
+            v.vy - mnY,
+            v.vz - mnZ,
+            v.color,
+        ]);
+
+        const geo = buildVoxelGeometry(localVoxels, vs);
+        if (!geo) return null;
+
+        // Center geometry on its own AABB centre
+        geo.translate(
+            -sizeX * 0.5 * vs,
+            -sizeY * 0.5 * vs,
+            -sizeZ * 0.5 * vs,
+        );
+
+        const centerWorld = new THREE.Vector3(
+            (mnX + mxX + 1) * 0.5 * vs,
+            (mnY + mxY + 1) * 0.5 * vs,
+            (mnZ + mxZ + 1) * 0.5 * vs,
+        );
+
+        return {
+            geo,
+            centerWorld,
+            size: Math.max(sizeX, sizeY, sizeZ) * vs,
+            halfY: sizeY * 0.5 * vs,
+        };
+    }
+
+    function spawnHeldBlockForThrow(e) {
+        const cluster = findNearbyVoxelClusterForThrow(e);
+        let startPos = null;
+        let mesh = null;
+        let blockSize = 0.6;
+        let blockHalfY = 0.3;
+
+        if (cluster) {
+            const built = buildClusterGeometry(cluster.voxels, VOXEL);
+            if (built && built.geo) {
+                // Build the mesh BEFORE carving — this is the exact block
+                startPos = built.centerWorld.clone();
+                blockSize = built.size;
+                blockHalfY = built.halfY;
+
+                mesh = new THREE.Mesh(built.geo, ENEMY_MAT);
+                mesh.position.copy(startPos);
+                mesh.rotation.set(
+                    (Math.random() - 0.5) * 0.25,
+                    Math.random() * Math.PI * 2,
+                    (Math.random() - 0.5) * 0.25,
+                );
+
+                // Now carve that same region out of the world — SAME radius
+                // the cluster was collected with, so the hole matches the block.
+                if (Hooks.carveSphere) {
+                    Hooks.carveSphere(
+                        cluster.centerVX, cluster.centerVY, cluster.centerVZ,
+                        cluster.R,
+                        { ignite: false, debrisChance: 0.4 },
+                    );
+                }
+            }
+        }
+
+        // Fallback — simple stone box if no terrain was reachable
+        if (!mesh) {
+            const size = 0.7;
+            blockSize = size;
+            blockHalfY = size * 0.5;
+            const geo = new THREE.BoxGeometry(size, size, size);
+            const fx = Math.sin(e.yaw + Math.PI);
+            const fz = Math.cos(e.yaw + Math.PI);
+            startPos = new THREE.Vector3(
+                e.pos.x + fx * 1.5,
+                e.pos.y + 0.4,
+                e.pos.z + fz * 1.5,
+            );
+            mesh = new THREE.Mesh(geo, blockMat);
+            mesh.position.copy(startPos);
+        }
+
+        scene.add(mesh);
+        e.heldBlock = {
+            mesh,
+            startPos: startPos.clone(),
+            size: blockSize,
+            halfY: blockHalfY,
+        };
+    }
+
+    /* Get the "hand" (bottom-centre) of an arm part in world space. */
+    const _handTmp = new THREE.Vector3();
+    function getArmHandWorldPos(armPart, out) {
+        if (!armPart || !armPart.connected || !armPart.mesh || !armPart.mesh.geometry) {
+            out.set(0, 0, 0);
+            return out;
+        }
+        const geom = armPart.mesh.geometry;
+        if (!geom.boundingBox) geom.computeBoundingBox();
+        const bb = geom.boundingBox;
+        if (!bb || !isFinite(bb.min.y)) {
+            armPart.pivot.getWorldPosition(out);
+            return out;
+        }
+        out.set(
+            (bb.min.x + bb.max.x) * 0.5,
+            bb.min.y,
+            (bb.min.z + bb.max.z) * 0.5,
+        ).applyMatrix4(armPart.mesh.matrixWorld);
+        return out;
+    }
+
+    /* Place the held block at the midpoint of both hands. */
+    const _handL = new THREE.Vector3();
+    const _handR = new THREE.Vector3();
+    const _heldTarget = new THREE.Vector3();
+
+    function updateHeldBlockPosition(e, dt) {
+        const hb = e.heldBlock;
+        if (!hb || !hb.mesh) return;
+        const armL = e.parts.armL;
+        const armR = e.parts.armR;
+        if (!armL || !armR) return;
+
+        // Refresh world matrices so we read this frame's hand transform
+        e.rig.root.updateMatrixWorld(true);
+
+        getArmHandWorldPos(armL, _handL);
+        getArmHandWorldPos(armR, _handR);
+
+        _heldTarget.set(
+            (_handL.x + _handR.x) * 0.5,
+            (_handL.y + _handR.y) * 0.5 + (hb.halfY || 0.3) * 0.5,
+            (_handL.z + _handR.z) * 0.5,
+        );
+
+        const k = Math.min(1, dt * 15);
+        hb.mesh.position.lerp(_heldTarget, k);
+    }
+
+    /* Release the held voxel chunk as a ballistic projectile.
+   Called from animateMiniBoss at T = 4.0 (end of the throw phase). */
+    function launchHeldBlock(e) {
+        if (e._blockThrown) return;
+        e._blockThrown = true;
+
+        // Safety: if the held block is somehow gone, fall back to a plain box
+        if (!e.heldBlock || !e.heldBlock.mesh) {
+            spawnBossBlock(e);
+            return;
+        }
+
+        const mesh = e.heldBlock.mesh;
+        e.heldBlock = null;
+
+        const startX = mesh.position.x;
+        const startY = mesh.position.y;
+        const startZ = mesh.position.z;
+
+        const targetX = player.pos.x;
+        const targetY = player.pos.y + 0.9;
+        const targetZ = player.pos.z;
+
+        const dx = targetX - startX;
+        const dy = targetY - startY;
+        const dz = targetZ - startZ;
+        const distH = Math.hypot(dx, dz);
+
+        // Ballistic aim — solve for vy so the chunk lands on the player
+        // after the same flight time the old fixed-speed throw used.
+        const t = Math.max(0.35, distH / BOSS_THROW_SPEED);
+        const vy = (dy + 0.5 * GRAVITY * t * t) / t;
+        const hx = distH > 1e-4 ? dx / distH : 0;
+        const hz = distH > 1e-4 ? dz / distH : 0;
+
+        const vel = new THREE.Vector3(
+            hx * BOSS_THROW_SPEED,
+            vy,
+            hz * BOSS_THROW_SPEED,
+        );
+
+        // Enforce projectile cap — dispose the oldest thrown chunk properly
+        if (bossProjectiles.length >= MAX_BOSS_PROJECTILES) {
+            const oldest = bossProjectiles.shift();
+            scene.remove(oldest.mesh);
+            if (oldest.ownsGeometry && oldest.mesh.geometry) {
+                oldest.mesh.geometry.dispose();
+            }
+        }
+
+        // ownsGeometry: true — this chunk's BufferGeometry is unique
+        // (built from buildVoxelGeometry for the carved cluster), so it
+        // must be disposed when the projectile dies.
+        bossProjectiles.push({ mesh, vel, life: 6.0, ownsGeometry: true });
+        e.attackPhase = 0.001;
+        if (window.Sfx) Sfx.play("voxel_break");
+    }
+
+    function spawnBossBlock(e) {
+        if (bossProjectiles.length >= MAX_BOSS_PROJECTILES) {
+            const oldest = bossProjectiles.shift();
+            scene.remove(oldest.mesh);
+        }
+
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), blockMat);
+        const startX = e.pos.x + (player.pos.x > e.pos.x ? 1.2 : -1.2);
+        const startY = e.pos.y + 2.0;
+        const startZ = e.pos.z;
+        mesh.position.set(startX, startY, startZ);
+        scene.add(mesh);
+
+        const targetX = player.pos.x;
+        const targetY = player.pos.y + 0.9;
+        const targetZ = player.pos.z;
+
+        const dx = targetX - startX;
+        const dy = targetY - startY;
+        const dz = targetZ - startZ;
+        const distH = Math.hypot(dx, dz);
+
+        // ── Ballistic aim ────────────────────────────────────────
+        // The old code just nudged vel.y by dist*0.25, which only
+        // works at speed 11.  With a slower throw it would fall
+        // way short.  Solve for vy so the block still arrives at
+        // the target after the longer flight time.
+        const t = Math.max(0.35, distH / BOSS_THROW_SPEED);
+        const vy = (dy + 0.5 * GRAVITY * t * t) / t;
+        const hx = distH > 1e-4 ? dx / distH : 0;
+        const hz = distH > 1e-4 ? dz / distH : 0;
+
+        const vel = new THREE.Vector3(
+            hx * BOSS_THROW_SPEED,
+            vy,
+            hz * BOSS_THROW_SPEED,
+        );
+
+        bossProjectiles.push({ mesh, vel, life: 6.0 });
+
+        e.attackPhase = 0.001;
+        if (window.Sfx) Sfx.play("voxel_break");
+    }
+
+    /* =========================================================================
+   STONE WAVE (ground slam projectile — travels forward, NO terrain damage)
+   ========================================================================= */
+    const stoneWaves = [];
+    const MAX_STONE_WAVES = 6;
+    const STONE_WAVE_SPEED = 7.5;   // m/s forward
+    const STONE_WAVE_LIFE = 1.5;   // seconds
+    const STONE_WAVE_HIT_R = 1.5;   // damage radius vs player
+    const STONE_WAVE_DAMAGE = 35;
+
+    const DUST_PARTICLES = [];
+    const MAX_DUST = 200;
+    const DUST_MAT = new THREE.MeshLambertMaterial({ color: 0x8a7a60, fog: true });
+    let _dustGeo = null;
+    function getDustGeo() {
+        if (!_dustGeo) _dustGeo = new THREE.BoxGeometry(0.05, 0.05, 0.05);
+        return _dustGeo;
+    }
+
+    function spawnDustBurst(x, y, z, count) {
+        for (let i = 0; i < count; i++) {
+            if (DUST_PARTICLES.length >= MAX_DUST) {
+                const old = DUST_PARTICLES.shift();
+                scene.remove(old.mesh);
+            }
+            const mesh = new THREE.Mesh(getDustGeo(), DUST_MAT);
+            mesh.position.set(
+                x + (Math.random() - 0.5) * 0.5,
+                y + Math.random() * 0.4,
+                z + (Math.random() - 0.5) * 0.5,
+            );
+            scene.add(mesh);
+            const life = 0.6 + Math.random() * 0.6;
+            DUST_PARTICLES.push({
+                mesh,
+                vel: new THREE.Vector3(
+                    (Math.random() - 0.5) * 1.8,
+                    0.7 + Math.random() * 1.4,
+                    (Math.random() - 0.5) * 1.8,
+                ),
+                life, maxLife: life,
+            });
+        }
+    }
+
+    function updateDustParticles(dt) {
+        for (let i = DUST_PARTICLES.length - 1; i >= 0; i--) {
+            const d = DUST_PARTICLES[i];
+            d.life -= dt;
+            if (d.life <= 0) {
+                scene.remove(d.mesh);
+                DUST_PARTICLES.splice(i, 1);
+                continue;
+            }
+            d.vel.y -= 7 * dt;
+            d.mesh.position.x += d.vel.x * dt;
+            d.mesh.position.y += d.vel.y * dt;
+            d.mesh.position.z += d.vel.z * dt;
+            const s = Math.max(0.3, d.life / d.maxLife);
+            d.mesh.scale.setScalar(s * 1.3);
+        }
+    }
+
+    let _stoneHillGeo = null;
+    function getStoneHillGeometry() {
+        if (_stoneHillGeo) return _stoneHillGeo;
+        const voxels = [];
+        const R = 4;
+        for (let dy = 0; dy <= R; dy++) {
+            const ringR2 = (R - dy + 0.5) * (R - dy + 0.5);
+            for (let dx = -R; dx <= R; dx++) {
+                for (let dz = -R; dz <= R; dz++) {
+                    if (dx * dx + dz * dz > ringR2) continue;
+                    let col;
+                    const h = hash3(dx * 13, dy * 7, dz * 19);
+                    if (dy === 0) col = 0x4a4a46;
+                    else if (dy >= R - 1) col = 0x8a8a82;
+                    else if (h > 0.7) col = 0x555550;
+                    else if (h > 0.4) col = 0x6a6a66;
+                    else col = 0x7a7a72;
+                    voxels.push([dx, dy, dz, col]);
+                }
+            }
+        }
+        _stoneHillGeo = buildVoxelGeometry(voxels, 0.1);
+        return _stoneHillGeo;
+    }
+
+    function spawnStoneWave(e) {
+        if (stoneWaves.length >= MAX_STONE_WAVES) {
+            const old = stoneWaves.shift();
+            scene.remove(old.mesh);
+        }
+
+        // Direction is LOCKED at slam start.  Model "front" is local −z, so with
+        // rotation.y = yaw the world forward direction is (−sin yaw, 0, −cos yaw).
+        const dirX = -Math.sin(e.slamYaw);
+        const dirZ = -Math.cos(e.slamYaw);
+
+        const startX = e.pos.x + dirX * 1.5;
+        const startZ = e.pos.z + dirZ * 1.5;
+
+        let groundY = e.pos.y;
+        const vx = Math.floor(startX / VOXEL);
+        const vz = Math.floor(startZ / VOXEL);
+        for (let y = SY - 1; y > 0; y--) {
+            if (getV(vx, y, vz) !== 0) { groundY = (y + 1) * VOXEL; break; }
+        }
+
+        const mesh = new THREE.Mesh(getStoneHillGeometry(), ENEMY_MAT);
+        mesh.position.set(startX, groundY, startZ);
+        mesh.scale.setScalar(0.35);
+        scene.add(mesh);
+
+        stoneWaves.push({
+            mesh, dirX, dirZ,
+            life: STONE_WAVE_LIFE, maxLife: STONE_WAVE_LIFE,
+            dustTimer: 0, hitPlayer: false,
+        });
+
+        spawnDustBurst(startX, groundY + 0.2, startZ, 25);
+        spawnDustBurst(e.pos.x + dirX * 0.5, e.pos.y + 0.2, e.pos.z + dirZ * 0.5, 15);
+
+        if (window.Sfx) Sfx.play("explosion");
+        if (Hooks.shakeCamera) Hooks.shakeCamera(0.85);
+    }
+
+    function updateStoneWaves(dt) {
+        for (let i = stoneWaves.length - 1; i >= 0; i--) {
+            const w = stoneWaves[i];
+            w.life -= dt;
+            w.dustTimer -= dt;
+
+            if (w.life <= 0) {
+                scene.remove(w.mesh);
+                stoneWaves.splice(i, 1);
+                continue;
+            }
+
+            const step = STONE_WAVE_SPEED * dt;
+            w.mesh.position.x += w.dirX * step;
+            w.mesh.position.z += w.dirZ * step;
+
+            const vx = Math.floor(w.mesh.position.x / VOXEL);
+            const vz = Math.floor(w.mesh.position.z / VOXEL);
+            for (let y = SY - 1; y > 0; y--) {
+                if (getV(vx, y, vz) !== 0) { w.mesh.position.y = (y + 1) * VOXEL; break; }
+            }
+
+            const t = 1 - w.life / w.maxLife;
+            const bulge = Math.sin(t * Math.PI);
+            const s = 0.35 + bulge * 1.0;
+            w.mesh.scale.set(s, s * 1.2, s);
+
+            if (w.dustTimer <= 0) {
+                w.dustTimer = 0.04 + Math.random() * 0.04;
+                spawnDustBurst(w.mesh.position.x, w.mesh.position.y + 0.15, w.mesh.position.z, 2);
+            }
+
+            if (!w.hitPlayer && player && player.alive) {
+                const dx = player.pos.x - w.mesh.position.x;
+                const dy = (player.pos.y + player.height * 0.4) - (w.mesh.position.y + 0.5);
+                const dz = player.pos.z - w.mesh.position.z;
+                if (dx * dx + dy * dy + dz * dz < STONE_WAVE_HIT_R * STONE_WAVE_HIT_R) {
+                    w.hitPlayer = true;
+                    if (Hooks.damagePlayer) Hooks.damagePlayer(STONE_WAVE_DAMAGE);
+                    if (Hooks.shakeCamera) Hooks.shakeCamera(0.5);
+                    spawnDustBurst(player.pos.x, player.pos.y + 0.5, player.pos.z, 10);
+                }
+            }
+        }
+    }
+
+    function updateBossProjectiles(dt) {
+        for (let i = bossProjectiles.length - 1; i >= 0; i--) {
+            const p = bossProjectiles[i];
+            p.life -= dt;
+
+            if (p.life <= 0) {
+                scene.remove(p.mesh);
+                if (p.ownsGeometry && p.mesh.geometry) p.mesh.geometry.dispose();
+                bossProjectiles.splice(i, 1);
+                continue;
+            }
+
+            p.vel.y -= GRAVITY * dt;
+            p.mesh.position.addScaledVector(p.vel, dt);
+            p.mesh.rotation.x += dt * 10;
+            p.mesh.rotation.y += dt * 8;
+
+            // 1. Close enough to the player → detonate
+            const dx = p.mesh.position.x - player.pos.x;
+            const dy = p.mesh.position.y - (player.pos.y + 0.9);
+            const dz = p.mesh.position.z - player.pos.z;
+            const hitR2 = BOSS_THROW_HIT_R * BOSS_THROW_HIT_R;
+            if (dx * dx + dy * dy + dz * dz < hitR2) {
+                const vx = Math.floor(p.mesh.position.x / VOXEL);
+                const vy = Math.floor(p.mesh.position.y / VOXEL);
+                const vz = Math.floor(p.mesh.position.z / VOXEL);
+                if (Hooks.explodeAt) Hooks.explodeAt(vx, vy, vz, BOSS_THROW_BLAST);
+                if (Hooks.shakeCamera) Hooks.shakeCamera(0.55);
+                if (Hooks.spawnBloodBurst) {
+                    Hooks.spawnBloodBurst(
+                        p.mesh.position.x, p.mesh.position.y, p.mesh.position.z, 15,
+                    );
+                }
+                scene.remove(p.mesh);
+                if (p.ownsGeometry && p.mesh.geometry) p.mesh.geometry.dispose();
+                bossProjectiles.splice(i, 1);
+                continue;
+            }
+
+            // 2. Hit the world → detonate
+            const vx = Math.floor(p.mesh.position.x / VOXEL);
+            const vy = Math.floor(p.mesh.position.y / VOXEL);
+            const vz = Math.floor(p.mesh.position.z / VOXEL);
+            if (getV(vx, vy, vz) !== 0) {
+                if (Hooks.explodeAt) {
+                    Hooks.explodeAt(vx, vy, vz, BOSS_THROW_BLAST);
+                } else if (Hooks.carveSphere) {
+                    // Fallback for older game.js without Hooks.explodeAt
+                    Hooks.carveSphere(vx, vy, vz, 35, { ignite: false, debrisChance: 0.4 });
+                }
+                if (Hooks.shakeCamera) Hooks.shakeCamera(0.4);
+                scene.remove(p.mesh);
+                if (p.ownsGeometry && p.mesh.geometry) p.mesh.geometry.dispose();
+                bossProjectiles.splice(i, 1);
+                continue;
+            }
+        }
+    }
 
     /* ==== DEATH ANIMATION STATE ============================================= */
     const _dTmp = new THREE.Vector3();
@@ -2481,6 +3386,8 @@
             crawlMode: false, crawlBlend: 0, _anim: null,
         };
 
+        e.behavior = createBehavior(BEHAVIOR_BY_KIND[type] || 'shuffler');
+
         // NEW: MP identity
         e._mpId = mpId || genEnemyId();
         e._remoteOwned = !!mpId;
@@ -2504,6 +3411,9 @@
                 if (leg.mesh) leg.mesh.visible = false;
             }
         }
+
+        // Record the model's natural ground contact as the baseline.
+        updateVisualGroundOffset(e);   // sets _groundBaseline, leaves _visualYOffset = 0
 
         e.dying = false;
         e.deathT = 0;
@@ -2542,7 +3452,7 @@
        ========================================================================= */
     const _centre = new THREE.Vector3();
 
-    function hurtEnemy(e, dmg) {
+    function hurtEnemy(e, dmg, carveRadiusWorld) {
         if (!e || !e.alive) return;
         const _infinite = window.ARiveSandboxFlags && window.ARiveSandboxFlags.infiniteEnemyHealth;
         applyHitSlow(e);
@@ -2561,7 +3471,11 @@
         if (pick < 0) { e.hp -= dmg; checkEnemyDeath(e); return; }
         const sv = part.voxels[pick];
         voxelWorldPosition(part, sv, vs, _centre);
-        carvePartAt(part, _centre, 1.85, vs);
+        const radiusVox = (typeof carveRadiusWorld === "number" && carveRadiusWorld > 0)
+            ? carveRadiusWorld * ENEMY_CARVE_WORLD_TO_VOX
+            : 1.85;
+        carvePartAt(part, _centre, radiusVox, vs);
+
         for (let i = 0; i < 5; i++) {
             spawnBloodDrop(
                 _centre.x + (Math.random() - 0.5) * 0.10,
@@ -2608,6 +3522,14 @@
     function killEnemy(e) {
         if (!e.alive) return;
         e.alive = false;
+        if (e.heldBlock) {
+            scene.remove(e.heldBlock.mesh);
+            if (e.heldBlock.mesh.geometry) e.heldBlock.mesh.geometry.dispose();
+            e.heldBlock = null;
+        }
+        if (window.SurvivalMode) {
+            try { window.SurvivalMode.onEnemyKilled(e); } catch (err) { }
+        }
         e.dying = true;
         e.deathT = 0;
         e.deathDuration = 1.1;
@@ -2733,6 +3655,15 @@
         /* Phase 3 — after full duration, remove the empty root */
         if (e.deathT >= e.deathDuration) {
             scene.remove(e.rig.root);
+
+            // ✅ 新增：释放未散架的部位几何体
+            if (!e._scattered) {
+                for (const key in e.parts) {
+                    const p = e.parts[key];
+                    if (p.mesh && p.mesh.geometry) p.mesh.geometry.dispose();
+                }
+            }
+
             const idx = enemies.indexOf(e);
             if (idx >= 0) enemies.splice(idx, 1);
         }
@@ -2849,7 +3780,13 @@
     const _aimCamPosLocal = new THREE.Vector3();
     const _aimCamDirLocal = new THREE.Vector3();
 
-    function hitEnemyRay(hitX, hitY, hitZ, damage, dirX, dirY, dirZ) {
+    /* carveRadiusWorld is optional and comes from the weapon JSON.
+       It maps the weapon's world-space carveRadius onto the enemy's
+       voxel space.  1.1 world units ≈ 1.85 enemy voxels (the old
+       hard-coded value), so we scale by 1.85 / 1.1 ≈ 1.68. */
+    const ENEMY_CARVE_WORLD_TO_VOX = 1.85 / 1.1;
+
+    function hitEnemyRay(hitX, hitY, hitZ, damage, dirX, dirY, dirZ, carveRadiusWorld) {
         const _infinite =
             window.ARiveSandboxFlags && window.ARiveSandboxFlags.infiniteEnemyHealth;
         _hitV.set(hitX, hitY, hitZ);
@@ -2859,9 +3796,20 @@
             const dx = hitX - e.pos.x;
             const dy = hitY - e.pos.y;
             const dz = hitZ - e.pos.z;
-            if (dy < -0.4 || dy > 2.0) continue;
+
+            // ── Per-enemy pre-filter ──────────────────────────────────
+            // Vertical: allow up to 1.5× colH above the feet (bosses have
+            // heads way above their collision height).
+            const colH = e.model.colH || 1.45;
+            if (dy < -0.6 || dy > colH * 1.5 + 0.5) continue;
+
+            // Horizontal: allow body half-width + a big margin so arms,
+            // heads, and outstretched limbs are covered.
+            const halfW = Math.max(e.model.colHW || 0.28, e.model.hitHW || 0.36);
+            const maxR = halfW + 1.0;
             const dxz2 = dx * dx + dz * dz;
-            if (dxz2 > 1.6) continue;
+            if (dxz2 > maxR * maxR) continue;
+
             for (const key in e.parts) {
                 const p = e.parts[key];
                 if (!p.connected || p.voxels.length === 0) continue;
@@ -2878,7 +3826,7 @@
         // carving locally so both sides stay in lockstep.
         const _mp = window.ARiveMP;
         if (_mp && _mp.connected && !_mp.isHost && bestE._mpId && _mp.sendEnemyHurt) {
-            _mp.sendEnemyHurt(bestE._mpId, hitX, hitY, hitZ, damage, dirX, dirY, dirZ);
+            _mp.sendEnemyHurt(bestE._mpId, hitX, hitY, hitZ, damage, dirX, dirY, dirZ, carveRadiusWorld);
             return true;
         }
 
@@ -2914,7 +3862,10 @@
             ? voxelWorldPosition(part, nearestVoxel, vs, _tmpCarve, part.mesh.matrixWorld)
             : _hitV;
 
-        carvePartAt(part, carveAt, 1.85, vs);
+        const radiusVox = (typeof carveRadiusWorld === "number" && carveRadiusWorld > 0)
+            ? carveRadiusWorld * ENEMY_CARVE_WORLD_TO_VOX
+            : 1.85;
+        carvePartAt(part, carveAt, radiusVox, vs);
         for (let i = 0; i < 5; i++) {
             spawnBloodDrop(
                 carveAt.x + (Math.random() - 0.5) * 0.10,
@@ -2950,25 +3901,157 @@
     }
 
     /* =========================================================================
-       ANIMATION — REWRITTEN v2
-       -------------------------------------------------------------------------
-       The previous pass used rotation.x < 0 for "reach forward", which is
-       backwards.  Local −Z is the side the enemy face is drawn on, so:
-    
-         rotation.x > 0  →  limb swings FORWARD  (toward the player)
-         rotation.x < 0  →  limb swings BACKWARD (away from the player)
-         rotation.z > 0  →  limb swings toward +X
-         rotation.z < 0  →  limb swings toward −X
-    
-       armL sits on −X, armR on +X.  To spread arms OUTWARD:
-         armL.rotation.z < 0,  armR.rotation.z > 0.
-       To tuck them IN: flip those signs.
-    
-       Every animator below obeys this.  All previously-missing animators are
-       now present, and animateSerpent has been completed.
-       ========================================================================= */
+   ANIMATION — v3 with per-enemy variants
+   -------------------------------------------------------------------------
+   Every enemy rolls THREE animation profiles at spawn:
+       · walkProfile   — gait (legAmp, armReach, torsoLean, …)
+       · idleProfile   — standing-around posture (sway, breath, twitch)
+       · attackProfile — strike style (lunge / bite / slash / pounce)
 
-    /* ---------- global easing helpers (unchanged) ---------- */
+   Profiles are pure data.  The animators read them and apply the numbers,
+   so a horde reads as INDIVIDUALS — one walker drags, another stumbles,
+   a third sidles.  A per-type style object further specializes the base
+   archetype numbers (rotters lean more, oldbloods tremble more, etc.).
+
+   The state machine is smoothed: idle ↔ walk blends via `A.stateBlend`,
+   and attack overrides legs/arms while active.
+   ========================================================================= */
+
+    function _pickRandom(arr) {
+        return arr[(Math.random() * arr.length) | 0];
+    }
+
+    /* ---- Profile pools per archetype ---------------------------------------- */
+
+    const ARCH_PROFILES = {
+        /* Shuffler — slow, damaged, drooping */
+        shuffler: {
+            walk: [
+                { name: 'limp', legAmp: 0.62, armReach: 1.05, armHang: 0.55, lean: -0.10, loll: 0.20, roll: 0.08, limpSign: -1, bob: 0.045 },
+                { name: 'drag', legAmp: 0.38, armReach: 0.85, armHang: 0.65, lean: 0.18, loll: 0.35, roll: 0.04, limpSign: -1, bob: 0.060 },
+                { name: 'stumble', legAmp: 0.82, armReach: 1.20, armHang: 0.70, lean: 0.06, loll: 0.15, roll: 0.12, limpSign: 1, bob: 0.035 },
+                { name: 'sidle', legAmp: 0.45, armReach: 1.00, armHang: 0.50, lean: 0.02, loll: 0.25, roll: 0.18, limpSign: 1, bob: 0.055 },
+            ],
+            idle: [
+                { name: 'sway', swayAmp: 0.10, breathAmp: 0.05, headBob: 0.15, trembleAmp: 0.05, lurchSpeed: 0.40 },
+                { name: 'twitch', swayAmp: 0.04, breathAmp: 0.08, headBob: 0.25, trembleAmp: 0.15, lurchSpeed: 0.60 },
+                { name: 'hunger', swayAmp: 0.08, breathAmp: 0.12, headBob: 0.35, trembleAmp: 0.10, lurchSpeed: 0.50 },
+            ],
+            attack: [
+                { name: 'lunge', armSwing: 0.85, leanAmt: 0.35, headThrust: 0.35, step: 0.4, dur: 0.35 },
+                { name: 'double', armSwing: 1.10, leanAmt: 0.28, headThrust: 0.30, step: 0.6, dur: 0.42 },
+            ],
+        },
+
+        /* Rusher — fast, aggressive, forward-driving */
+        rusher: {
+            walk: [
+                { name: 'sprint', legAmp: 0.85, armReach: 0.85, armHang: 0.85, lean: 0.42, loll: 0.05, roll: 0.05, limpSign: 1, bob: 0.050 },
+                { name: 'lunging', legAmp: 1.00, armReach: 1.10, armHang: 0.75, lean: 0.50, loll: 0.10, roll: 0.04, limpSign: 1, bob: 0.055 },
+                { name: 'charge', legAmp: 0.92, armReach: 0.70, armHang: 0.90, lean: 0.55, loll: 0.02, roll: 0.03, limpSign: 1, bob: 0.040 },
+            ],
+            idle: [
+                { name: 'pant', swayAmp: 0.06, breathAmp: 0.15, headBob: 0.20, trembleAmp: 0.12, lurchSpeed: 0.70 },
+                { name: 'coil', swayAmp: 0.08, breathAmp: 0.10, headBob: 0.10, trembleAmp: 0.08, lurchSpeed: 0.55 },
+            ],
+            attack: [
+                { name: 'swipe', armSwing: 1.20, leanAmt: 0.50, headThrust: 0.30, step: 0.7, dur: 0.32 },
+                { name: 'bite', armSwing: 0.60, leanAmt: 0.65, headThrust: 0.60, step: 0.5, dur: 0.40 },
+            ],
+        },
+
+        /* Circler — controlled, stalking, watchful */
+        circler: {
+            walk: [
+                { name: 'stalk', legAmp: 0.55, armReach: 0.75, armHang: 0.55, lean: 0.10, loll: 0.10, roll: 0.06, limpSign: 1, bob: 0.030 },
+                { name: 'menace', legAmp: 0.62, armReach: 0.95, armHang: 0.60, lean: 0.15, loll: 0.08, roll: 0.08, limpSign: 1, bob: 0.040 },
+            ],
+            idle: [
+                { name: 'stare', swayAmp: 0.05, breathAmp: 0.06, headBob: 0.10, trembleAmp: 0.04, lurchSpeed: 0.35 },
+                { name: 'menace', swayAmp: 0.10, breathAmp: 0.08, headBob: 0.15, trembleAmp: 0.10, lurchSpeed: 0.50 },
+            ],
+            attack: [
+                { name: 'slash', armSwing: 1.00, leanAmt: 0.30, headThrust: 0.25, step: 0.5, dur: 0.38 },
+            ],
+        },
+
+        /* Ambusher — crouching, coiling, ready to leap */
+        ambusher: {
+            walk: [
+                { name: 'creep', legAmp: 0.70, armReach: 0.90, armHang: 0.65, lean: 0.25, loll: 0.15, roll: 0.10, limpSign: 1, bob: 0.045 },
+                { name: 'prowl', legAmp: 0.65, armReach: 0.80, armHang: 0.55, lean: 0.20, loll: 0.12, roll: 0.14, limpSign: 1, bob: 0.055 },
+            ],
+            idle: [
+                { name: 'breath', swayAmp: 0.04, breathAmp: 0.10, headBob: 0.08, trembleAmp: 0.06, lurchSpeed: 0.30 },
+            ],
+            attack: [
+                { name: 'claw', armSwing: 1.15, leanAmt: 0.40, headThrust: 0.30, step: 0.6, dur: 0.35 },
+            ],
+        },
+
+        /* Leaper — bouncy, coiled, pouncy */
+        leaper: {
+            walk: [
+                { name: 'hop', legAmp: 0.75, armReach: 1.05, armHang: 0.60, lean: 0.10, loll: 0.05, roll: 0.05, limpSign: 1, bob: 0.080 },
+                { name: 'coil', legAmp: 0.88, armReach: 1.15, armHang: 0.70, lean: 0.18, loll: 0.08, roll: 0.04, limpSign: 1, bob: 0.065 },
+            ],
+            idle: [
+                { name: 'ready', swayAmp: 0.06, breathAmp: 0.15, headBob: 0.12, trembleAmp: 0.15, lurchSpeed: 0.65 },
+            ],
+            attack: [
+                { name: 'pounce', armSwing: 1.30, leanAmt: 0.55, headThrust: 0.45, step: 0.9, dur: 0.30 },
+            ],
+        },
+
+        /* Pack — team hunters */
+        pack: {
+            walk: [
+                { name: 'jog', legAmp: 0.72, armReach: 0.90, armHang: 0.65, lean: 0.15, loll: 0.10, roll: 0.06, limpSign: 1, bob: 0.045 },
+            ],
+            idle: [
+                { name: 'wait', swayAmp: 0.08, breathAmp: 0.07, headBob: 0.12, trembleAmp: 0.06, lurchSpeed: 0.40 },
+            ],
+            attack: [
+                { name: 'grab', armSwing: 1.00, leanAmt: 0.35, headThrust: 0.30, step: 0.5, dur: 0.36 },
+            ],
+        },
+    };
+
+    /* Per-type style modifiers — multiplies base archetype numbers so each
+       enemy kind gets a recognizable personality without a bespoke animator. */
+    const TYPE_STYLE = {
+        walker: { armReachMul: 1.00, armHangMul: 1.00, leanMul: 0.75, lollMul: 1.00, bobMul: 1.00, tremorMul: 1.0 },
+        rotter: { armReachMul: 0.85, armHangMul: 1.10, leanMul: 1.30, lollMul: 1.25, bobMul: 1.30, tremorMul: 1.5 },
+        oldblood: { armReachMul: 0.95, armHangMul: 1.00, leanMul: 1.00, lollMul: 1.00, bobMul: 0.80, tremorMul: 2.2 },
+        crawler: { armReachMul: 1.00, armHangMul: 1.00, leanMul: 1.00, lollMul: 1.00, bobMul: 0.60, tremorMul: 1.0 },
+        runner: { armReachMul: 0.90, armHangMul: 0.95, leanMul: 1.15, lollMul: 0.70, bobMul: 1.10, tremorMul: 0.8 },
+        capboy: { armReachMul: 0.95, armHangMul: 1.00, leanMul: 1.10, lollMul: 0.90, bobMul: 1.20, tremorMul: 0.7 },
+        brute: { armReachMul: 0.70, armHangMul: 1.40, leanMul: 0.85, lollMul: 0.75, bobMul: 1.60, tremorMul: 1.2 },
+        demon: { armReachMul: 1.10, armHangMul: 0.90, leanMul: 1.20, lollMul: 0.85, bobMul: 1.00, tremorMul: 0.9 },
+        skull: { armReachMul: 1.40, armHangMul: 0.50, leanMul: 0.40, lollMul: 0.50, bobMul: 0.50, tremorMul: 1.4 },
+        hatty: { armReachMul: 1.05, armHangMul: 1.00, leanMul: 0.90, lollMul: 1.10, bobMul: 1.00, tremorMul: 0.8 },
+        beanie: { armReachMul: 1.00, armHangMul: 1.10, leanMul: 1.00, lollMul: 1.20, bobMul: 1.10, tremorMul: 0.9 },
+        formal: { armReachMul: 0.75, armHangMul: 0.95, leanMul: 0.60, lollMul: 0.75, bobMul: 0.60, tremorMul: 0.6 },
+        vested: { armReachMul: 1.05, armHangMul: 1.05, leanMul: 1.25, lollMul: 0.95, bobMul: 1.30, tremorMul: 0.8 },
+        stripey: { armReachMul: 1.25, armHangMul: 0.90, leanMul: 0.80, lollMul: 1.15, bobMul: 1.60, tremorMul: 0.7 },
+        blondie: { armReachMul: 1.20, armHangMul: 0.95, leanMul: 0.85, lollMul: 1.30, bobMul: 1.30, tremorMul: 1.0 },
+        hooded: { armReachMul: 0.90, armHangMul: 1.10, leanMul: 1.40, lollMul: 0.90, bobMul: 0.90, tremorMul: 1.1 },
+        greyscout: { armReachMul: 1.10, armHangMul: 0.95, leanMul: 0.80, lollMul: 1.00, bobMul: 1.30, tremorMul: 1.2 },
+        wisp: { armReachMul: 1.05, armHangMul: 1.00, leanMul: 0.70, lollMul: 1.00, bobMul: 1.00, tremorMul: 1.0 },
+        trilens: { armReachMul: 1.00, armHangMul: 1.00, leanMul: 1.00, lollMul: 1.00, bobMul: 1.00, tremorMul: 1.0 },
+        blobtron: { armReachMul: 1.00, armHangMul: 1.00, leanMul: 1.00, lollMul: 1.00, bobMul: 1.00, tremorMul: 1.0 },
+        voidtwin: { armReachMul: 1.05, armHangMul: 1.00, leanMul: 0.50, lollMul: 0.90, bobMul: 1.00, tremorMul: 0.8 },
+        bloom: { armReachMul: 1.00, armHangMul: 1.00, leanMul: 1.00, lollMul: 1.00, bobMul: 1.00, tremorMul: 1.0 },
+        serpent: { armReachMul: 1.00, armHangMul: 1.00, leanMul: 1.00, lollMul: 1.00, bobMul: 1.00, tremorMul: 1.0 },
+        imp: { armReachMul: 1.20, armHangMul: 0.90, leanMul: 1.15, lollMul: 0.85, bobMul: 1.40, tremorMul: 0.9 },
+        __mini_boss__: { armReachMul: 0.80, armHangMul: 1.40, leanMul: 0.90, lollMul: 0.70, bobMul: 1.50, tremorMul: 1.0 },
+        __final_boss__: { armReachMul: 0.75, armHangMul: 1.55, leanMul: 0.85, lollMul: 0.65, bobMul: 1.70, tremorMul: 1.0 },
+    };
+
+    const DEFAULT_STYLE = { armReachMul: 1, armHangMul: 1, leanMul: 1, lollMul: 1, bobMul: 1, tremorMul: 1 };
+
+    /* ---- Shared helpers ----------------------------------------------------- */
+
     function _pulse(t) {
         if (t <= 0 || t >= 1) return 0;
         return Math.sin(t * Math.PI);
@@ -2987,9 +4070,6 @@
         if (t >= 1) return 1;
         return 1 - Math.pow(1 - t, 3);
     }
-    function _skitterLeg(phase, offset) {
-        return Math.sin(((phase + offset) % 1) * Math.PI * 2);
-    }
     function _tremor(A, k) {
         const p = A.tremblePhase;
         return Math.sin(p * 7.3 + k) * 0.5
@@ -2997,44 +4077,62 @@
             + Math.sin(p * 23.1 + k * 3.7) * 0.2;
     }
 
+    /* ---- Anim state --------------------------------------------------------- */
+
     function ensureAnimState(e) {
-        if (!e._anim) {
-            const seed = Math.random() * 100;
-            e._anim = {
-                walkPhase: e.walkPhase || Math.random() * Math.PI * 2,
-                idlePhase: Math.random() * Math.PI * 2,
-                breathPhase: Math.random() * Math.PI * 2,
-                bouncePhase: Math.random() * Math.PI * 2,
-                swayPhase: Math.random() * Math.PI * 2,
-                antennaeT: Math.random() * 6.28,
-                headTurn: 0, headPitch: 0,
-                lookTimer: 0, lookDir: 0,
-                blinkPhase: Math.random() * 6.28, blinkT: 0,
-                flinch: 0, flinchRoll: 0,
-                limpSide: ((seed | 0) & 1) ? 1 : -1,
-                limpPhase: 0, dragAccum: 0,
-                sprintPhase: Math.random() * 6.28,
-                sprintLean: 0,
-                tremblePhase: Math.random() * 6.28,
-                trembleAmp: 0,
-                ticTimer: 1.0 + Math.random() * 2.0,
-                ticDir: 0,
-                coilPhase: Math.random() * 6.28,
-                stompT: Math.random() * 0.5,
-                hopCharge: 0, hopAirborne: 0, hopCrouch: 0,
-                tentaclePhase: new Array(8).fill(0).map(() => Math.random() * 6.28),
-                hoodFlare: 0, coilWave: Math.random() * 6.28,
-                floatPhase: Math.random() * 6.28,
-                hairPhase: Math.random() * 6.28,
-                eyeStalkBounce: Math.random() * 6.28,
-                breatheRate: 0.9 + Math.random() * 0.4,
-                _seed: seed,
-            };
-        }
+        if (e._anim) return e._anim;
+
+        const seed = Math.random() * 100;
+        const arche = (e.behavior && e.behavior.archetype) || 'shuffler';
+        const pool = ARCH_PROFILES[arche] || ARCH_PROFILES.shuffler;
+
+        /* Roll variants — this is what makes every individual unique. */
+        const walkProfile = _pickRandom(pool.walk);
+        const idleProfile = _pickRandom(pool.idle);
+        const attackProfile = _pickRandom(pool.attack);
+
+        const style = TYPE_STYLE[e.kind] || DEFAULT_STYLE;
+
+        e._anim = {
+            walkProfile, idleProfile, attackProfile, style,
+
+            walkPhase: e.walkPhase || Math.random() * Math.PI * 2,
+            idlePhase: Math.random() * Math.PI * 2,
+            breathPhase: Math.random() * Math.PI * 2,
+            bouncePhase: Math.random() * Math.PI * 2,
+            swayPhase: Math.random() * Math.PI * 2,
+            antennaeT: Math.random() * 6.28,
+            headTurn: 0, headPitch: 0,
+            lookTimer: 0, lookDir: 0,
+            blinkPhase: Math.random() * 6.28, blinkT: 0,
+            flinch: 0, flinchRoll: 0,
+            limpSide: ((seed | 0) & 1) ? 1 : -1,
+            limpPhase: 0, dragAccum: 0,
+            sprintPhase: Math.random() * 6.28,
+            sprintLean: 0,
+            tremblePhase: Math.random() * 6.28,
+            trembleAmp: 0,
+            ticTimer: 1.0 + Math.random() * 2.0,
+            ticDir: 0,
+            coilPhase: Math.random() * 6.28,
+            stompT: Math.random() * 0.5,
+            hopCharge: 0, hopAirborne: 0, hopCrouch: 0,
+            tentaclePhase: new Array(8).fill(0).map(() => Math.random() * 6.28),
+            hoodFlare: 0, coilWave: Math.random() * 6.28,
+            floatPhase: Math.random() * 6.28,
+            hairPhase: Math.random() * 6.28,
+            eyeStalkBounce: Math.random() * 6.28,
+            breatheRate: 0.9 + Math.random() * 0.4,
+            lungeWind: 0,
+            stateBlend: 0,           // 0 = idle, 1 = walk
+            attackBlend: 0,          // 0 = none, 1 = full attack
+            _seed: seed,
+        };
         return e._anim;
     }
 
-    /* ---------- shared per-frame state response (unchanged behaviour) ---------- */
+    /* ---- Shared per-frame state -------------------------------------------- */
+
     function applySharedAnimationLogic(e, dt, A, moving, attackReach) {
         A.idlePhase += dt * 1.4;
         A.breathPhase += dt * A.breatheRate;
@@ -3042,14 +4140,18 @@
         A.blinkPhase += dt * 3.2;
         A.tremblePhase += dt;
 
+        /* Smooth idle ↔ walk blending. */
+        const walkTarget = moving ? 1 : 0;
+        A.stateBlend += (walkTarget - A.stateBlend) * Math.min(1, dt * 5);
+
+        /* Look-at-player head tracking */
         A.lookTimer -= dt;
         if (A.lookTimer <= 0) {
             A.lookTimer = 1.6 + Math.random() * 3.0;
             A.lookDir = Math.random() * 2 - 1;
             const dx = player.pos.x - e.pos.x;
             const dz = player.pos.z - e.pos.z;
-            const d2 = dx * dx + dz * dz;
-            if (d2 < 25) {
+            if (dx * dx + dz * dz < 25) {
                 const worldYaw = Math.atan2(dx, dz);
                 let rel = worldYaw - e.yaw;
                 while (rel > Math.PI) rel -= Math.PI * 2;
@@ -3079,13 +4181,18 @@
         }
         if (e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt * 4);
 
+        /* Attack blend for smooth override. */
+        const attackTarget = attackReach > 0.05 ? 1 : 0;
+        A.attackBlend += (attackTarget - A.attackBlend) * Math.min(1, dt * 10);
+
         const crawlTarget = e.crawlMode ? 1 : 0;
         e.crawlBlend += (crawlTarget - e.crawlBlend) * Math.min(1, dt * 6);
 
         return attackReach;
     }
 
-    /* ---------- dispatcher ---------- */
+    /* ---- Dispatcher --------------------------------------------------------- */
+
     function animateEnemy(e, dt) {
         const A = ensureAnimState(e);
         let attackReach = 0;
@@ -3101,555 +4208,390 @@
         if (bt === "insect") return animateImpInsect(e, dt, A, moving, attackReach);
         if (bt === "hopper") return animateBloomHopper(e, dt, A, moving, attackReach);
 
-        if (k === "brute") return animateBrute(e, dt, A, moving, attackReach);
-        if (k === "runner" || k === "capboy")
-            return animateRunner(e, dt, A, moving, attackReach);
-        if (k === "demon") return animateDemon(e, dt, A, moving, attackReach);
-        if (k === "oldblood") return animateOldblood(e, dt, A, moving, attackReach);
-        if (k === "skull") return animateSkull(e, dt, A, moving, attackReach);
-        if (k === "rotter" || k === "beanie")
-            return animateRotter(e, dt, A, moving, attackReach);
-        if (k === "hooded") return animateHooded(e, dt, A, moving, attackReach);
-        if (k === "crawler") return animateCrawler(e, dt, A, moving, attackReach);
-        if (k === "greyscout") return animateGreyscout(e, dt, A, moving, attackReach);
-        if (k === "voidtwin") return animateVoidtwin(e, dt, A, moving, attackReach);
-        if (k === "wisp") return animateWisp(e, dt, A, moving, attackReach);
-        if (k === "trilens") return animateTrilens(e, dt, A, moving, attackReach);
-
-        animateWalkerZombie(e, dt, A, moving, attackReach);
+        switch (k) {
+            case "__mini_boss__": return animateMiniBoss(e, dt, A, moving, attackReach);
+            case "brute": return animateBrute(e, dt, A, moving, attackReach);
+            case "runner":
+            case "capboy": return animateRunner(e, dt, A, moving, attackReach);
+            case "demon": return animateDemon(e, dt, A, moving, attackReach);
+            case "oldblood": return animateOldblood(e, dt, A, moving, attackReach);
+            case "skull": return animateSkull(e, dt, A, moving, attackReach);
+            case "rotter": return animateRotter(e, dt, A, moving, attackReach);
+            case "beanie": return animateBeanie(e, dt, A, moving, attackReach);
+            case "hooded": return animateHooded(e, dt, A, moving, attackReach);
+            case "crawler": return animateCrawler(e, dt, A, moving, attackReach);
+            case "greyscout": return animateGreyscout(e, dt, A, moving, attackReach);
+            case "voidtwin": return animateVoidtwin(e, dt, A, moving, attackReach);
+            case "wisp": return animateWisp(e, dt, A, moving, attackReach);
+            case "trilens": return animateTrilens(e, dt, A, moving, attackReach);
+            case "hatty": return animateHatty(e, dt, A, moving, attackReach);
+            case "blondie": return animateBlondie(e, dt, A, moving, attackReach);
+            case "formal": return animateFormal(e, dt, A, moving, attackReach);
+            case "vested": return animateVested(e, dt, A, moving, attackReach);
+            case "stripey": return animateStripey(e, dt, A, moving, attackReach);
+            case "walker":
+            default: return animateWalkerZombie(e, dt, A, moving, attackReach);
+        }
     }
 
     /* =========================================================================
-       ZOMBIE ANIMATORS
+       ZOMBIE ANIMATORS (profile-driven)
        ========================================================================= */
 
-    /**
-     * Walker — asymmetric limp/drag gait, BOTH arms reaching forward in the
-     * classic shambling pose.  The dragging side hangs lower, the other side
-     * reaches higher.
-     */
-    function animateWalkerZombie(e, dt, A, moving, attackReach) {
+    /* Shared humanoid walk+idle primitive.  Every zombie animator below is a
+       thin layer over this that adds a small per-type personality flourish. */
+    function applyHumanoidGait(e, dt, A, moving, attackReach, opts) {
+        opts = opts || {};
         const parts = e.parts;
+        const W = A.walkProfile;
+        const I = A.idleProfile;
+        const P = A.attackProfile;
+        const S = A.style;
         const spd = Math.hypot(e.vel.x, e.vel.z);
-        const baseAmp = moving ? 1 : 0.15;
+
+        const walkK = A.stateBlend;
+        const idleK = 1 - walkK;
+
+        /* Advance gait phase faster when moving, slow when idling. */
         if (moving) A.walkPhase += dt * (1.5 + spd * 0.6);
         else A.walkPhase += dt * 0.55;
 
         const swing = Math.sin(A.walkPhase);
         const swing2 = Math.sin(A.walkPhase * 2);
-        const limpSide = A.limpSide;
+        const breath = Math.sin(A.breathPhase);
+        const idleSway = Math.sin(A.idlePhase * 0.7) * idleK;
 
-        /* Legs: dragging leg has almost no forward swing on backstroke */
-        const dragL = limpSide < 0 ? Math.max(0, -swing) : 0;
-        const dragR = limpSide > 0 ? Math.max(0, swing) : 0;
-        const legAmp = 0.62 * (1 - e.crawlBlend) * baseAmp;
+        const legAmp = W.legAmp * walkK;
+        const limp = A.limpSide * W.limpSign;
 
-        if (parts.legL.connected) {
-            parts.legL.pivot.rotation.x = (swing - dragL) * legAmp;
-            parts.legL.pivot.rotation.z = -Math.abs(swing) * 0.05;
+        /* --- Legs --- */
+        const dragL = limp < 0 ? Math.max(0, -swing) : 0;
+        const dragR = limp > 0 ? Math.max(0, swing) : 0;
+        if (parts.legL && parts.legL.connected) {
+            parts.legL.pivot.rotation.x = (swing - dragL) * legAmp
+                + idleSway * 0.02 * I.swayAmp * 10;
+            parts.legL.pivot.rotation.z = -Math.abs(swing) * 0.05 * walkK;
         }
-        if (parts.legR.connected) {
-            parts.legR.pivot.rotation.x = (-swing + dragR) * legAmp;
-            parts.legR.pivot.rotation.z = Math.abs(swing) * 0.05;
+        if (parts.legR && parts.legR.connected) {
+            parts.legR.pivot.rotation.x = (-swing + dragR) * legAmp
+                - idleSway * 0.02 * I.swayAmp * 10;
+            parts.legR.pivot.rotation.z = Math.abs(swing) * 0.05 * walkK;
         }
 
-        /* Arms — both reach forward.  Which one reaches further flips with
-           the limp side so the character reads as lurching side-to-side. */
-        const reachKey = limpSide < 0 ? "armR" : "armL";
-        const hangKey = limpSide < 0 ? "armL" : "armR";
-        const reach = parts[reachKey];
-        const hang = parts[hangKey];
+        /* --- Arms --- */
+        const reachKey = limp < 0 ? "armR" : "armL";
+        const hangKey = limp < 0 ? "armL" : "armR";
 
-        const moveK = moving ? 1 : 0.4;
-        const reachBase = 1.05 * moveK + 0.20;   // high, pointing forward
-        const hangBase = 0.55 * moveK + 0.25;   // lower, more relaxed
+        const reachBase = (W.armReach * walkK + 0.20 * idleK) * S.armReachMul;
+        const hangBase = (W.armHang * walkK + 0.25 * idleK) * S.armHangMul;
 
-        /* Counter-sway while walking */
-        const swayAmp = moving ? 0.14 : 0.05;
-        const swayReach = Math.sin(A.walkPhase + (limpSide < 0 ? 0 : Math.PI)) * swayAmp;
+        const swayAmp = (0.14 * walkK + 0.05 * idleK);
+        const swayReach = Math.sin(A.walkPhase + (limp < 0 ? 0 : Math.PI)) * swayAmp;
         const swayHang = Math.sin(A.walkPhase * 0.7 + 1.5) * swayAmp * 0.6;
+        const atk = attackReach * P.armSwing;
 
-        /* Attack: both arms jab forward (positive rotation.x) */
-        const atk = attackReach * 0.85;
-
-        if (reach && reach.connected) {
-            reach.pivot.rotation.x = reachBase + swayReach + atk;
-            reach.pivot.rotation.z = (reachKey === "armL" ? -0.06 : 0.06)
-                + Math.sin(A.walkPhase * 0.5 + 1.3) * 0.04;
+        if (parts[reachKey] && parts[reachKey].connected) {
+            parts[reachKey].pivot.rotation.x = reachBase + swayReach + atk;
+            parts[reachKey].pivot.rotation.z =
+                (reachKey === "armL" ? -0.06 : 0.06) + Math.sin(A.walkPhase * 0.5 + 1.3) * 0.04;
+            parts[reachKey].pivot.rotation.y = idleSway * 0.10;
         }
-        if (hang && hang.connected) {
-            hang.pivot.rotation.x = hangBase + swayHang + atk * 0.35;
-            hang.pivot.rotation.z = (hangKey === "armL" ? -0.22 : 0.22)
-                + Math.sin(A.walkPhase * 0.3) * 0.04;
+        if (parts[hangKey] && parts[hangKey].connected) {
+            parts[hangKey].pivot.rotation.x = hangBase + swayHang + atk * 0.35;
+            parts[hangKey].pivot.rotation.z =
+                (hangKey === "armL" ? -0.22 : 0.22) + Math.sin(A.walkPhase * 0.3) * 0.04;
+            parts[hangKey].pivot.rotation.y = -idleSway * 0.08;
         }
 
+        /* --- Torso --- */
         if (parts.torso.connected) {
-            const walkLean = moving ? -0.10 : 0;
+            const walkLean = W.lean * walkK * S.leanMul;
+            const idleLean = breath * I.breathAmp * 0.4 * idleK;
             const crawlLean = 1.15 * e.crawlBlend;
-            const atkLean = 0.35 * attackReach;
-            const breathLean = Math.sin(A.breathPhase) * 0.02;
-            parts.torso.pivot.rotation.x = walkLean + crawlLean + atkLean + breathLean;
-            parts.torso.pivot.rotation.z = limpSide * (moving ? 0.08 : 0.025) + A.flinchRoll;
-            parts.torso.pivot.rotation.y = swing2 * 0.03;
-            const bob = Math.abs(swing) * 0.045 * (1 - e.crawlBlend);
+            const atkLean = attackReach * P.leanAmt;
+            parts.torso.pivot.rotation.x = walkLean + idleLean + crawlLean + atkLean;
+            parts.torso.pivot.rotation.z =
+                limp * W.roll * walkK * S.leanMul
+                + idleSway * I.swayAmp * 2
+                + A.flinchRoll;
+            parts.torso.pivot.rotation.y = swing2 * 0.03 * walkK;
+            const bob = Math.abs(swing) * W.bob * (1 - e.crawlBlend);
             parts.torso.pivot.position.y = parts.torso.basePivot[1] - bob;
         }
 
-        if (parts.head.connected) {
+        /* --- Head --- */
+        if (parts.head && parts.head.connected) {
             const lagSwing = Math.sin(A.walkPhase - 0.8);
-            /* Head lolls FORWARD and slightly down */
+            const idleBob = Math.sin(A.idlePhase * 0.9) * I.headBob * idleK;
             parts.head.pivot.rotation.x =
-                0.20 * moving + lagSwing * 0.05 + attackReach * 0.35
-                - A.headPitch * 0.06 - A.flinch * 0.35;
+                W.loll * walkK * S.lollMul
+                + lagSwing * 0.05 * walkK
+                + idleBob
+                + attackReach * P.headThrust
+                - A.headPitch * 0.06
+                - A.flinch * 0.35;
             parts.head.pivot.rotation.y =
-                A.headTurn * 0.3 + Math.sin(A.walkPhase * 0.4) * 0.08;
-            parts.head.pivot.rotation.z = limpSide * (moving ? 0.10 : 0.04);
+                A.headTurn * 0.3 + Math.sin(A.walkPhase * 0.4) * 0.08 * walkK;
+            parts.head.pivot.rotation.z =
+                limp * (0.10 * walkK + 0.04 * idleK) + idleSway * I.swayAmp * 0.5;
         }
     }
 
-    /**
-     * Brute — heavy stomp gait, big overhead slam.
-     */
+    /* ---- Walker ---- */
+    function animateWalkerZombie(e, dt, A, moving, attackReach) {
+        applyHumanoidGait(e, dt, A, moving, attackReach, {});
+    }
+
+    /* ---- Rotter (mooshy wander) ---- */
+    function animateRotter(e, dt, A, moving, attackReach) {
+        applyHumanoidGait(e, dt, A, moving, attackReach, {});
+        const parts = e.parts;
+        A.limpPhase += dt * 0.45;
+        const wander = Math.sin(A.limpPhase);
+        /* Extra joint wobble on the torso and head. */
+        if (parts.torso.connected) {
+            parts.torso.pivot.rotation.z += wander * 0.03;
+            parts.torso.pivot.rotation.y += Math.sin(A.walkPhase * 0.5) * 0.03;
+        }
+        if (parts.head && parts.head.connected) {
+            parts.head.pivot.rotation.z += wander * 0.05;
+        }
+    }
+
+    /* ---- Oldblood (heavy tremor) ---- */
+    function animateOldblood(e, dt, A, moving, attackReach) {
+        applyHumanoidGait(e, dt, A, moving, attackReach, {});
+        const parts = e.parts;
+        const tgt = moving ? 0.55 : 0.25;
+        A.trembleAmp += (tgt - A.trembleAmp) * Math.min(1, dt * 3);
+        A.ticTimer -= dt;
+        if (A.ticTimer <= 0) {
+            A.ticTimer = 1.5 + Math.random() * 2.5;
+            A.ticDir = Math.random() < 0.5 ? -1 : 1;
+        }
+        const tAmp = A.trembleAmp * A.style.tremorMul;
+        if (parts.armL.connected) {
+            parts.armL.pivot.rotation.x += _tremor(A, 2.1) * tAmp * 0.12;
+            parts.armL.pivot.rotation.z += _tremor(A, 5.0) * tAmp * 0.05;
+        }
+        if (parts.armR.connected) {
+            parts.armR.pivot.rotation.x += _tremor(A, 2.9) * tAmp * 0.12;
+            parts.armR.pivot.rotation.z -= _tremor(A, 6.1) * tAmp * 0.05;
+        }
+        if (parts.head.connected) {
+            parts.head.pivot.rotation.x += _tremor(A, 7.2) * tAmp * 0.08;
+            parts.head.pivot.rotation.y += _tremor(A, 8.1) * tAmp * 0.06;
+            parts.head.pivot.rotation.z += _tremor(A, 9.3) * tAmp * 0.05;
+        }
+        if (parts.torso.connected) {
+            parts.torso.pivot.rotation.z += A.ticDir * 0.04 * tAmp;
+        }
+    }
+
+    /* ---- Runner ---- */
+    function animateRunner(e, dt, A, moving, attackReach) {
+        applyHumanoidGait(e, dt, A, moving, attackReach, {});
+        const parts = e.parts;
+        const tgt = moving ? 0.42 : 0.18;
+        A.sprintLean += (tgt - A.sprintLean) * Math.min(1, dt * 4);
+        if (parts.torso.connected) {
+            parts.torso.pivot.rotation.x += A.sprintLean * 0.4;
+        }
+        if (parts.head.connected) {
+            parts.head.pivot.rotation.x -= A.sprintLean * 0.55;
+        }
+    }
+
+    /* ---- Brute ---- */
     function animateBrute(e, dt, A, moving, attackReach) {
+        applyHumanoidGait(e, dt, A, moving, attackReach, {});
         const parts = e.parts;
         const spd = Math.hypot(e.vel.x, e.vel.z);
         if (moving) A.stompT += dt * (0.75 + spd * 0.12);
         else A.stompT += dt * 0.32;
         const beat = A.stompT % 1.0;
 
-        let liftL = 0, liftR = 0, slamImpact = 0;
+        let liftL = 0, liftR = 0, slam = 0;
         if (beat < 0.40) liftL = _ease(beat / 0.40);
         else if (beat < 0.50) {
             const t = (beat - 0.40) / 0.10;
             liftL = 1 - t;
-            slamImpact = Math.max(slamImpact, _pulse(t));
+            slam = Math.max(slam, _pulse(t));
         }
         if (beat > 0.50 && beat < 0.90) liftR = _ease((beat - 0.50) / 0.40);
         else if (beat >= 0.90) {
             const t = (beat - 0.90) / 0.10;
             liftR = 1 - t;
-            slamImpact = Math.max(slamImpact, _pulse(t));
+            slam = Math.max(slam, _pulse(t));
         }
 
-        /* Attack: windup → overhead lift (rotation.x up to ~2.6 rad, arms
-           over the head), then slam forward-down (rotation.x back to ~0.3). */
+        /* Attack: windup → overhead lift → slam forward */
         const atk = attackReach;
         let wind = 0, crash = 0;
         if (atk > 0 && atk < 0.30) wind = _easeOut(atk / 0.30);
         else if (atk >= 0.30) crash = (atk - 0.30) / 0.70;
 
-        A.walkPhase += dt * (moving ? 1.0 + spd * 0.2 : 0.4);
-        const armSwing = Math.sin(A.walkPhase * 0.6);
-        const armLift = armSwing * 0.25 * (moving ? 1 : 0.3);
+        if (parts.legL.connected) parts.legL.pivot.rotation.x = liftL * 0.70 + slam * 0.12;
+        if (parts.legR.connected) parts.legR.pivot.rotation.x = liftR * 0.70 + slam * 0.12;
 
-        /* Legs lift FORWARD (positive rotation.x) */
-        if (parts.legL.connected) {
-            parts.legL.pivot.rotation.x = liftL * 0.70 + slamImpact * 0.12;
-            parts.legL.pivot.rotation.z = -0.06 + liftL * 0.05;
-        }
-        if (parts.legR.connected) {
-            parts.legR.pivot.rotation.x = liftR * 0.70 + slamImpact * 0.12;
-            parts.legR.pivot.rotation.z = 0.06 - liftR * 0.05;
-        }
-
-        /* Arms: idle ≈ 0.35 forward; windup lifts them up-forward to ~2.6;
-           crash swings them forward-down back toward ~0.35. */
-        const armIdle = 0.35;
-        const armWind = 2.60;   /* overhead */
-        const armCrash = 0.30;   /* forward-and-down, in front of the body  */
+        const armIdle = 0.35, armWind = 2.60, armCrash = 0.30;
         const armX = armIdle + wind * (armWind - armIdle) + crash * (armCrash - armWind);
-
         if (parts.armL.connected) {
-            parts.armL.pivot.rotation.x = armX + armLift;
-            parts.armL.pivot.rotation.z = -0.32 - Math.sin(A.breathPhase) * 0.03;
+            parts.armL.pivot.rotation.x = armX + Math.sin(A.walkPhase * 0.6) * 0.25 * (moving ? 1 : 0.3);
         }
         if (parts.armR.connected) {
-            parts.armR.pivot.rotation.x = armX - armLift;
-            parts.armR.pivot.rotation.z = 0.32 + Math.sin(A.breathPhase) * 0.03;
+            parts.armR.pivot.rotation.x = armX - Math.sin(A.walkPhase * 0.6) * 0.25 * (moving ? 1 : 0.3);
         }
-
         if (parts.torso.connected) {
-            const heave = slamImpact * 0.2 + Math.sin(A.breathPhase * 0.7) * 0.03;
-            parts.torso.pivot.rotation.x =
-                (moving ? -0.08 : 0) + heave - wind * 0.30 + crash * 0.65;
-            parts.torso.pivot.rotation.z =
-                liftL * 0.05 - liftR * 0.05 + A.flinchRoll * 0.5;
-            parts.torso.pivot.rotation.y = Math.sin(A.walkPhase * 0.5) * 0.03;
-            const bob = (liftL + liftR) * 0.04;
-            parts.torso.pivot.position.y = parts.torso.basePivot[1]
-                - bob + heave * 0.06 - wind * 0.05;
+            const heave = slam * 0.2 + Math.sin(A.breathPhase * 0.7) * 0.03;
+            parts.torso.pivot.rotation.x += heave - wind * 0.30 + crash * 0.65;
+            parts.torso.pivot.position.y += heave * 0.06 - wind * 0.05;
         }
         if (parts.head.connected) {
-            parts.head.pivot.rotation.x =
-                0.12 + slamImpact * 0.15 - wind * 0.25 + crash * 0.55
-                + A.headPitch * 0.05 - A.flinch * 0.25;
-            parts.head.pivot.rotation.y = A.headTurn * 0.2;
-            parts.head.pivot.rotation.z = liftL * 0.04 - liftR * 0.04;
+            parts.head.pivot.rotation.x += slam * 0.15 - wind * 0.25 + crash * 0.55;
         }
     }
 
-    /**
-     * Crawler — belly drag, alternating forward arm pulls.
-     */
-    function animateCrawler(e, dt, A, moving, attackReach) {
-        const parts = e.parts;
-        const spd = Math.hypot(e.vel.x, e.vel.z);
-        if (moving) A.walkPhase += dt * (2.0 + spd * 0.8);
-        else A.walkPhase += dt * 1.2;
-
-        const pull = Math.sin(A.walkPhase);
-        const pull2 = Math.sin(A.walkPhase * 2);
-
-        /* Arms already lie forward (through the torso) — animation just
-           cyclically pulls them further forward as it drags itself. */
-        const baseFwd = 1.45;
-        if (parts.armL.connected) {
-            parts.armL.pivot.rotation.x = baseFwd + pull * 0.55 + attackReach * 0.55;
-            parts.armL.pivot.rotation.z = -0.35;
-        }
-        if (parts.armR.connected) {
-            parts.armR.pivot.rotation.x = baseFwd - pull * 0.55 + attackReach * 0.55;
-            parts.armR.pivot.rotation.z = 0.35;
-        }
-
-        if (parts.torso.connected) {
-            parts.torso.pivot.rotation.x = 1.25 + Math.sin(A.walkPhase * 2) * 0.08;
-            parts.torso.pivot.rotation.y = pull2 * 0.10;
-            parts.torso.pivot.rotation.z = pull * 0.06 + A.flinchRoll * 0.5;
-            parts.torso.pivot.position.y = parts.torso.basePivot[1] - 0.28;
-        }
-        if (parts.head.connected) {
-            parts.head.pivot.rotation.x = -0.35 - pull2 * 0.15 - attackReach * 0.55
-                + A.headPitch * 0.05;
-            parts.head.pivot.rotation.y = A.headTurn * 0.4;
-            parts.head.pivot.rotation.z = pull * 0.06;
-        }
-        if (parts.legL.connected) parts.legL.pivot.rotation.x = pull * 0.25;
-        if (parts.legR.connected) parts.legR.pivot.rotation.x = -pull * 0.25;
-    }
-
-    /**
-     * Runner — forward-lean sprint, arms pump forward at the front of the cycle.
-     */
-    function animateRunner(e, dt, A, moving, attackReach) {
-        const parts = e.parts;
-        const spd = Math.hypot(e.vel.x, e.vel.z);
-        if (moving) A.walkPhase += dt * (3.6 + spd * 0.8);
-        else A.walkPhase += dt * 1.4;
-
-        const swing = Math.sin(A.walkPhase);
-        const swing2 = Math.sin(A.walkPhase * 2);
-        const bounce = Math.abs(Math.cos(A.walkPhase));
-
-        const leanTarget = moving ? 0.42 : 0.18;
-        A.sprintLean += (leanTarget - A.sprintLean) * Math.min(1, dt * 4);
-
-        /* Legs alternate — forward is positive rotation.x */
-        if (parts.legL.connected) {
-            parts.legL.pivot.rotation.x = swing * 0.85 * (moving ? 1 : 0.3)
-                + A.sprintLean * 0.35;
-            parts.legL.pivot.rotation.z = -Math.abs(swing) * 0.06;
-        }
-        if (parts.legR.connected) {
-            parts.legR.pivot.rotation.x = -swing * 0.85 * (moving ? 1 : 0.3)
-                + A.sprintLean * 0.35;
-            parts.legR.pivot.rotation.z = Math.abs(swing) * 0.06;
-        }
-
-        /* Arms pump in front of the torso — bias strongly positive so they
-           never swing behind the body at the back of the cycle. */
-        const armBias = 0.85;
-        if (parts.armL.connected) {
-            parts.armL.pivot.rotation.x = armBias + swing * 0.90 * (moving ? 1 : 0.4)
-                + attackReach * 0.70;
-            parts.armL.pivot.rotation.z = -0.15;
-        }
-        if (parts.armR.connected) {
-            parts.armR.pivot.rotation.x = armBias - swing * 0.90 * (moving ? 1 : 0.4)
-                + attackReach * 0.70;
-            parts.armR.pivot.rotation.z = 0.15;
-        }
-
-        if (parts.torso.connected) {
-            parts.torso.pivot.rotation.x = A.sprintLean
-                + Math.sin(A.walkPhase * 2) * 0.05 + attackReach * 0.30;
-            parts.torso.pivot.rotation.y = swing2 * 0.08;
-            parts.torso.pivot.rotation.z = swing * 0.05 + A.flinchRoll;
-            parts.torso.pivot.position.y = parts.torso.basePivot[1] - bounce * 0.05;
-        }
-        if (parts.head.connected) {
-            parts.head.pivot.rotation.x =
-                -A.sprintLean * 0.55 + Math.sin(A.walkPhase * 3) * 0.04
-                + attackReach * 0.35 + A.headPitch * 0.05 - A.flinch * 0.45;
-            parts.head.pivot.rotation.y = A.headTurn * 0.25;
-            parts.head.pivot.rotation.z = Math.sin(A.walkPhase * 1.5) * 0.06;
-        }
-    }
-
-    /**
-     * Rotter — mushy wandering-joint shuffle, arms vaguely forward.
-     */
-    function animateRotter(e, dt, A, moving, attackReach) {
-        const parts = e.parts;
-        const spd = Math.hypot(e.vel.x, e.vel.z);
-        if (moving) A.walkPhase += dt * (1.0 + spd * 0.4);
-        else A.walkPhase += dt * 0.35;
-        A.limpPhase += dt * 0.45;
-
-        const swing = Math.sin(A.walkPhase);
-        const wander = Math.sin(A.limpPhase);
-        const amp = moving ? 1 : 0.15;
-
-        if (parts.legL.connected) {
-            parts.legL.pivot.rotation.x = (swing * 0.55 + wander * 0.15) * 0.55 * amp;
-            parts.legL.pivot.rotation.z = -0.06 + wander * 0.03;
-        }
-        if (parts.legR.connected) {
-            parts.legR.pivot.rotation.x = (-swing * 0.55 - wander * 0.15) * 0.55 * amp;
-            parts.legR.pivot.rotation.z = 0.06 - wander * 0.03;
-        }
-
-        /* Arms — forward-biased, lazy flopping */
-        const fwdBase = 0.85;
-        if (parts.armL.connected) {
-            parts.armL.pivot.rotation.x = fwdBase
-                + Math.sin(A.walkPhase * 0.6 + 0.7) * 0.20 * amp
-                + attackReach * 0.55;
-            parts.armL.pivot.rotation.z = -0.22 - wander * 0.04;
-        }
-        if (parts.armR.connected) {
-            parts.armR.pivot.rotation.x = fwdBase
-                + Math.sin(A.walkPhase * 0.6 - 0.4) * 0.20 * amp
-                + attackReach * 0.55;
-            parts.armR.pivot.rotation.z = 0.22 + wander * 0.04;
-        }
-
-        if (parts.torso.connected) {
-            const wobble = Math.sin(A.walkPhase - 0.9) * 0.06 * amp;
-            parts.torso.pivot.rotation.x = 0.10 + wobble + attackReach * 0.30;
-            parts.torso.pivot.rotation.z = wander * 0.07 + A.flinchRoll;
-            parts.torso.pivot.rotation.y = Math.sin(A.walkPhase * 0.5) * 0.05;
-            parts.torso.pivot.position.y = parts.torso.basePivot[1]
-                - Math.abs(swing) * 0.04;
-        }
-        if (parts.head.connected) {
-            parts.head.pivot.rotation.x =
-                0.15 + Math.sin(A.walkPhase - 1.5) * 0.08
-                + attackReach * 0.35 - A.flinch * 0.35;
-            parts.head.pivot.rotation.y = A.headTurn * 0.35 + wander * 0.10;
-            parts.head.pivot.rotation.z = wander * 0.06;
-        }
-    }
-
-    /**
-     * Hooded — low hunched skulk, arms held forward but tucked low.
-     */
-    function animateHooded(e, dt, A, moving, attackReach) {
-        const parts = e.parts;
-        const spd = Math.hypot(e.vel.x, e.vel.z);
-        if (moving) A.walkPhase += dt * (1.4 + spd * 0.5);
-        else A.walkPhase += dt * 0.3;
-
-        const swing = Math.sin(A.walkPhase);
-        const amp = moving ? 1 : 0.15;
-
-        if (parts.legL.connected) {
-            parts.legL.pivot.rotation.x = swing * 0.55 * 0.55 * amp;
-            parts.legL.pivot.rotation.z = -0.03;
-        }
-        if (parts.legR.connected) {
-            parts.legR.pivot.rotation.x = -swing * 0.55 * 0.55 * amp;
-            parts.legR.pivot.rotation.z = 0.03;
-        }
-
-        /* Arms forward but hanging low — about 55° forward from vertical. */
-        const lowFwd = 0.95;
-        if (parts.armL.connected) {
-            parts.armL.pivot.rotation.x = lowFwd
-                + Math.abs(swing) * 0.10 * amp + attackReach * 0.60;
-            parts.armL.pivot.rotation.z = -0.18;
-        }
-        if (parts.armR.connected) {
-            parts.armR.pivot.rotation.x = lowFwd
-                + Math.abs(swing) * 0.10 * amp + attackReach * 0.60;
-            parts.armR.pivot.rotation.z = 0.18;
-        }
-
-        if (parts.torso.connected) {
-            parts.torso.pivot.rotation.x = 0.48 + attackReach * 0.35;
-            parts.torso.pivot.rotation.z = swing * 0.03 + A.flinchRoll;
-            parts.torso.pivot.rotation.y = swing * 0.05;
-            parts.torso.pivot.position.y = parts.torso.basePivot[1]
-                - Math.abs(swing) * 0.03 - 0.05;
-        }
-        if (parts.head.connected) {
-            parts.head.pivot.rotation.x =
-                0.15 + 0.15 * moving + attackReach * 0.35
-                + A.headPitch * 0.05 - A.flinch * 0.35;
-            parts.head.pivot.rotation.y = A.headTurn * 0.45;
-            parts.head.pivot.rotation.z = swing * 0.03;
-        }
-    }
-
-    /**
-     * Oldblood — elder tremor, shaky joints, arms out front trembling.
-     */
-    function animateOldblood(e, dt, A, moving, attackReach) {
-        const parts = e.parts;
-        const spd = Math.hypot(e.vel.x, e.vel.z);
-        const tremorTarget = moving ? 0.55 : 0.25;
-        A.trembleAmp += (tremorTarget - A.trembleAmp) * Math.min(1, dt * 3);
-
-        if (moving) A.walkPhase += dt * (1.1 + spd * 0.5);
-        else A.walkPhase += dt * 0.45;
-
-        A.ticTimer -= dt;
-        if (A.ticTimer <= 0) {
-            A.ticTimer = 1.5 + Math.random() * 2.5;
-            A.ticDir = Math.random() < 0.5 ? -1 : 1;
-        }
-
-        const swing = Math.sin(A.walkPhase);
-        const ticX = _tremor(A, 0.0) * A.trembleAmp * 0.05;
-        const ticZ = _tremor(A, 3.7) * A.trembleAmp * 0.05;
-        const amp = moving ? 1 : 0.15;
-
-        if (parts.legL.connected) {
-            parts.legL.pivot.rotation.x = swing * 0.55 * 0.55 * amp
-                + _tremor(A, 1.2) * A.trembleAmp * 0.08;
-            parts.legL.pivot.rotation.z = -0.05;
-        }
-        if (parts.legR.connected) {
-            parts.legR.pivot.rotation.x = -swing * 0.55 * 0.55 * amp
-                + _tremor(A, 4.4) * A.trembleAmp * 0.08;
-            parts.legR.pivot.rotation.z = 0.05;
-        }
-
-        /* Arms forward, trembling */
-        const fwdBase = 0.95;
-        if (parts.armL.connected) {
-            parts.armL.pivot.rotation.x = fwdBase + attackReach * 0.60
-                + _tremor(A, 2.1) * A.trembleAmp * 0.15;
-            parts.armL.pivot.rotation.z = -0.22 + _tremor(A, 5.0) * A.trembleAmp * 0.06;
-        }
-        if (parts.armR.connected) {
-            parts.armR.pivot.rotation.x = fwdBase + attackReach * 0.60
-                + _tremor(A, 2.9) * A.trembleAmp * 0.15;
-            parts.armR.pivot.rotation.z = 0.22 - _tremor(A, 6.1) * A.trembleAmp * 0.06;
-        }
-
-        if (parts.torso.connected) {
-            parts.torso.pivot.rotation.x = 0.15 + attackReach * 0.35 + ticX;
-            parts.torso.pivot.rotation.z = A.ticDir * 0.04 * A.trembleAmp + ticZ + A.flinchRoll;
-            parts.torso.pivot.rotation.y = swing * 0.04;
-        }
-        if (parts.head.connected) {
-            parts.head.pivot.rotation.x =
-                0.10 + attackReach * 0.35 + _tremor(A, 7.2) * A.trembleAmp * 0.10
-                + A.headPitch * 0.05 - A.flinch * 0.35;
-            parts.head.pivot.rotation.y = A.headTurn * 0.35
-                + _tremor(A, 8.1) * A.trembleAmp * 0.08;
-            parts.head.pivot.rotation.z = _tremor(A, 9.3) * A.trembleAmp * 0.06;
-        }
-    }
-
-    /**
-     * Skull — mummy pose: arms pinned straight out in front.
-     */
+    /* ---- Skull (mummy pose) ---- */
     function animateSkull(e, dt, A, moving, attackReach) {
+        applyHumanoidGait(e, dt, A, moving, attackReach, {});
         const parts = e.parts;
-        const spd = Math.hypot(e.vel.x, e.vel.z);
-        if (moving) A.walkPhase += dt * (1.7 + spd * 0.55);
-        else A.walkPhase += dt * 0.65;
-
-        const swing = Math.sin(A.walkPhase);
-        const amp = moving ? 1 : 0.2;
-        const jitter = _tremor(A, 0.0) * 0.04;
-
-        if (parts.legL.connected) {
-            parts.legL.pivot.rotation.x = swing * 0.65 * 0.55 * amp;
-            parts.legL.pivot.rotation.z = -0.02;
-        }
-        if (parts.legR.connected) {
-            parts.legR.pivot.rotation.x = -swing * 0.65 * 0.55 * amp;
-            parts.legR.pivot.rotation.z = 0.02;
-        }
-
-        /* Arms straight out in front (mummy pose). */
         const mummy = 1.50;
+        const jitter = _tremor(A, 0.0) * 0.04 * A.style.tremorMul;
         if (parts.armL.connected) {
-            parts.armL.pivot.rotation.x = mummy + attackReach * 0.30;
+            parts.armL.pivot.rotation.x = mummy + attackReach * 0.30 + jitter;
             parts.armL.pivot.rotation.z = -0.08 + jitter;
         }
         if (parts.armR.connected) {
-            parts.armR.pivot.rotation.x = mummy + attackReach * 0.30;
+            parts.armR.pivot.rotation.x = mummy + attackReach * 0.30 + jitter;
             parts.armR.pivot.rotation.z = 0.08 - jitter;
-        }
-
-        if (parts.torso.connected) {
-            parts.torso.pivot.rotation.x = 0.02 + jitter + attackReach * 0.25;
-            parts.torso.pivot.rotation.z = swing * 0.02 + A.flinchRoll;
-            parts.torso.pivot.rotation.y = 0;
         }
         if (parts.head.connected) {
             const snap = Math.round(A.headTurn * 5) / 5;
-            parts.head.pivot.rotation.x = attackReach * 0.35 + A.headPitch * 0.05;
             parts.head.pivot.rotation.y = snap * 0.55 + jitter;
-            parts.head.pivot.rotation.z = _tremor(A, 4.2) * 0.03;
         }
     }
 
-    /**
-     * Demon — predatory crouch, coiled lunge, arms held ready in front.
-     */
-    function animateDemon(e, dt, A, moving, attackReach) {
+    /* ---- Crawler (belly-drag) ---- */
+    function animateCrawler(e, dt, A, moving, attackReach) {
+        applyHumanoidGait(e, dt, A, moving, attackReach, {});
         const parts = e.parts;
-        const spd = Math.hypot(e.vel.x, e.vel.z);
-        A.coilPhase += dt * (moving ? 2.4 + spd * 0.4 : 1.2);
+        if (parts.torso.connected) {
+            parts.torso.pivot.rotation.x = 1.25 + Math.sin(A.walkPhase * 2) * 0.08;
+            parts.torso.pivot.position.y = parts.torso.basePivot[1] - 0.28;
+        }
+        if (parts.head.connected) {
+            parts.head.pivot.rotation.x = -0.35 - Math.sin(A.walkPhase * 2) * 0.15 - attackReach * 0.55;
+        }
+    }
+
+    /* ---- Hooded ---- */
+    function animateHooded(e, dt, A, moving, attackReach) {
+        applyHumanoidGait(e, dt, A, moving, attackReach, {});
+        const parts = e.parts;
+        if (parts.torso.connected) {
+            parts.torso.pivot.position.y -= 0.05;
+        }
+        if (parts.head.connected) {
+            parts.head.pivot.rotation.x += 0.15 * (moving ? 1 : 0.3);
+        }
+    }
+
+    /* ---- Hatty (swagger) ---- */
+    function animateHatty(e, dt, A, moving, attackReach) {
+        applyHumanoidGait(e, dt, A, moving, attackReach, {});
+        const parts = e.parts;
+        const swagger = Math.sin(A.walkPhase * 0.5) * 0.12 * A.stateBlend;
+        if (parts.torso.connected) parts.torso.pivot.rotation.y += swagger * 1.4;
+        if (parts.head.connected) parts.head.pivot.rotation.z += 0.22 + swagger * 0.4;
+    }
+
+    /* ---- Blondie (frantic hair-whip) ---- */
+    function animateBlondie(e, dt, A, moving, attackReach) {
+        applyHumanoidGait(e, dt, A, moving, attackReach, {});
+        const parts = e.parts;
+        A.hairPhase += dt * (moving ? 4.2 : 2.4);
+        const hair = Math.sin(A.hairPhase);
+        const hair2 = Math.sin(A.hairPhase * 1.7);
+        if (parts.head.connected) {
+            parts.head.pivot.rotation.x += hair * 0.18;
+            parts.head.pivot.rotation.y += hair2 * 0.22;
+            parts.head.pivot.rotation.z += hair * 0.16;
+        }
+        if (parts.torso.connected) parts.torso.pivot.rotation.z += hair2 * 0.04;
+    }
+
+    /* ---- Formal (stiff) ---- */
+    function animateFormal(e, dt, A, moving, attackReach) {
+        applyHumanoidGait(e, dt, A, moving, attackReach, {});
+        const parts = e.parts;
+        if (parts.head.connected) parts.head.pivot.rotation.x -= 0.08;
+    }
+
+    /* ---- Vested ---- */
+    function animateVested(e, dt, A, moving, attackReach) {
+        applyHumanoidGait(e, dt, A, moving, attackReach, {});
+        const parts = e.parts;
+        if (parts.torso.connected) parts.torso.pivot.rotation.x += 0.18 * A.stateBlend;
+    }
+
+    /* ---- Stripey (goofy bounce) ---- */
+    function animateStripey(e, dt, A, moving, attackReach) {
+        applyHumanoidGait(e, dt, A, moving, attackReach, {});
+        const parts = e.parts;
+        A.bouncePhase += dt * (moving ? 3.0 : 1.5);
+        const bounce = Math.abs(Math.sin(A.bouncePhase));
+        if (parts.torso.connected) {
+            parts.torso.pivot.position.y -= bounce * 0.06 * A.stateBlend;
+        }
+        if (parts.head.connected) {
+            parts.head.pivot.rotation.x -= bounce * 0.12 * A.stateBlend;
+        }
+    }
+
+    /* ---- Beanie ---- */
+    function animateBeanie(e, dt, A, moving, attackReach) {
+        applyHumanoidGait(e, dt, A, moving, attackReach, {});
+        const parts = e.parts;
+        const cock = A.limpSide;
+        if (parts.torso.connected) parts.torso.pivot.rotation.z += cock * 0.12;
+        if (parts.head.connected) {
+            parts.head.pivot.rotation.z += cock * 0.18;
+            parts.head.pivot.rotation.y += cock * 0.08;
+        }
+    }
+
+    /* ---- Demon (coiled predator) ---- */
+    function animateDemon(e, dt, A, moving, attackReach) {
+        applyHumanoidGait(e, dt, A, moving, attackReach, {});
+        const parts = e.parts;
+        A.coilPhase += dt * (moving ? 2.4 : 1.2);
         const coil = Math.sin(A.coilPhase);
-        const coil2 = Math.sin(A.coilPhase * 2);
-        const lungeWindTarget = attackReach > 0.05 && attackReach < 0.4 ? 1 : 0;
-        A.lungeWind = (A.lungeWind || 0)
-            + (lungeWindTarget - (A.lungeWind || 0)) * Math.min(1, dt * 8);
+        const lungeWindTgt = attackReach > 0.05 && attackReach < 0.4 ? 1 : 0;
+        A.lungeWind += (lungeWindTgt - A.lungeWind) * Math.min(1, dt * 8);
         const lungeDrive = attackReach > 0.4 ? (attackReach - 0.4) / 0.6 : 0;
-        const bend = 0.55 + A.lungeWind * 0.35;
+        const bend = 0.30 + A.lungeWind * 0.30;
 
         if (parts.legL.connected) {
-            parts.legL.pivot.rotation.x = bend + coil * 0.30 * (moving ? 1 : 0.3);
-            parts.legL.pivot.rotation.z = -0.06;
+            parts.legL.pivot.rotation.x = bend + coil * 0.25 * A.stateBlend;
         }
         if (parts.legR.connected) {
-            parts.legR.pivot.rotation.x = bend - coil * 0.30 * (moving ? 1 : 0.3);
-            parts.legR.pivot.rotation.z = 0.06;
+            parts.legR.pivot.rotation.x = bend - coil * 0.25 * A.stateBlend;
         }
-
-        /* Arms reach forward, ready to slash — high fwd bias. */
-        const readyFwd = 1.10;
         if (parts.armL.connected) {
-            parts.armL.pivot.rotation.x = readyFwd
-                + A.lungeWind * 0.35 + lungeDrive * 0.90;
-            parts.armL.pivot.rotation.z = -0.35 - coil * 0.10;
+            parts.armL.pivot.rotation.x += A.lungeWind * 0.35 + lungeDrive * 0.90;
         }
         if (parts.armR.connected) {
-            parts.armR.pivot.rotation.x = readyFwd
-                + A.lungeWind * 0.35 + lungeDrive * 0.90;
-            parts.armR.pivot.rotation.z = 0.35 + coil * 0.10;
+            parts.armR.pivot.rotation.x += A.lungeWind * 0.35 + lungeDrive * 0.90;
         }
-
         if (parts.torso.connected) {
-            parts.torso.pivot.rotation.x = 0.35 - A.lungeWind * 0.10
-                + lungeDrive * 0.60;
-            parts.torso.pivot.rotation.y = coil2 * 0.08;
-            parts.torso.pivot.rotation.z = coil * 0.06 + A.flinchRoll;
-            parts.torso.pivot.position.y = parts.torso.basePivot[1]
-                - 0.08 - bend * 0.05;
+            parts.torso.pivot.rotation.x += -A.lungeWind * 0.10 + lungeDrive * 0.60;
+            parts.torso.pivot.position.y -= 0.08;
         }
         if (parts.head.connected) {
             const jaw = Math.sin(A.idlePhase * 10) * A.lungeWind * 0.10;
-            parts.head.pivot.rotation.x =
-                0.12 + lungeDrive * 0.55 + A.headPitch * 0.06 - A.flinch * 0.45;
-            parts.head.pivot.rotation.y = A.headTurn * 0.45 + jaw;
-            parts.head.pivot.rotation.z = coil * 0.05;
+            parts.head.pivot.rotation.x += lungeDrive * 0.55;
+            parts.head.pivot.rotation.y += jaw;
         }
     }
 
@@ -3657,17 +4599,11 @@
        ALIEN ANIMATORS
        ========================================================================= */
 
-    /**
-     * Blobtron (octo body) — squash/stretch hop, tentacles trail/splay.
-     */
     function animateOcto(e, dt, A, moving, attackReach) {
         const parts = e.parts;
         const spd = Math.hypot(e.vel.x, e.vel.z);
         A.swayPhase += dt * (moving ? 2.6 + spd * 0.5 : 1.4);
 
-        /* Tentacles are top-pivot bundles that fan outward + downward.  They
-           already extend downward in local space, so rotation.x is a gentle
-           "trail" not a huge swing. */
         const phases = [0.00, 0.55, 1.10, 1.65];
         const bundles = [parts.legL, parts.legR, parts.armL, parts.armR];
         for (let i = 0; i < bundles.length; i++) {
@@ -3682,15 +4618,13 @@
                 + Math.cos(t * 0.7) * 0.06;
             p.pivot.rotation.y = Math.sin(t * 0.8 + i) * 0.15;
         }
-
         if (parts.torso.connected) {
             const ripple = Math.sin(A.swayPhase - 0.9) * 0.06;
             const pulse = 1 + ripple + Math.sin(A.breathPhase * 1.7) * 0.03;
             parts.torso.pivot.scale.set(pulse, 1 / pulse, pulse);
             parts.torso.pivot.rotation.x = 0.12 * attackReach + ripple * 0.4;
             parts.torso.pivot.rotation.y = Math.sin(A.swayPhase * 0.5) * 0.05;
-            parts.torso.pivot.position.y = (parts.torso.basePivot[1] || 0)
-                + ripple * 0.04;
+            parts.torso.pivot.position.y = (parts.torso.basePivot[1] || 0) + ripple * 0.04;
         }
         if (parts.head && parts.head.connected) {
             parts.head.pivot.rotation.x = Math.sin(A.idlePhase * 0.4) * 0.08
@@ -3701,9 +4635,6 @@
         }
     }
 
-    /**
-     * Serpent — S-curve body wave, hood flare, tongue/head weave.
-     */
     function animateSerpent(e, dt, A, moving, attackReach) {
         const parts = e.parts;
         const spd = Math.hypot(e.vel.x, e.vel.z);
@@ -3714,9 +4645,8 @@
         const dx = player.pos.x - e.pos.x;
         const dz = player.pos.z - e.pos.z;
         const close = Math.hypot(dx, dz) < 8;
-        const hoodTarget = (close || attackReach > 0.1) ? 1 : 0;
-        A.hoodFlare = (A.hoodFlare || 0)
-            + (hoodTarget - (A.hoodFlare || 0)) * Math.min(1, dt * 3.5);
+        const hoodTgt = (close || attackReach > 0.1) ? 1 : 0;
+        A.hoodFlare += (hoodTgt - A.hoodFlare) * Math.min(1, dt * 3.5);
 
         if (parts.torso.connected) {
             parts.torso.pivot.rotation.y = sway * (moving ? 0.28 : 0.12);
@@ -3731,277 +4661,67 @@
                 + attackReach * 0.65 + A.headPitch * 0.05 - A.flinch * 0.35;
             parts.head.pivot.rotation.y = -sway * 0.20 + weave + A.headTurn * 0.35;
             parts.head.pivot.rotation.z = sway2 * 0.10;
-            /* Fake hood flare with vertical head scale */
             const hs = 1 + A.hoodFlare * 0.22;
             parts.head.pivot.scale.set(1 + A.hoodFlare * 0.06, hs, hs);
         }
     }
 
-    /**
-     * Greyscout — light skittering insectoid shuffle.
-     */
     function animateGreyscout(e, dt, A, moving, attackReach) {
+        applyHumanoidGait(e, dt, A, moving, attackReach, {});
         const parts = e.parts;
-        const spd = Math.hypot(e.vel.x, e.vel.z);
-        if (moving) A.walkPhase += dt * (2.8 + spd * 0.7);
-        else A.walkPhase += dt * 1.5;
-
-        const swing = Math.sin(A.walkPhase);
-        const swing2 = Math.sin(A.walkPhase * 2);
-        const antTw = Math.sin(A.antennaeT * 3 + 0.4) * 0.18;
-
-        if (parts.legL.connected) {
-            parts.legL.pivot.rotation.x = swing * 0.80 * (moving ? 1 : 0.25);
-            parts.legL.pivot.rotation.z = -0.10;
-        }
-        if (parts.legR.connected) {
-            parts.legR.pivot.rotation.x = -swing * 0.80 * (moving ? 1 : 0.25);
-            parts.legR.pivot.rotation.z = 0.10;
-        }
-
-        /* Long thin arms hang forward with a nervous flit. */
         const flit = Math.sin(A.idlePhase * 5 + A._seed) * 0.06;
-        if (parts.armL.connected) {
-            parts.armL.pivot.rotation.x = 0.65 + flit + attackReach * 0.70;
-            parts.armL.pivot.rotation.z = -0.20;
-        }
-        if (parts.armR.connected) {
-            parts.armR.pivot.rotation.x = 0.65 - flit + attackReach * 0.70;
-            parts.armR.pivot.rotation.z = 0.20;
-        }
-
-        if (parts.torso.connected) {
-            parts.torso.pivot.rotation.x = 0.20 + swing2 * 0.04
-                + attackReach * 0.30;
-            parts.torso.pivot.rotation.y = swing * 0.06;
-            parts.torso.pivot.rotation.z = swing * 0.04 + A.flinchRoll;
-            parts.torso.pivot.position.y = parts.torso.basePivot[1]
-                - Math.abs(swing) * 0.03;
-        }
+        if (parts.armL.connected) parts.armL.pivot.rotation.x += flit;
+        if (parts.armR.connected) parts.armR.pivot.rotation.x -= flit;
         if (parts.head.connected) {
-            parts.head.pivot.rotation.x = 0.05
-                + Math.sin(A.idlePhase * 2) * 0.08
-                + attackReach * 0.45 + A.headPitch * 0.05 - A.flinch * 0.40;
-            parts.head.pivot.rotation.y = A.headTurn * 0.40 + antTw * 0.4;
-            parts.head.pivot.rotation.z = Math.sin(A.idlePhase * 1.7) * 0.05;
+            parts.head.pivot.rotation.y += Math.sin(A.antennaeT * 3 + 0.4) * 0.10;
         }
     }
 
-    /**
-     * Voidtwin (grey) — slow floaty bob, overlong arms sway.
-     */
     function animateVoidtwin(e, dt, A, moving, attackReach) {
+        applyHumanoidGait(e, dt, A, moving, attackReach, {});
         const parts = e.parts;
-        const spd = Math.hypot(e.vel.x, e.vel.z);
         A.floatPhase += dt * (moving ? 1.8 : 1.0);
-
         const bob = Math.sin(A.floatPhase);
         const bob2 = Math.sin(A.floatPhase * 0.5);
-        const hover = bob * 0.03 * (moving ? 1 : 0.5);
-
-        /* Legs — barely move, they hover */
-        if (parts.legL.connected) {
-            parts.legL.pivot.rotation.x = bob * 0.10 * (moving ? 1 : 0.3);
-            parts.legL.pivot.rotation.z = -0.04;
-        }
-        if (parts.legR.connected) {
-            parts.legR.pivot.rotation.x = -bob * 0.10 * (moving ? 1 : 0.3);
-            parts.legR.pivot.rotation.z = 0.04;
-        }
-
-        /* Arms drift forward and sway as if floating in water. */
-        if (parts.armL.connected) {
-            parts.armL.pivot.rotation.x = 0.95 + bob2 * 0.15 + attackReach * 0.45;
-            parts.armL.pivot.rotation.z = -0.30 + bob * 0.06;
-        }
-        if (parts.armR.connected) {
-            parts.armR.pivot.rotation.x = 0.95 + bob2 * 0.15 + attackReach * 0.45;
-            parts.armR.pivot.rotation.z = 0.30 - bob * 0.06;
-        }
-
         if (parts.torso.connected) {
-            parts.torso.pivot.rotation.x = 0.05 + bob * 0.04 + attackReach * 0.20;
-            parts.torso.pivot.rotation.y = bob2 * 0.05;
-            parts.torso.pivot.rotation.z = bob * 0.03 + A.flinchRoll;
-            parts.torso.pivot.position.y = parts.torso.basePivot[1] + hover;
+            parts.torso.pivot.position.y += bob * 0.03;
+            parts.torso.pivot.rotation.x += bob * 0.04;
         }
         if (parts.head && parts.head.connected) {
-            parts.head.pivot.rotation.x = -0.05 + bob * 0.06
-                + attackReach * 0.30 + A.headPitch * 0.05 - A.flinch * 0.30;
-            parts.head.pivot.rotation.y = bob2 * 0.25 + A.headTurn * 0.45;
-            parts.head.pivot.rotation.z = bob * 0.04;
+            parts.head.pivot.rotation.y += bob2 * 0.25;
         }
     }
 
-    /**
-     * Wisp (cyclops) — slow stalker, single eye leads every motion.
-     */
     function animateWisp(e, dt, A, moving, attackReach) {
+        applyHumanoidGait(e, dt, A, moving, attackReach, {});
         const parts = e.parts;
-        const spd = Math.hypot(e.vel.x, e.vel.z);
-        if (moving) A.walkPhase += dt * (1.6 + spd * 0.4);
-        else A.walkPhase += dt * 0.8;
         A.eyeStalkBounce += dt * 1.6;
-        A.hairPhase += dt * 1.2;
-
-        const swing = Math.sin(A.walkPhase);
         const eyeSway = Math.sin(A.eyeStalkBounce) * 0.10;
-        const hairSway = Math.sin(A.hairPhase) * 0.05;
-
-        if (parts.legL.connected) {
-            parts.legL.pivot.rotation.x = swing * 0.55 * (moving ? 1 : 0.25);
-            parts.legL.pivot.rotation.z = -0.05;
-        }
-        if (parts.legR.connected) {
-            parts.legR.pivot.rotation.x = -swing * 0.55 * (moving ? 1 : 0.25);
-            parts.legR.pivot.rotation.z = 0.05;
-        }
-
-        if (parts.armL.connected) {
-            parts.armL.pivot.rotation.x = 0.85
-                + Math.sin(A.walkPhase + 0.4) * 0.10
-                + attackReach * 0.70;
-            parts.armL.pivot.rotation.z = -0.22;
-        }
-        if (parts.armR.connected) {
-            parts.armR.pivot.rotation.x = 0.85
-                + Math.sin(A.walkPhase - 0.4) * 0.10
-                + attackReach * 0.70;
-            parts.armR.pivot.rotation.z = 0.22;
-        }
-
-        if (parts.torso.connected) {
-            parts.torso.pivot.rotation.x = 0.10 + swing * 0.04 + attackReach * 0.30;
-            parts.torso.pivot.rotation.y = swing * 0.05;
-            parts.torso.pivot.rotation.z = eyeSway * 0.3 + A.flinchRoll;
-            parts.torso.pivot.position.y = parts.torso.basePivot[1]
-                - Math.abs(swing) * 0.03;
-        }
         if (parts.head && parts.head.connected) {
-            /* The eye-stalk head swings the whole head — the "look" is the
-               animation. */
-            parts.head.pivot.rotation.x = eyeSway * 0.6
-                + attackReach * 0.35 + A.headPitch * 0.05 - A.flinch * 0.40;
-            parts.head.pivot.rotation.y = A.headTurn * 0.55 + eyeSway;
-            parts.head.pivot.rotation.z = hairSway;
+            parts.head.pivot.rotation.x += eyeSway * 0.6;
+            parts.head.pivot.rotation.y += eyeSway;
         }
     }
 
-    /**
-     * Trilens — orange stalker with many tentacle bundles for arms/legs.
-     */
     function animateTrilens(e, dt, A, moving, attackReach) {
+        applyHumanoidGait(e, dt, A, moving, attackReach, {});
         const parts = e.parts;
-        const spd = Math.hypot(e.vel.x, e.vel.z);
-        if (moving) A.walkPhase += dt * (2.2 + spd * 0.6);
-        else A.walkPhase += dt * 1.2;
-
-        const swing = Math.sin(A.walkPhase);
-        const swing2 = Math.sin(A.walkPhase * 2);
-
-        if (parts.legL.connected) {
-            parts.legL.pivot.rotation.x = swing * 0.55 * (moving ? 1 : 0.25);
-            parts.legL.pivot.rotation.z = -0.10;
-        }
-        if (parts.legR.connected) {
-            parts.legR.pivot.rotation.x = -swing * 0.55 * (moving ? 1 : 0.25);
-            parts.legR.pivot.rotation.z = 0.10;
-        }
-
-        /* Tentacle-bundle arms — always forward with wriggle. */
-        if (parts.armL.connected) {
-            parts.armL.pivot.rotation.x = 1.05
-                + Math.sin(A.walkPhase * 1.7 + 0.5) * 0.15
-                + attackReach * 0.55;
-            parts.armL.pivot.rotation.z = -0.30
-                + Math.cos(A.walkPhase * 1.1) * 0.08;
-            parts.armL.pivot.rotation.y = Math.sin(A.walkPhase * 0.8) * 0.12;
-        }
-        if (parts.armR.connected) {
-            parts.armR.pivot.rotation.x = 1.05
-                + Math.sin(A.walkPhase * 1.7 - 0.5) * 0.15
-                + attackReach * 0.55;
-            parts.armR.pivot.rotation.z = 0.30
-                - Math.cos(A.walkPhase * 1.1) * 0.08;
-            parts.armR.pivot.rotation.y = Math.sin(A.walkPhase * 0.8 + 1.7) * 0.12;
-        }
-
-        if (parts.torso.connected) {
-            parts.torso.pivot.rotation.x = 0.18 + swing2 * 0.04 + attackReach * 0.30;
-            parts.torso.pivot.rotation.y = swing * 0.06;
-            parts.torso.pivot.rotation.z = swing * 0.04 + A.flinchRoll;
-            parts.torso.pivot.position.y = parts.torso.basePivot[1]
-                - Math.abs(swing) * 0.03;
-        }
-        if (parts.head && parts.head.connected) {
-            parts.head.pivot.rotation.x = 0.05
-                + Math.sin(A.idlePhase * 2) * 0.05
-                + attackReach * 0.40 + A.headPitch * 0.05 - A.flinch * 0.40;
-            parts.head.pivot.rotation.y = A.headTurn * 0.45
-                + Math.sin(A.idlePhase * 1.3) * 0.12;
-            parts.head.pivot.rotation.z = Math.sin(A.idlePhase * 1.7) * 0.06;
-        }
+        if (parts.armL.connected) parts.armL.pivot.rotation.y += Math.sin(A.walkPhase * 0.8) * 0.12;
+        if (parts.armR.connected) parts.armR.pivot.rotation.y += Math.sin(A.walkPhase * 0.8 + 1.7) * 0.12;
     }
 
-    /**
-     * Imp (insect body) — fast aggressive skitter with forward mandible chatter.
-     */
     function animateImpInsect(e, dt, A, moving, attackReach) {
+        applyHumanoidGait(e, dt, A, moving, attackReach, {});
         const parts = e.parts;
-        const spd = Math.hypot(e.vel.x, e.vel.z);
-        if (moving) A.walkPhase += dt * (3.2 + spd * 0.7);
-        else A.walkPhase += dt * 1.8;
-
-        const swing = Math.sin(A.walkPhase);
-        const swing2 = Math.sin(A.walkPhase * 2);
-
-        if (parts.legL.connected) {
-            parts.legL.pivot.rotation.x = swing * 0.85 * (moving ? 1 : 0.3);
-            parts.legL.pivot.rotation.z = -0.08;
-        }
-        if (parts.legR.connected) {
-            parts.legR.pivot.rotation.x = -swing * 0.85 * (moving ? 1 : 0.3);
-            parts.legR.pivot.rotation.z = 0.08;
-        }
-
-        /* Arms thrash forward aggressively */
-        if (parts.armL.connected) {
-            parts.armL.pivot.rotation.x = 0.95
-                + Math.sin(A.walkPhase * 1.6 + 0.7) * 0.20
-                + attackReach * 0.90;
-            parts.armL.pivot.rotation.z = -0.28;
-        }
-        if (parts.armR.connected) {
-            parts.armR.pivot.rotation.x = 0.95
-                + Math.sin(A.walkPhase * 1.6 - 0.7) * 0.20
-                + attackReach * 0.90;
-            parts.armR.pivot.rotation.z = 0.28;
-        }
-
-        if (parts.torso.connected) {
-            parts.torso.pivot.rotation.x = 0.25 + swing2 * 0.05 + attackReach * 0.35;
-            parts.torso.pivot.rotation.y = swing * 0.07;
-            parts.torso.pivot.rotation.z = swing * 0.05 + A.flinchRoll;
-            parts.torso.pivot.position.y = parts.torso.basePivot[1]
-                - Math.abs(swing) * 0.03;
-        }
         if (parts.head && parts.head.connected) {
-            /* Rapid mandible chatter via tiny rotation.y wobble */
             const chatter = Math.sin(A.idlePhase * 15) * 0.06;
-            parts.head.pivot.rotation.x = 0.10
-                + attackReach * 0.50 + A.headPitch * 0.05 - A.flinch * 0.40;
-            parts.head.pivot.rotation.y = A.headTurn * 0.40 + chatter;
-            parts.head.pivot.rotation.z = Math.sin(A.idlePhase * 2) * 0.04;
+            parts.head.pivot.rotation.y += chatter;
         }
     }
 
-    /**
-     * Bloom (hopper body) — long-legged bouncing hop.
-     */
     function animateBloomHopper(e, dt, A, moving, attackReach) {
         const parts = e.parts;
         const spd = Math.hypot(e.vel.x, e.vel.z);
-
         A.bouncePhase += dt * (moving ? 3.6 + spd * 0.6 : 1.6);
         const b = A.bouncePhase % (Math.PI * 2);
         const hop = Math.sin(b);
@@ -4010,47 +4730,262 @@
         const crouch = hop > -0.2 && hop < 0.2 && Math.cos(b) < 0
             ? Math.abs(Math.cos(b)) : 0;
 
-        /* Squash/stretch the torso with the hop. */
         if (parts.torso.connected) {
             const sy = 1 + airborne * 0.25 - land * 0.20 - crouch * 0.18;
             const sxz = 1 / Math.sqrt(Math.max(0.5, sy));
             parts.torso.pivot.scale.set(sxz, sy, sxz);
-            parts.torso.pivot.position.y = (parts.torso.basePivot[1] || 0)
-                + airborne * 0.16;
+            parts.torso.pivot.position.y = (parts.torso.basePivot[1] || 0) + airborne * 0.16;
             parts.torso.pivot.rotation.x = 0.30 * attackReach + crouch * 0.08;
             parts.torso.pivot.rotation.z = Math.sin(A.idlePhase * 0.7 + A._seed) * 0.03;
         }
 
-        /* Long legs — big fold at the knee during the crouch, extend on launch. */
         const legFold = -crouch * 1.1 + land * 0.15;
         if (parts.legL.connected) {
             parts.legL.pivot.rotation.x = legFold + airborne * 0.20
                 + Math.sin(A.bouncePhase * 0.5) * 0.05;
-            parts.legL.pivot.rotation.z = -0.06;
         }
         if (parts.legR.connected) {
             parts.legR.pivot.rotation.x = legFold + airborne * 0.20
                 + Math.sin(A.bouncePhase * 0.5 + 1.5) * 0.05;
-            parts.legR.pivot.rotation.z = 0.06;
         }
 
-        /* Tiny arms — mostly hang with slight bounce. */
         const armBounce = -hop * 0.20;
         if (parts.armL.connected) {
             parts.armL.pivot.rotation.x = 0.55 + armBounce + attackReach * 0.45;
-            parts.armL.pivot.rotation.z = -0.35;
         }
         if (parts.armR.connected) {
             parts.armR.pivot.rotation.x = 0.55 + armBounce + attackReach * 0.45;
-            parts.armR.pivot.rotation.z = 0.35;
         }
-
         if (parts.head && parts.head.connected) {
             const bob = Math.sin(A.bouncePhase + 0.6) * 0.10;
-            parts.head.pivot.rotation.x = bob
-                + attackReach * 0.30 + A.headPitch * 0.05 - A.flinch * 0.35;
+            parts.head.pivot.rotation.x = bob + attackReach * 0.30
+                + A.headPitch * 0.05 - A.flinch * 0.35;
             parts.head.pivot.rotation.y = A.headTurn * 0.40;
-            parts.head.pivot.rotation.z = Math.sin(A.idlePhase * 0.5) * 0.05;
+        }
+    }
+
+    function animateMiniBoss(e, dt, A, moving, attackReach) {
+        const parts = e.parts;
+        const spd = Math.hypot(e.vel.x, e.vel.z);
+
+        if (moving) A.walkPhase += dt * (1.2 + spd * 0.3);
+        else A.walkPhase += dt * 0.15;
+
+        const swing = Math.sin(A.walkPhase);
+
+        // ─── BASE POSE — one constant per part × axis (all editable) ──
+        const torsoBaseX = -7;
+        const torsoBaseY = 0;
+        const torsoBaseZ = 0;
+        const torsoDrop = 0.19;
+
+        const headBaseX = 0.56;
+        const headBaseY = 0;
+        const headBaseZ = 0;
+
+        const armLBaseX = 1;
+        const armLBaseY = 0;
+        const armLBaseZ = -0.13;
+
+        const armRBaseX = 1;
+        const armRBaseY = 0;
+        const armRBaseZ = 0.11;
+
+        const legLBaseX = 0;
+        const legLBaseY = 0;
+        const legLBaseZ = -0.16;
+
+        const legRBaseX = 0;
+        const legRBaseY = 0;
+        const legRBaseZ = 0.15;
+
+        // ─── SWING AMPLITUDES ─────────────────────────────────────────
+        const legSwingX = 0.55;
+        const armSwingX = 0.28;
+        const headSwingY = 0.25;
+        const torsoSwingZ = 0.06;
+
+        const legSwing = moving ? swing * legSwingX : 0;
+        const armSwing = moving ? swing * armSwingX : 0;
+
+        // ─── throw timeline (BOTH arms driven symmetrically) ─────────
+        let throwOverride = false;
+        let armLX = armLBaseX + armSwing;
+        let armRX = armRBaseX + armSwing;
+        let armLZ = armLBaseZ;
+        let armRZ = armRBaseZ;
+        let torsoDeltaX = 0;
+
+        if (e.isThrowing) {
+            throwOverride = true;
+            e.throwTimer += dt;
+            const T = e.throwTimer;
+
+            const ARM_REACH = -0.40;
+            const ARM_ABOVE = 2.80;
+            const ARM_WINDUP = 3.30;
+            const ARM_RELEASE = 1.50;
+            const ARM_FOLLOW = 0.30;
+
+            let armX;
+
+            if (T < 1.0) {
+                // Phase 1 — both arms reach down toward the cluster
+                const t = T / 1.0;
+                const et = _ease(t);
+                armX = armLBaseX + (ARM_REACH - armLBaseX) * et;
+                armLZ = armLBaseZ - et * 0.18;
+                armRZ = armRBaseZ + et * 0.18;
+                torsoDeltaX = t * 0.25;
+            } else if (T < 2.5) {
+                // Phase 2 — both arms lift the block up
+                const t = (T - 1.0) / 1.5;
+                const et = _ease(t);
+                armX = ARM_REACH + (ARM_ABOVE - ARM_REACH) * et;
+                armLZ = armLBaseZ - 0.18 + et * 0.13;
+                armRZ = armRBaseZ + 0.18 - et * 0.13;
+                torsoDeltaX = 0.25 - t * 0.35;
+            } else if (T < 3.5) {
+                // Phase 3 — hold above head, spread hands for the windup
+                const t = (T - 2.5) / 1.0;
+                const et = _ease(t);
+                armX = ARM_ABOVE + (ARM_WINDUP - ARM_ABOVE) * et;
+                armLZ = armLBaseZ - 0.05 - et * 0.22;
+                armRZ = armRBaseZ + 0.05 + et * 0.22;
+                torsoDeltaX = -0.10 - t * 0.15;
+            } else if (T < 4.0) {
+                // Phase 4 — throw (both arms swing down together)
+                const t = (T - 3.5) / 0.5;
+                const et = _easeOut(t);
+                armX = ARM_WINDUP + (ARM_RELEASE - ARM_WINDUP) * et;
+                armLZ = armLBaseZ - 0.27;
+                armRZ = armRBaseZ + 0.27;
+                torsoDeltaX = -0.25 + et * 0.5;
+            } else if (T < 4.5) {
+                // Phase 5 — follow-through
+                const t = (T - 4.0) / 0.5;
+                const et = _ease(t);
+                armX = ARM_RELEASE + (ARM_FOLLOW - ARM_RELEASE) * et;
+                armLZ = armLBaseZ - 0.27 + et * 0.17;
+                armRZ = armRBaseZ + 0.27 - et * 0.17;
+                torsoDeltaX = 0.25 + t * 0.05;
+            } else {
+                // Phase 6 — recover to base pose
+                const t = Math.min(1, (T - 4.5) / 0.5);
+                const et = _ease(t);
+                armX = ARM_FOLLOW + (armRBaseX - ARM_FOLLOW) * et;
+                armLZ = armLBaseZ - 0.10 + et * 0.10;
+                armRZ = armRBaseZ + 0.10 - et * 0.10;
+                torsoDeltaX = 0.30 - t * 0.30;
+                if (T >= 5.0) e.isThrowing = false;
+            }
+
+            armLX = armX;
+            armRX = armX;
+
+            // Break the voxel cluster the moment the hands reach the ground
+            if (T >= 1.0 && !e._blockBroken) {
+                e._blockBroken = true;
+                if (!e._remoteOwned) spawnHeldBlockForThrow(e);
+            }
+
+            // Release the block as a projectile
+            if (T >= 4.0 && !e._blockThrown) {
+                e._blockThrown = true;
+                if (!e._remoteOwned) launchHeldBlock(e);
+            }
+
+            // Keep the chunk glued between the two hands
+            if (e.heldBlock && !e._blockThrown) {
+                updateHeldBlockPosition(e, dt);
+            }
+        }
+
+        if (e.isSlamming && !e.isThrowing) {
+            throwOverride = true;
+            e.slamTimer += dt;
+            const T = e.slamTimer;
+
+            const ARM_UP = 3.60;   // both arms raised overhead
+            const ARM_DOWN = 0.50;   // both arms slam forward-down
+
+            let armX = armLBaseX;
+            let torsoD = 0;
+
+            if (T < 0.7) {
+                // Phase 1 — windup: both arms swing up high, body leans back
+                const t = T / 0.7;
+                const et = _ease(t);
+                armX = armLBaseX + (ARM_UP - armLBaseX) * et;
+                torsoD = -0.40 * et;
+            } else if (T < 1.0) {
+                // Phase 2 — slam down hard
+                const t = (T - 0.7) / 0.3;
+                const et = _easeOut(t);
+                armX = ARM_UP + (ARM_DOWN - ARM_UP) * et;
+                torsoD = -0.40 + et * 1.15;
+            } else if (T < 1.4) {
+                // Phase 3 — impact hold (spawn the wave exactly once)
+                armX = ARM_DOWN;
+                torsoD = 0.75;
+                if (T >= 1.0 && !e._waveSpawned) {
+                    e._waveSpawned = true;
+                    if (!e._remoteOwned) spawnStoneWave(e);
+                }
+            } else {
+                // Phase 4 — recover to neutral
+                const t = Math.min(1, (T - 1.4) / 0.4);
+                const et = _ease(t);
+                armX = ARM_DOWN + (armLBaseX - ARM_DOWN) * et;
+                torsoD = 0.75 - et * 0.75;
+                if (T >= 1.8) e.isSlamming = false;
+            }
+
+            armLX = armX;
+            armRX = armX;
+            armLZ = armLBaseZ;
+            armRZ = armRBaseZ;
+            torsoDeltaX = torsoD;
+        }
+
+        // ─── legs ────────────────────────────────────────────────────
+        if (parts.legL.connected) {
+            parts.legL.pivot.rotation.x = legLBaseX + legSwing;
+            parts.legL.pivot.rotation.y = legLBaseY;
+            parts.legL.pivot.rotation.z = legLBaseZ;
+        }
+        if (parts.legR.connected) {
+            parts.legR.pivot.rotation.x = legRBaseX - legSwing;
+            parts.legR.pivot.rotation.y = legRBaseY;
+            parts.legR.pivot.rotation.z = legRBaseZ;
+        }
+
+        // ─── arms ────────────────────────────────────────────────────
+        if (parts.armL.connected) {
+            parts.armL.pivot.rotation.x = throwOverride ? armLX : (armLBaseX - armSwing);
+            parts.armL.pivot.rotation.y = armLBaseY;
+            parts.armL.pivot.rotation.z = armLZ;
+        }
+        if (parts.armR.connected) {
+            parts.armR.pivot.rotation.x = throwOverride ? armRX : (armRBaseX + armSwing);
+            parts.armR.pivot.rotation.y = armRBaseY;
+            parts.armR.pivot.rotation.z = armRZ;
+        }
+
+        // ─── torso ───────────────────────────────────────────────────
+        if (parts.torso.connected) {
+            parts.torso.pivot.rotation.x =
+                torsoBaseX + (throwOverride ? torsoDeltaX : 0);
+            parts.torso.pivot.rotation.y = torsoBaseY;
+            parts.torso.pivot.rotation.z = torsoBaseZ + swing * torsoSwingZ;
+            parts.torso.pivot.position.y = parts.torso.basePivot[1] - torsoDrop;
+        }
+
+        // ─── head ────────────────────────────────────────────────────
+        if (parts.head && parts.head.connected) {
+            parts.head.pivot.rotation.x = headBaseX + attackReach * 0.25;
+            parts.head.pivot.rotation.y = headBaseY + A.headTurn * headSwingY;
+            parts.head.pivot.rotation.z = headBaseZ;
         }
     }
 
@@ -4112,27 +5047,71 @@
                 e.canSeePlayer = distToPlayer < 30 && canSeePlayer(e);
             }
             const reach = e.crawlMode ? 1.0 : e.model.attackRange;
-            if (e.canSeePlayer) {
-                e.state = distToPlayer <= reach ? "attack" : "chase";
-            } else if (e.state !== "wander") {
-                e.state = "wander";
-                e.wanderTarget = null;
+            if (!e.isSlamming) {
+                if (e.canSeePlayer) {
+                    e.state = distToPlayer <= reach ? "attack" : "chase";
+                } else if (e.state !== "wander") {
+                    e.state = "wander";
+                    e.wanderTarget = null;
+                }
             }
 
             const slowMul = e.hitSlowTimer > 0 ? HIT_SLOW_MULTIPLIER : 1;
 
             let moveSpeed = 0, dirX = 0, dirZ = 0;
+
+            // --- MINI BOSS SPECIAL LOGIC ---
+            if (e.kind === '__mini_boss__') {
+                e.skillTimer = (e.skillTimer || 3.0) - dt;
+
+                // Trigger a new skill if not already doing one
+                if (e.skillTimer <= 0 && e.canSeePlayer && !e.isThrowing && !e.isSlamming) {
+                    if (distToPlayer < 7.0) {
+                        // GROUND SLAM — 1.8 s animation, then a forward stone wave.
+                        // No terrain carve and no immediate damage; the wave does that.
+                        e.skillTimer = 6.0;
+                        e.isSlamming = true;
+                        e.slamTimer = 0;
+                        e.slamYaw = e.yaw;      // lock the facing direction
+                        e._waveSpawned = false;
+                        e.state = "chase";       // suppress attack-state damage during slam
+                    } else if (distToPlayer > 12.0) {
+                        // THROW BLOCK — unchanged
+                        if (e.heldBlock) {
+                            scene.remove(e.heldBlock.mesh);
+                            if (e.heldBlock.mesh.geometry) e.heldBlock.mesh.geometry.dispose();
+                            e.heldBlock = null;
+                        }
+                        e.skillTimer = 7.0;
+                        e.isThrowing = true;
+                        e.throwTimer = 0;
+                        e._blockBroken = false;
+                        e._blockThrown = false;
+                    }
+                }
+            }
+            // -------------------------------
+
             if (e.state === "chase") {
-                dirX = dx / distToPlayer;
-                dirZ = dz / distToPlayer;
-                moveSpeed = e.crawlMode ? e.model.speedWalk * 0.35 : e.model.speedRun;
+                const bm = computeBehaviorMove(e, dx, dz, distToPlayer, dt);
+                dirX = bm.x;
+                dirZ = bm.z;
+                let baseSpeed = e.crawlMode ? e.model.speedWalk * 0.35 : e.model.speedRun;
+
+                if (e.kind === '__mini_boss__') {
+                    dirX = dx / distToPlayer;
+                    dirZ = dz / distToPlayer;
+                    baseSpeed = e.model.speedRun;
+                }
+
+                moveSpeed = baseSpeed * bm.speedMul * slowMul;   // ← added * slowMul
                 e.yaw = Math.atan2(dx, dz) + Math.PI;
             } else if (e.state === "attack") {
                 e.yaw = Math.atan2(dx, dz) + Math.PI;
                 e.vel.x = 0; e.vel.z = 0;
                 if (e.attackTimer <= 0) {
                     if (Hooks.damagePlayer) Hooks.damagePlayer(e.model.attackDamage);
-                    e.attackTimer = 1.0;
+                    e.attackTimer = 1.2;
                     e.attackPhase = 0.001;
                 }
             } else {
@@ -4152,10 +5131,19 @@
                 const wd = Math.hypot(wx, wz);
                 if (wd > 0.3) {
                     dirX = wx / wd; dirZ = wz / wd;
-                    moveSpeed = e.crawlMode ? e.model.speedWalk * 0.25 : e.model.speedWalk;
+                    moveSpeed = (e.crawlMode ? e.model.speedWalk * 0.25 : e.model.speedWalk) * slowMul;  // ← added * slowMul
                     e.yaw = Math.atan2(wx, wz) + Math.PI;
                 }
             }
+
+            // === Slam override: freeze facing + zero movement ===
+            if (e.isSlamming) {
+                moveSpeed = 0;
+                dirX = 0;
+                dirZ = 0;
+                e.yaw = e.slamYaw;   // rigid facing, no rotation
+            }
+
             if (moveSpeed > 0 && (dirX !== 0 || dirZ !== 0)) {
                 e._steerT = (e._steerT || Math.random() * 100) + dt;
                 const weaveAmt = e.model.weaveAmt != null ? e.model.weaveAmt : 0.30;
@@ -4243,7 +5231,11 @@
             e.pos.z = clamp(e.pos.z, 0.4, WORLD_D - 0.4);
             if (e.pos.y < -4) e.pos.y = 30;
             animateEnemy(e, dt);
-            e.rig.root.position.copy(e.pos);
+            e.rig.root.position.set(
+                e.pos.x,
+                e.pos.y + (e._visualYOffset || 0),
+                e.pos.z,
+            );
             e.rig.root.rotation.y = e.yaw;
             updateBleeding(e, dt);
             resolveEnemyDetachedCollisions(e, colHW, colH);
@@ -4252,6 +5244,9 @@
         resolvePlayerEnemyCollisions();
         updateDetachedParts(dt);
         updateBloodDrops(dt);
+        updateBossProjectiles(dt);
+        updateStoneWaves(dt);        // ← new
+        updateDustParticles(dt);     // ← new
     }
 
     /* =========================================================================
@@ -4586,6 +5581,12 @@
 
     function tickWaves(dt, mapType) {
         const _mp = window.ARiveMP;
+        if (window.SurvivalMode &&
+            (window.SurvivalMode.state === 'PREP' ||
+                window.SurvivalMode.state === 'WAVE' ||
+                window.SurvivalMode.state === 'BOSS')) {
+            return;
+        }
         if (_mp && _mp.connected && !_mp.isHost) return;
         if (mapType === "sandbox") {
             /* Only run the loop when the sandbox flag is enabled. */
@@ -4677,7 +5678,11 @@
         if (typeof e._targetHp === 'number') e.hp = e._targetHp;
 
         animateEnemy(e, dt);
-        e.rig.root.position.copy(e.pos);
+        e.rig.root.position.set(
+            e.pos.x,
+            e.pos.y + (e._visualYOffset || 0),
+            e.pos.z,
+        );
         e.rig.root.rotation.y = e.yaw;
 
         if (e._targetAlive === false && e.alive) {
@@ -4710,6 +5715,41 @@
             e._targetAlive = !!s.a;
             e._targetSlow = s.sl || 0;
             e._targetCrawlBlend = s.cb || 0;
+
+            // NEW: boss action state sync
+            if (e.kind === '__mini_boss__' || e.kind === '__final_boss__') {
+                const wasThrowing = !!e.isThrowing;
+                const nowThrowing = !!s.th;
+                e.isThrowing = nowThrowing;
+                if (nowThrowing && !wasThrowing) {
+                    // Transition into throw — snapshot the host timer + reset
+                    // local sub-flags so the arm animation starts clean.
+                    e.throwTimer = s.tt || 0;
+                    e._blockBroken = false;
+                    e._blockThrown = false;
+                } else if (nowThrowing && typeof s.tt === 'number') {
+                    // Correct drift every batch (100 ms window). Small jumps
+                    // read as "caught up", not as teleporting.
+                    if (Math.abs((e.throwTimer || 0) - s.tt) > 0.3) {
+                        e.throwTimer = s.tt;
+                    }
+                }
+
+                const wasSlamming = !!e.isSlamming;
+                const nowSlamming = !!s.sm;
+                e.isSlamming = nowSlamming;
+                if (nowSlamming && !wasSlamming) {
+                    e.slamTimer = s.st || 0;
+                    e.slamYaw = s.sy || 0;
+                    e._waveSpawned = false;
+                } else if (nowSlamming) {
+                    if (typeof s.st === 'number' &&
+                        Math.abs((e.slamTimer || 0) - s.st) > 0.2) {
+                        e.slamTimer = s.st;
+                    }
+                    if (typeof s.sy === 'number') e.slamYaw = s.sy;
+                }
+            }
         }
     }
 
@@ -4722,7 +5762,7 @@
         carvePartAt(part, wp, rVox, e.model.voxelSize);
     }
 
-    function hitEnemyById(eid, hx, hy, hz, dmg, dirX, dirY, dirZ) {
+    function hitEnemyById(eid, hx, hy, hz, dmg, dirX, dirY, dirZ, carveRadiusWorld) {
         const e = findByMpId(eid);
         if (!e || !e.alive) return false;
 
@@ -4766,7 +5806,10 @@
             ? voxelWorldPosition(part, nearestVoxel, vs, _tmpCarve, part.mesh.matrixWorld)
             : _hitV.clone();
 
-        carvePartAt(part, carveAt, 1.85, vs);
+        const radiusVox = (typeof carveRadiusWorld === "number" && carveRadiusWorld > 0)
+            ? carveRadiusWorld * ENEMY_CARVE_WORLD_TO_VOX
+            : 1.85;
+        carvePartAt(part, carveAt, radiusVox, vs);
         for (let i = 0; i < 5; i++) {
             spawnBloodDrop(
                 carveAt.x + (Math.random() - 0.5) * 0.10,
@@ -4788,12 +5831,46 @@
        PUBLIC API  (unchanged)
        ========================================================================= */
     function clearAll() {
-        for (const e of enemies) scene.remove(e.rig.root);
+        // ✅ 修复：清理活着的敌人
+        for (const e of enemies) {
+            scene.remove(e.rig.root);
+            if (e.heldBlock) {
+                scene.remove(e.heldBlock.mesh);
+                if (e.heldBlock.mesh.geometry) e.heldBlock.mesh.geometry.dispose();
+                e.heldBlock = null;
+            }
+            for (const key in e.parts) {
+                const p = e.parts[key];
+                if (p.mesh && p.mesh.geometry) {
+                    // 防止重复释放已经掉落的肢体
+                    if (!DETACHED_PARTS.some(d => d.mesh === p.mesh)) {
+                        p.mesh.geometry.dispose();
+                    }
+                }
+            }
+        }
         enemies.length = 0;
-        for (const d of DETACHED_PARTS) scene.remove(d.mesh);
+
+        // ✅ 修复：清理碎块
+        for (const d of DETACHED_PARTS) {
+            scene.remove(d.mesh);
+            if (d.mesh.geometry) d.mesh.geometry.dispose();
+        }
         DETACHED_PARTS.length = 0;
+
+        // 血迹和投掷物使用的是共享的几何体，不需要 dispose，直接移除即可
         for (const d of BLOOD_DROPS) scene.remove(d.mesh);
         BLOOD_DROPS.length = 0;
+
+        for (const p of bossProjectiles) scene.remove(p.mesh);
+        bossProjectiles.length = 0;
+
+        for (const w of stoneWaves) scene.remove(w.mesh);
+        stoneWaves.length = 0;
+
+        for (const d of DUST_PARTICLES) scene.remove(d.mesh);
+        DUST_PARTICLES.length = 0;
+
         resetWaves();
     }
 
@@ -4829,4 +5906,106 @@
             return n;
         },
     };
+
+    /* =========================================================================
+   BOSS HP BAR — floating top-of-screen bar for __mini_boss__ / __final_boss__
+   -------------------------------------------------------------------------
+   · Self-contained: creates its own DOM element + RAF loop.
+   · Reads game state via Hooks (getGameRunning, player).
+   · Shows whenever a boss exists in `enemies` — waves, sandbox, anywhere.
+   · Pauses/hides on death or game pause, auto-hides when boss is removed.
+   ========================================================================= */
+    (function setupBossBar() {
+        if (typeof document === "undefined" || typeof window === "undefined") return;
+
+        const barEl = document.createElement("div");
+        barEl.id = "ariveBossBar";
+        barEl.style.cssText =
+            "position:fixed;top:16px;left:50%;transform:translateX(-50%);" +
+            "width:min(600px,72vw);z-index:7;pointer-events:none;" +
+            "opacity:0;transition:opacity .35s ease;";
+        barEl.innerHTML =
+            '<div id="ariveBossName" style="' +
+            'font:bold 14px \'Courier New\',monospace;letter-spacing:4px;' +
+            'color:#e8c86a;text-align:center;' +
+            'text-shadow:2px 2px 0 #000,0 0 10px rgba(232,200,106,.5);' +
+            'margin-bottom:5px;text-transform:uppercase;white-space:nowrap;">' +
+            'BOSS</div>' +
+            '<div style="' +
+            'width:100%;height:20px;background:#12161d;' +
+            'border:2px solid #e8c86a;' +
+            'box-shadow:inset 0 0 0 1px #05070a,0 0 16px rgba(232,200,106,.35);' +
+            'position:relative;overflow:hidden;">' +
+            '<div id="ariveBossFill" style="' +
+            'height:100%;width:100%;' +
+            'background:linear-gradient(to right,#8a1818,#c03030 60%,#e05050);' +
+            'transition:width .18s linear;' +
+            'box-shadow:inset 0 -3px 0 rgba(0,0,0,.25);"></div>' +
+            '</div>';
+
+        const nameEl = barEl.querySelector("#ariveBossName");
+        const fillEl = barEl.querySelector("#ariveBossFill");
+
+        let lastLabel = "";
+        let hideT = 0;
+        let lastT = 0;
+
+        function mount() {
+            if (!document.body) { setTimeout(mount, 30); return; }
+            document.body.appendChild(barEl);
+            requestAnimationFrame(tick);
+        }
+
+        function tick() {
+            requestAnimationFrame(tick);
+            const now = performance.now();
+            const dt = lastT ? Math.min(0.1, (now - lastT) / 1000) : 0.016;
+            lastT = now;
+
+            // Only show during active play
+            const running = Hooks.getGameRunning ? Hooks.getGameRunning() : true;
+            if (!running || !player.alive) {
+                barEl.style.opacity = "0";
+                hideT = 0;
+                return;
+            }
+
+            // Pick which boss to display — final boss wins over mini boss,
+            // first alive-one wins otherwise.
+            let boss = null;
+            for (let i = 0; i < enemies.length; i++) {
+                const e = enemies[i];
+                if (e.kind === "__final_boss__") { boss = e; break; }
+                if (e.kind === "__mini_boss__" && !boss) boss = e;
+            }
+
+            if (!boss) {
+                hideT += dt;
+                if (hideT > 0.4) barEl.style.opacity = "0";
+                return;
+            }
+
+            hideT = 0;
+            barEl.style.opacity = "1";
+
+            const pct = boss.alive
+                ? Math.max(0, Math.min(100, (boss.hp / boss.maxHp) * 100))
+                : 0;
+            fillEl.style.width = pct + "%";
+
+            const label = boss.kind === "__final_boss__"
+                ? "◆ FINAL BOSS ◆"
+                : "◆ MINI BOSS ◆";
+            if (lastLabel !== label) {
+                nameEl.textContent = label;
+                lastLabel = label;
+            }
+        }
+
+        if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", mount);
+        } else {
+            mount();
+        }
+    })();
 })();

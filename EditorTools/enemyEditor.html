@@ -110,7 +110,6 @@
             min-height: 0
         }
 
-        /* ---------- sidebar ---------- */
         #sidebar {
             width: 210px;
             flex: 0 0 auto;
@@ -119,6 +118,7 @@
             display: flex;
             flex-direction: column;
             min-height: 0;
+            overflow-y: auto;
         }
 
         #sidebar .grp {
@@ -129,10 +129,9 @@
             color: var(--dim)
         }
 
-        #typeList {
-            flex: 1;
+        .typeList {
             overflow-y: auto;
-            padding: 0 6px 10px
+            max-height: 180px;
         }
 
         .titem {
@@ -183,7 +182,6 @@
             color: #9fe8c8
         }
 
-        /* ---------- centre ---------- */
         #editor {
             flex: 1;
             min-width: 0;
@@ -304,7 +302,6 @@
             line-height: 1.9
         }
 
-        /* ---------- preview ---------- */
         #preview {
             width: 400px;
             flex: 0 0 auto;
@@ -348,7 +345,6 @@
             overflow: auto;
         }
 
-        /* ---------- voxel edit toolbar ---------- */
         #btnEditVox.on {
             background: #2b8a68;
             border-color: #4ab89a;
@@ -431,6 +427,26 @@
         #drop.on {
             display: flex
         }
+
+        /* Pose section */
+        .part-hdr {
+            padding: 8px 0 3px;
+            font-size: 10px;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            color: var(--dim);
+        }
+
+        .pose-hint {
+            font-size: 10.5px;
+            color: var(--dim);
+            line-height: 1.55;
+            margin: 0 0 6px;
+            padding: 4px 6px;
+            background: var(--panel2);
+            border-radius: 4px;
+            border-left: 2px solid var(--accent2);
+        }
     </style>
 </head>
 
@@ -453,6 +469,8 @@
             <div id="typeListZ" class="typeList"></div>
             <div class="grp">Aliens</div>
             <div id="typeListA" class="typeList"></div>
+            <div class="grp">Bosses</div>
+            <div id="typeListB" class="typeList"></div>
             <div style="padding:8px;display:flex;gap:6px;border-top:1px solid var(--line)">
                 <button id="btnNewZ" style="flex:1">+ Zombie</button>
                 <button id="btnNewA" style="flex:1">+ Alien</button>
@@ -680,8 +698,128 @@
             return true;
         }
 
+        const POSE_CONSTS = [
+            'torsoBaseX', 'torsoBaseY', 'torsoBaseZ', 'torsoDrop',
+            'headBaseX', 'headBaseY', 'headBaseZ',
+            'armLBaseX', 'armLBaseY', 'armLBaseZ',
+            'armRBaseX', 'armRBaseY', 'armRBaseZ',
+            'legLBaseX', 'legLBaseY', 'legLBaseZ',
+            'legRBaseX', 'legRBaseY', 'legRBaseZ',
+            'legSwingX', 'armSwingX', 'headSwingY', 'torsoSwingZ',
+        ];
+
+        const POSE_CONST_GROUPS = [
+            { label: 'torso', names: ['torsoBaseX', 'torsoBaseY', 'torsoBaseZ', 'torsoDrop'] },
+            { label: 'head', names: ['headBaseX', 'headBaseY', 'headBaseZ'] },
+            { label: 'armL', names: ['armLBaseX', 'armLBaseY', 'armLBaseZ'] },
+            { label: 'armR', names: ['armRBaseX', 'armRBaseY', 'armRBaseZ'] },
+            { label: 'legL', names: ['legLBaseX', 'legLBaseY', 'legLBaseZ'] },
+            { label: 'legR', names: ['legRBaseX', 'legRBaseY', 'legRBaseZ'] },
+            { label: 'swing', names: ['legSwingX', 'armSwingX', 'headSwingY', 'torsoSwingZ'] },
+        ];
+        const POSE_PARTS = ['legL', 'legR', 'torso', 'head', 'armL', 'armR'];
+        const POSE_AXES = ['x', 'y', 'z'];
+
+        function formatPoseNumber(v) {
+            if (!isFinite(v)) return String(v);
+            if (Number.isInteger(v)) return String(v);
+            const s = v.toFixed(4).replace(/\.?0+$/, '');
+            return s || "0";
+        }
+
+        /* Extract every editable pose value from an animator.
+           · 4 known consts (armBaseX / legBaseX / torsoBaseX / torsoDrop)
+           · every `parts.<part>.pivot.rotation.<axis> = <plain number>` OR
+             `= <plain number> <op> ...` (the leading constant is what we edit)
+           · Missing (part, axis) combos are materialized as `isNew` entries. */
+        function extractPoseValues(src, animatorName) {
+            if (!animatorName) return [];
+            const funcText = extractFunction(src, animatorName);
+            if (!funcText) return [];
+            const base = src.indexOf(funcText);
+            if (base < 0) return [];
+
+            const consts = new Map();
+            const rotations = new Map();
+            const drivenAxes = new Set();
+            let m;
+
+            // 1. Const declarations (base pose constants)
+            const constRe = /\b(?:const|let|var)\s+(\w+)\s*=\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/g;
+            while ((m = constRe.exec(funcText)) !== null) {
+                const name = m[1];
+                if (POSE_CONSTS.indexOf(name) < 0) continue;
+                const numStart = m.index + m[0].lastIndexOf(m[2]);
+                consts.set(name, {
+                    name, kind: 'const',
+                    value: parseFloat(m[2]),
+                    original: parseFloat(m[2]),
+                    start: base + numStart,
+                    end: base + numStart + m[2].length,
+                });
+            }
+
+            // 2. Detect axes driven by an identifier (e.g. `armBaseX - armSwing`,
+            //    `A.headTurn * 0.25`, `swing * 0.06`).  These are ANIMATED axes —
+            //    we must NOT expose them as editable fields, or the user's saved
+            //    override would replace the animation.
+            const drivenRe = /parts\.(\w+)\.pivot\.rotation\.([xyz])\s*=\s*[A-Za-z_$][\w$]*\s*(?:[+\-*/;])/g;
+            while ((m = drivenRe.exec(funcText)) !== null) {
+                drivenAxes.add(m[1] + '.' + m[2]);
+            }
+
+            // 3. Plain-number rotations (base pose values we can edit in place)
+            const rotRe = /parts\.(\w+)\.pivot\.rotation\.([xyz])\s*=\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*(?:[+\-*/]|;)/g;
+            while ((m = rotRe.exec(funcText)) !== null) {
+                const part = m[1], axis = m[2];
+                if (POSE_PARTS.indexOf(part) < 0) continue;
+                const key = part + '.' + axis;
+                const eqIdx = m[0].indexOf('=');
+                const numRelStart = m[0].indexOf(m[3], eqIdx);
+                if (numRelStart < 0) continue;
+                rotations.set(key, {
+                    name: key, kind: 'rotation',
+                    part, axis,
+                    value: parseFloat(m[3]),
+                    original: parseFloat(m[3]),
+                    start: base + m.index + numRelStart,
+                    end: base + m.index + numRelStart + m[3].length,
+                    isNew: false,
+                });
+            }
+
+            // 4. Fill unset, non-driven axes with "new" entries
+            for (const part of POSE_PARTS) {
+                for (const axis of POSE_AXES) {
+                    const key = part + '.' + axis;
+                    if (drivenAxes.has(key)) continue;  // animated — skip
+                    if (!rotations.has(key)) {
+                        rotations.set(key, {
+                            name: key, kind: 'rotation',
+                            part, axis,
+                            value: 0,
+                            original: 0,
+                            start: -1, end: -1,
+                            isNew: true,
+                        });
+                    }
+                }
+            }
+
+            // 5. Build output: consts first, then rotations per part (in fixed order)
+            const out = [];
+            for (const name of POSE_CONSTS) if (consts.has(name)) out.push(consts.get(name));
+            for (const part of POSE_PARTS) {
+                for (const axis of POSE_AXES) {
+                    const key = part + '.' + axis;
+                    if (rotations.has(key)) out.push(rotations.get(key));
+                }
+            }
+            return out;
+        }
+
         /* ============================================================================
-           2.  PARSE THE ZOMBIE_TYPES BLOCK
+           2.  PARSE THE ZOMBIE_TYPES BLOCK (and the trailing boss assignments)
            ========================================================================== */
 
         function parseEnemySource(src) {
@@ -746,11 +884,62 @@
                 i = j;
             }
 
+            /* ---- Boss assignments: ZOMBIE_TYPES.xxx = _yyy(); -------------- */
+            const bossRe = /ZOMBIE_TYPES\.(\w+)\s*=\s*(_\w+)\s*\(\s*\)\s*;/g;
+            let bm;
+            while ((bm = bossRe.exec(src)) !== null) {
+                const bossName = bm[1];
+                const funcName = bm[2];
+                const declStart = bm.index;
+                const declEnd = bm.index + bm[0].length;
+
+                const funcText = extractFunction(src, funcName);
+                if (!funcText) continue;
+
+                const bzMatch = /buildZombie\s*\(\s*\{/.exec(funcText);
+                if (!bzMatch) continue;
+
+                const funcStartInSrc = src.indexOf(funcText);
+                const objStartInFunc = bzMatch.index + bzMatch[0].length - 1;
+                const objStartInSrc = funcStartInSrc + objStartInFunc;
+                const objEndInSrc = matchBracket(src, objStartInSrc);
+                if (objEndInSrc < 0) continue;
+                const presetText = src.slice(objStartInSrc, objEndInSrc + 1);
+
+                let ast = null, preset = null, parseErr = null;
+                try {
+                    ast = parseValue(src, objStartInSrc);
+                    preset = astToJS(ast);
+                } catch (err) {
+                    parseErr = err.message;
+                    preset = {};
+                }
+
+                const animatorName = funcName === "_miniBoss" ? "animateMiniBoss" : null;
+
+                entries.push({
+                    name: bossName,
+                    builder: funcName,
+                    isBoss: true,
+                    keyStart: declStart,
+                    presetStart: objStartInSrc,
+                    presetEnd: objEndInSrc + 1,
+                    presetText,
+                    entryStart: declStart,
+                    entryEnd: declEnd,
+                    ast, preset,
+                    original: JSON.parse(JSON.stringify(preset)),
+                    isNew: false,
+                    parseErr,
+                    pose: extractPoseValues(src, animatorName),
+                });
+            }
+
             return { ztBrace, ztEnd, entries };
         }
 
         /* ============================================================================
-           3.  SANDBOX EVALUATION OF buildZombie / buildAlien
+           3.  SANDBOX EVALUATION OF buildZombie / buildAlien / bosses
            ========================================================================== */
 
         function makeSandbox(src) {
@@ -762,7 +951,7 @@
             for (const fn of [
                 "boxVoxels", "darkenColor", "lightenColor", "mirrorX",
                 "_rrSlice", "blob", "limb", "paintFrontFace", "hash3",
-                "applyVoxelOverrides",       // optional — skipped if missing
+                "applyVoxelOverrides",
             ]) {
                 const t = extractFunction(src, fn);
                 if (t) chunks.push(t);
@@ -775,16 +964,47 @@
                 chunks.push(src.slice(bp, e + 1) + ";");
             }
 
-            for (const fn of ["buildZombie", "buildAlien"]) {
+            for (const fn of ["buildZombie", "buildAlien", "_miniBoss", "_finalBoss"]) {
                 const t = extractFunction(src, fn);
                 if (t) chunks.push(t);
             }
+
+            chunks.push(`
+                function __deepMerge(a, b) {
+                    const out = Array.isArray(a) ? a.slice() : Object.assign({}, a);
+                    for (const k in b) {
+                        if (b[k] && typeof b[k] === 'object' && !Array.isArray(b[k]) &&
+                            out[k] && typeof out[k] === 'object' && !Array.isArray(out[k])) {
+                            out[k] = __deepMerge(out[k], b[k]);
+                        } else {
+                            out[k] = b[k];
+                        }
+                    }
+                    return out;
+                }
+
+                function __callBossWithPreset(bossFn, preset) {
+                    preset = preset || {};
+                    const origRandom = Math.random;
+                    let __seed = 1;
+                    Math.random = () => {
+                        __seed = (__seed * 1664525 + 1013904223) >>> 0;
+                        return __seed / 4294967296;
+                    };
+                    const origBZ = buildZombie;
+                    buildZombie = function (p) { return origBZ(__deepMerge(p, preset)); };
+                    try { return bossFn(); }
+                    finally { buildZombie = origBZ; Math.random = origRandom; }
+                }
+            `);
 
             const code =
                 chunks.join("\n\n") +
                 "\nreturn {" +
                 "  buildZombie: typeof buildZombie!=='undefined' ? buildZombie : null," +
                 "  buildAlien:  typeof buildAlien!=='undefined'  ? buildAlien  : null," +
+                "  _miniBoss:   typeof _miniBoss!=='undefined'   ? function(p){ return __callBossWithPreset(_miniBoss,  p); } : null," +
+                "  _finalBoss:  typeof _finalBoss!=='undefined'  ? function(p){ return __callBossWithPreset(_finalBoss, p); } : null," +
                 "  BASE_PALETTE: typeof BASE_PALETTE!=='undefined' ? BASE_PALETTE : {}" +
                 "};";
 
@@ -822,7 +1042,6 @@
             return JSON.stringify(v);
         }
 
-        /* Detect a voxel override array: [ [x, y, z, hex], ... ] */
         function looksLikeVoxelArray(value) {
             if (!Array.isArray(value) || !value.length) return false;
             const first = value[0];
@@ -845,7 +1064,6 @@
                     return src.slice(node.start, node.end);
                 }
 
-                /* Voxel arrays get one [x, y, z, 0xRRGGBB] tuple per line. */
                 if (looksLikeVoxelArray(value)) {
                     const childPad = pad + "    ";
                     const rows = value.map(v => {
@@ -921,16 +1139,43 @@
             return j;
         }
 
+        /* Find where to insert new `if (parts.X) …` overrides: right before
+           the final `}` of the animator, on its own lines with the function's
+           own indent. */
+        function findAnimatorInsertPoint(src, animatorName) {
+            const funcText = extractFunction(src, animatorName);
+            if (!funcText) return null;
+            const funcStart = src.indexOf(funcText);
+            const funcEnd = funcStart + funcText.length;
+
+            let ins = funcEnd - 1;
+            while (ins > 0 && /\s/.test(src[ins - 1])) ins--;
+            ins++;
+
+            const firstNl = funcText.indexOf('\n');
+            let indent = '    ';
+            if (firstNl >= 0) {
+                let i = funcStart + firstNl + 1;
+                let pad = '';
+                while (i < src.length && (src[i] === ' ' || src[i] === '\t')) { pad += src[i]; i++; }
+                if (pad) indent = pad;
+            }
+
+            return { ins, indent };
+        }
+
         function buildOutput() {
             const src = state.src;
             const edits = [];
 
+            /* ---- Presets (existing entries) ---- */
             for (const e of state.entries) {
                 if (e.isNew) continue;
                 const text = renderPreset(e, src);
                 if (text !== e.presetText) edits.push({ start: e.presetStart, end: e.presetEnd, text });
             }
 
+            /* ---- Deleted entries ---- */
             for (const e of state.deleted) {
                 let end = e.entryEnd;
                 while (end < src.length && (src[end] === " " || src[end] === "\t")) end++;
@@ -938,6 +1183,7 @@
                 edits.push({ start: lineStartIfBlank(src, e.entryStart), end, text: "" });
             }
 
+            /* ---- New entries ---- */
             const fresh = state.entries.filter((e) => e.isNew);
             if (fresh.length) {
                 let ins = state.ztEnd;
@@ -948,6 +1194,40 @@
                         renderObject(null, e.preset, "        ", src, false) + "),\n";
                 }
                 edits.push({ start: ins, end: ins, text });
+            }
+
+            /* ---- Pose edits ---- */
+            for (const e of state.entries) {
+                if (!e.pose || !e.pose.length) continue;
+
+                const newOverrides = [];
+
+                for (const p of e.pose) {
+                    if (p.start >= 0) {
+                        if (p.value !== p.original) {
+                            edits.push({ start: p.start, end: p.end, text: formatPoseNumber(p.value) });
+                        }
+                    } else if (p.kind === 'rotation' && p.value !== 0) {
+                        newOverrides.push(p);
+                    }
+                }
+
+                if (newOverrides.length) {
+                    const animName =
+                        e.builder === '_miniBoss' ? 'animateMiniBoss' : null;
+                    if (animName) {
+                        const pt = findAnimatorInsertPoint(src, animName);
+                        if (pt) {
+                            let text = '\n';
+                            for (const p of newOverrides) {
+                                text += pt.indent + 'if (parts.' + p.part +
+                                    ') parts.' + p.part + '.pivot.rotation.' + p.axis +
+                                    ' = ' + formatPoseNumber(p.value) + ';\n';
+                            }
+                            edits.push({ start: pt.ins, end: pt.ins, text });
+                        }
+                    }
+                }
             }
 
             edits.sort((a, b) => a.start - b.start);
@@ -1055,7 +1335,6 @@
             }
         };
 
-        /* drag & drop */
         let dragDepth = 0;
         window.addEventListener("dragenter", (e) => { e.preventDefault(); dragDepth++; $("#drop").classList.add("on"); });
         window.addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; $("#drop").classList.remove("on"); } });
@@ -1068,9 +1347,6 @@
             loadSource(await f.text(), f.name);
         });
 
-        /* ============================================================================
-           Auto-load
-           ========================================================================== */
         function showLanding() {
             const form = $("#form");
             form.innerHTML = "";
@@ -1122,6 +1398,7 @@
 
         function isModified(e) {
             if (e.isNew) return true;
+            if (e.pose && e.pose.some(p => p.value !== p.original)) return true;
             return !deepEqual(e.preset, e.original);
         }
 
@@ -1129,22 +1406,27 @@
             const d = el("div", "titem" + (state.selected === e ? " sel" : "") + (isModified(e) ? " mod" : ""));
             d.appendChild(el("span", "dot"));
             const nm = el("span", "nm"); nm.textContent = e.name; d.appendChild(nm);
-            const bd = el("span", "bd"); bd.textContent = e.builder === "buildAlien" ? "alien" : "zombie";
+            const bd = el("span", "bd");
+            bd.textContent = e.isBoss ? "boss" : (e.builder === "buildAlien" ? "alien" : "zombie");
             d.appendChild(bd);
             d.onclick = () => { state.selected = e; renderSidebar(); renderEditor(); };
             return d;
         }
 
         function renderSidebar() {
-            const zl = $("#typeListZ"), al = $("#typeListA");
-            zl.innerHTML = ""; al.innerHTML = "";
-            zl.className = "typeList"; al.className = "typeList";
-            zl.style.cssText = al.style.cssText = "padding:0 6px 10px";
+            const zl = $("#typeListZ"), al = $("#typeListA"), bl = $("#typeListB");
+            zl.innerHTML = ""; al.innerHTML = ""; bl.innerHTML = "";
+            zl.style.cssText = al.style.cssText = bl.style.cssText = "padding:0 6px 10px";
             for (const e of state.entries) {
-                (e.builder === "buildAlien" ? al : zl).appendChild(makeItem(e));
+                let target;
+                if (e.isBoss) target = bl;
+                else if (e.builder === "buildAlien") target = al;
+                else target = zl;
+                target.appendChild(makeItem(e));
             }
             if (!zl.children.length) zl.innerHTML = '<div style="padding:4px 10px;color:#555c6b">—</div>';
             if (!al.children.length) al.innerHTML = '<div style="padding:4px 10px;color:#555c6b">—</div>';
+            if (!bl.children.length) bl.innerHTML = '<div style="padding:4px 10px;color:#555c6b">—</div>';
         }
 
         /* ============================================================================
@@ -1167,7 +1449,6 @@
             const colorMode = path.length > 0 && path[0] === "palette";
 
             for (const key of Object.keys(obj)) {
-                /* Voxel overrides are managed by the preview toolbar, not the form. */
                 if (key === "voxelOverrides") continue;
 
                 const val = obj[key];
@@ -1300,6 +1581,36 @@
             updateStats();
         }
 
+        /* Build a pose row (one numeric input) for a const or rotation entry. */
+        function makePoseRow(p, onChange) {
+            const row = el("div", "row");
+            if (p.value !== p.original) row.classList.add("changed");
+
+            const lab = el("label");
+            lab.textContent = p.kind === 'const' ? p.name : p.part + '.rotation.' + p.axis;
+            lab.title = p.name + (p.isNew ? ' (new override)' : '');
+            row.appendChild(lab);
+
+            const inp = el("input");
+            inp.type = "number";
+            inp.step = "0.01";
+            inp.value = p.value;
+            inp.title = p.name + (p.isNew ? ' — 0 = unset' : '');
+            if (p.isNew) inp.style.color = 'var(--dim)';
+
+            inp.oninput = () => {
+                const n = parseFloat(inp.value);
+                if (isNaN(n)) return;
+                p.value = n;
+                row.classList.toggle("changed", p.value !== p.original);
+                inp.style.color = (p.isNew && p.value === 0) ? 'var(--dim)' : '';
+                onChange();
+            };
+            row.appendChild(inp);
+
+            return row;
+        }
+
         function renderEditor() {
             const form = $("#form");
             form.innerHTML = "";
@@ -1323,6 +1634,7 @@
                 return;
             }
 
+            /* ---- Preset fieldset ---- */
             const fs = el("fieldset");
             const lg = el("legend"); lg.textContent = "preset";
             fs.appendChild(lg);
@@ -1332,6 +1644,70 @@
                 schedulePreview();
             });
             form.appendChild(fs);
+
+            /* ---- Pose fieldset (bosses with animator pose) ---- */
+            if (e.isBoss && e.pose && e.pose.length) {
+                const pfs = el("fieldset");
+                const plg = el("legend");
+                plg.textContent = 'pose';
+                const resetBtn = el('button');
+                resetBtn.textContent = 'reset';
+                resetBtn.style.cssText = 'margin-left:8px;padding:1px 6px;font-size:10px;';
+                resetBtn.onclick = () => {
+                    for (const p of e.pose) p.value = p.original;
+                    renderEditor();
+                    toast("Pose reset");
+                };
+                plg.appendChild(resetBtn);
+                pfs.appendChild(plg);
+
+                const hint = el('div', 'pose-hint');
+                hint.innerHTML =
+                    'Constants set the base stance. <b>rotation.*</b> entries are direct ' +
+                    'overrides; <span style="color:var(--dim)">dimmed</span> values are ' +
+                    'not yet in the source — set a non-zero number to activate them on save.';
+                pfs.appendChild(hint);
+
+                const pmap = {};
+                for (const p of e.pose) if (p.kind === 'const') pmap[p.name] = p;
+
+                for (const grp of POSE_CONST_GROUPS) {
+                    let any = false;
+                    for (const name of grp.names) if (pmap[name]) { any = true; break; }
+                    if (!any) continue;
+                    const hdr = el('div', 'part-hdr');
+                    hdr.textContent = grp.label;
+                    pfs.appendChild(hdr);
+                    for (const name of grp.names) {
+                        if (pmap[name]) pfs.appendChild(makePoseRow(pmap[name], schedulePreview));
+                    }
+                }
+
+                for (const part of POSE_PARTS) {
+                    const rot = e.pose.filter(p => p.kind === 'rotation' && p.part === part);
+                    if (!rot.length) continue;
+                    const hdr = el('div', 'part-hdr');
+                    hdr.textContent = part;
+                    pfs.appendChild(hdr);
+                    for (const p of rot) pfs.appendChild(makePoseRow(p, schedulePreview));
+                }
+
+                form.appendChild(pfs);
+            }
+
+            if (e.isBoss) {
+                const info = el("div");
+                info.style.cssText =
+                    "padding:8px 10px;margin:0 0 12px;border:1px solid var(--line);" +
+                    "border-radius:7px;background:var(--panel);font-size:11px;color:var(--dim)";
+                info.innerHTML =
+                    "<span style='color:var(--accent2)'>ℹ Boss entry</span><br>" +
+                    "Preset edits rewrite the <code>buildZombie({...})</code> call inside " +
+                    "<b>" + (e.builder === "_miniBoss" ? "_miniBoss()" : "_finalBoss()") + "</b>. " +
+                    "New pose overrides are appended to the end of the animator so they win " +
+                    "over the built-in pose logic.";
+                form.appendChild(info);
+            }
 
             if (e.preset.voxelOverrides && Object.keys(e.preset.voxelOverrides).length) {
                 const info = el("div");
@@ -1351,10 +1727,10 @@
             updateStats();
         }
 
-        /* live-update the type name */
         $("#typeName").addEventListener("input", (ev) => {
             const e = state.selected;
             if (!e) return;
+            if (e.isBoss) { ev.target.value = e.name; return; }
             e.name = ev.target.value.trim() || "unnamed";
             renderSidebar();
         });
@@ -1366,6 +1742,7 @@
         $("#btnDuplicate").onclick = () => {
             const e = state.selected;
             if (!e) return;
+            if (e.isBoss) { toast("Bosses can't be duplicated"); return; }
             const copy = {
                 name: uniqueName(e.name + "_copy"),
                 builder: e.builder,
@@ -1382,6 +1759,7 @@
         $("#btnDelete").onclick = () => {
             const e = state.selected;
             if (!e) return;
+            if (e.isBoss) { toast("Bosses can't be deleted from here"); return; }
             if (!confirm("Delete type “" + e.name + "”?")) return;
             if (!e.isNew) state.deleted.push(e);
             state.entries.splice(state.entries.indexOf(e), 1);
@@ -1429,10 +1807,26 @@
                     await w.write(out);
                     await w.close();
                     toast("Saved to " + state.fileName);
-                    return;
-                } catch (e) { /* fall through to download */ }
+                } catch (e) { download(out, state.fileName || "enemy.js"); }
+            } else {
+                download(out, state.fileName || "enemy.js");
             }
-            download(out, state.fileName || "enemy.js");
+
+            /* Reload from the just-built source so newly-inserted pose overrides
+               get real start/end positions (otherwise we'd insert duplicates). */
+            const selName = state.selected ? state.selected.name : null;
+            const handle = state.fileHandle;
+            const fname = state.fileName;
+            loadSource(out, fname);
+            state.fileHandle = handle;
+            if (selName) {
+                const sel = state.entries.find(e => e.name === selName);
+                if (sel) {
+                    state.selected = sel;
+                    renderSidebar();
+                    renderEditor();
+                }
+            }
         }
 
         function download(text, name) {
@@ -1518,7 +1912,6 @@
             autoRotate: false, animate: true, showParts: false,
             baseMat: null,
             t: 0, raf: null,
-            /* ---- voxel edit mode ---- */
             editMode: false,
             tool: "remove",
             paintColor: 0x7a9060,
@@ -1553,7 +1946,6 @@
             PV.raycaster = new THREE.Raycaster();
             PV.ndc = new THREE.Vector2();
 
-            /* ---- orbit + click-to-edit ---- */
             let dragging = false, lx = 0, ly = 0;
             let downX = 0, downY = 0, downT = 0;
 
@@ -1572,7 +1964,7 @@
                 const dx = e.clientX - downX;
                 const dy = e.clientY - downY;
                 const dt = performance.now() - downT;
-                if (dx * dx + dy * dy > 25 || dt > 400) return;  // it was a drag
+                if (dx * dx + dy * dy > 25 || dt > 400) return;
                 applyVoxelTool(e);
             });
             canvas.addEventListener("pointermove", (e) => {
@@ -1661,8 +2053,8 @@
             const e = state.selected;
             if (!e || e.parseErr || !state.sandbox) { updateStats(); return; }
 
-            const fn = e.builder === "buildAlien" ? state.sandbox.buildAlien : state.sandbox.buildZombie;
-            if (typeof fn !== "function") { updateStats("builders unavailable"); return; }
+            const fn = state.sandbox[e.builder];
+            if (typeof fn !== "function") { updateStats("builder unavailable: " + e.builder); return; }
 
             let model;
             try { model = fn(JSON.parse(JSON.stringify(e.preset))); }
@@ -1670,9 +2062,7 @@
 
             if (!model || !model.parts) { updateStats("no parts"); return; }
 
-            /* Apply voxel overrides client-side, so the editor works even when
-               enemy.js doesn't yet contain applyVoxelOverrides. */
-            if (e.preset.voxelOverrides) {
+            if (e.preset.voxelOverrides && !e.isBoss) {
                 for (const k in e.preset.voxelOverrides) {
                     if (model.parts[k]) {
                         model.parts[k].voxels = e.preset.voxelOverrides[k].map(v => v.slice());
@@ -1719,19 +2109,66 @@
         }
 
         function animatePreview() {
-            if (!PV.parts || !PV.animate) return;
+            if (!PV.parts) return;
+            const e = state.selected;
             const t = PV.t;
             const P = PV.parts;
 
+            /* ---- Boss with pose ---- */
+            if (e && e.isBoss && e.pose && e.pose.length) {
+                const pm = {};
+                for (const p of e.pose) if (p.kind === 'const') pm[p.name] = p.value;
+                const g = (k, d) => pm[k] != null ? pm[k] : d;
+
+                // Build base rotations from constants — every axis for every part.
+                const baseRot = {
+                    legL: { x: g('legLBaseX', 0.55), y: g('legLBaseY', 0), z: g('legLBaseZ', -0.16) },
+                    legR: { x: g('legRBaseX', 0.55), y: g('legRBaseY', 0), z: g('legRBaseZ', 0.15) },
+                    armL: { x: g('armLBaseX', 1), y: g('armLBaseY', 0), z: g('armLBaseZ', -0.13) },
+                    armR: { x: g('armRBaseX', 1), y: g('armRBaseY', 0), z: g('armRBaseZ', 0.11) },
+                    torso: { x: g('torsoBaseX', 1.05), y: g('torsoBaseY', 0), z: g('torsoBaseZ', 0) },
+                    head: { x: g('headBaseX', 0.56), y: g('headBaseY', 0), z: g('headBaseZ', 0) },
+                };
+
+                // Apply base pose.
+                for (const partName of POSE_PARTS) {
+                    const pivot = P[partName] && P[partName].pivot;
+                    if (!pivot) continue;
+                    pivot.rotation.x = baseRot[partName].x;
+                    pivot.rotation.y = baseRot[partName].y;
+                    pivot.rotation.z = baseRot[partName].z;
+                }
+                if (P.torso && P.torso.base) {
+                    P.torso.pivot.position.y = P.torso.base.y - g('torsoDrop', 0.38);
+                }
+
+                // Swing on top of the freshly-written base.
+                if (PV.animate) {
+                    const sw = Math.sin(t * 3.2);
+                    const legSw = g('legSwingX', 0.55);
+                    const armSw = g('armSwingX', 0.28);
+                    const torsoSw = g('torsoSwingZ', 0.06);
+                    const headSw = g('headSwingY', 0.25);
+
+                    if (P.legL) P.legL.pivot.rotation.x += sw * legSw;
+                    if (P.legR) P.legR.pivot.rotation.x -= sw * legSw;
+                    if (P.armL) P.armL.pivot.rotation.x -= sw * armSw;
+                    if (P.armR) P.armR.pivot.rotation.x += sw * armSw;
+                    if (P.head) P.head.pivot.rotation.y += Math.sin(t * 0.7) * headSw;
+                    if (P.torso) P.torso.pivot.rotation.z += Math.sin(t * 6.4) * torsoSw;
+                }
+                return;
+            }
+
+            /* ---- Regular types ---- */
+            if (!PV.animate) return;
             const swing = Math.sin(t * 3.2);
             const bounce = Math.abs(Math.sin(t * 3.2));
 
             if (P.legL) P.legL.pivot.rotation.x = swing * 0.55;
             if (P.legR) P.legR.pivot.rotation.x = -swing * 0.55;
-
             if (P.armL) P.armL.pivot.rotation.x = -swing * 0.45;
             if (P.armR) P.armR.pivot.rotation.x = swing * 0.45;
-
             if (P.torso) {
                 P.torso.pivot.rotation.x = -0.06;
                 P.torso.pivot.rotation.z = -swing * 0.03;
@@ -1780,6 +2217,11 @@
             const canvas = $("#previewCanvas");
 
             btnEdit.onclick = () => {
+                const sel = state.selected;
+                if (sel && sel.isBoss) {
+                    toast("Voxel editing isn't available for bosses — edit the pose or preset instead", true);
+                    return;
+                }
                 PV.editMode = !PV.editMode;
                 btnEdit.classList.toggle("on", PV.editMode);
                 tools.classList.toggle("on", PV.editMode);
@@ -1805,12 +2247,12 @@
             $("#paintColor").oninput = (e) => {
                 PV.paintColor = parseInt(e.target.value.slice(1), 16) >>> 0;
             };
-            /* initialize from a reasonable default */
             $("#paintColor").value = "#" + (PV.paintColor >>> 0).toString(16).padStart(6, "0");
 
             $("#btnResetVox").onclick = () => {
                 const e = state.selected;
                 if (!e) return;
+                if (e.isBoss) { toast("Bosses have no voxel overrides", true); return; }
                 if (!e.preset.voxelOverrides) { toast("Nothing to reset"); return; }
                 if (!confirm("Discard all voxel edits for “" + e.name + "”?")) return;
                 delete e.preset.voxelOverrides;
@@ -1821,11 +2263,11 @@
         }
 
         function applyVoxelTool(ev) {
+            const entry = state.selected;
+            if (!entry || entry.isBoss) return;
+
             const pick = pickVoxel(ev);
             if (!pick) return;
-
-            const entry = state.selected;
-            if (!entry) return;
 
             const { partKey, vx, vy, vz, nx, ny, nz } = pick;
             const src = PV.parts[partKey].spec.voxels;
@@ -1850,16 +2292,13 @@
 
             if (!changed) return;
 
-            /* Rebuild just this part's geometry for instant feedback. */
             const part = PV.parts[partKey];
             if (part.mesh.geometry) part.mesh.geometry.dispose();
             part.mesh.geometry = buildVoxelGeometry(src, PV.model.voxelSize);
 
-            /* Persist into the preset. */
             if (!entry.preset.voxelOverrides) entry.preset.voxelOverrides = {};
             entry.preset.voxelOverrides[partKey] = src.map(v => v.slice());
 
-            /* Update counters & sidebar-modified dot. */
             let total = 0;
             for (const k in PV.parts) total += PV.parts[k].spec.voxels.length;
             PV.totalVoxels = total;
@@ -1897,8 +2336,6 @@
 
             const n = hit.face.normal;
 
-            /* Move the hit point into local space, then nudge along -n by
-               half a voxel so the floor() lands inside the hit voxel. */
             const p = hit.point.clone();
             hit.object.worldToLocal(p);
             const nudge = vs * 0.5;

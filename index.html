@@ -23,19 +23,42 @@
         <div id="crosshair"><span></span><span></span></div>
 
         <div id="vitals">
-            <div class="vital"><span class="vlabel">HP</span>
+            <div class="vital" aria-label="Health">
+                <span class="vicon hp" title="Health" role="img" aria-label="Health">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path fill="currentColor" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5
+                         2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09
+                         C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5
+                         c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+                    </svg>
+                </span>
                 <div class="bar">
                     <div class="fill hp" id="fillHealth"></div>
                 </div>
                 <span class="vnum" id="numHealth">100</span>
             </div>
-            <div class="vital"><span class="vlabel">FOOD</span>
+
+            <div class="vital" aria-label="Food">
+                <span class="vicon food" title="Food" role="img" aria-label="Food">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path fill="currentColor" d="M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.84 3.75 3.97V22h2.5v-9.03
+                         C11.34 12.84 13 11.12 13 9V2h-2v7z
+                         m5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z" />
+                    </svg>
+                </span>
                 <div class="bar">
                     <div class="fill food" id="fillHunger"></div>
                 </div>
                 <span class="vnum" id="numHunger">100</span>
             </div>
-            <div class="vital"><span class="vlabel">H₂O</span>
+
+            <div class="vital" aria-label="Hydration">
+                <span class="vicon water" title="Hydration" role="img" aria-label="Hydration">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path fill="currentColor" d="M12 2S5 9 5 14c0 3.87 3.13 7 7 7
+                         s7-3.13 7-7c0-5-7-12-7-12z" />
+                    </svg>
+                </span>
                 <div class="bar">
                     <div class="fill water" id="fillThirst"></div>
                 </div>
@@ -137,11 +160,19 @@
 
 
             <div class="map-grid">
-                <button class="map-card" data-map="city">
+                <div class="map-card map-card-arive">
                     <div class="map-icon">🏙</div>
                     <div class="map-name">ARive</div>
-                    <div class="map-desc">Procedural ruins<br>hostile creatures<br>full survival loop</div>
-                </button>
+                    <div class="map-desc">Procedural ruins · hostile creatures</div>
+                    <div class="map-mode-row">
+                        <button class="map-mode-btn" data-map="city" data-mode="normal">
+                            NORMAL
+                        </button>
+                        <button class="map-mode-btn" data-map="survival" data-mode="survival">
+                            SURVIVAL
+                        </button>
+                    </div>
+                </div>
                 <button class="map-card" data-map="sandbox">
                     <div class="map-icon">▢</div>
                     <div class="map-name">SANDBOX</div>
@@ -150,7 +181,10 @@
             </div>
 
             <!-- NEW: direct entry into the multiplayer menu -->
-            <button id="mapMpBtn" class="btn btn-secondary" style="margin: 4px 0 24px;">⚔ MULTIPLAYER</button>
+            <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin: 4px 0 24px;">
+                <button id="mapMpBtn" class="btn btn-secondary">⚔ MULTIPLAYER</button>
+                <button id="mapAvatarBtn" class="btn btn-secondary">◈ CUSTOMIZE AVATAR</button>
+            </div>
 
             <div class="controls">
                 <div><b>W A S D</b><span>Move</span></div>
@@ -286,7 +320,18 @@
 
                 <!-- ============ JOIN (room list) ============ -->
                 <div id="mpJoinPanel" class="hidden">
-                    <p class="sub" style="margin-top:18px;">Live rooms</p>
+                    <p class="sub" style="margin-top:18px;">Join by room code</p>
+                    <div class="mp-field">
+                        <div style="display:flex; gap:8px;">
+                            <input type="text" id="mpJoinCode" maxlength="6" placeholder="ABC123" autocomplete="off"
+                                spellcheck="false" style="flex:1; text-transform:uppercase; letter-spacing:6px;
+                          text-align:center; font-family:'Courier New',monospace;
+                          font-size:20px;" />
+                            <button id="mpJoinCodeBtn" class="btn">JOIN</button>
+                        </div>
+                    </div>
+
+                    <p class="sub" style="margin-top:18px;">— OR pick a live room —</p>
                     <div id="mpRoomList" class="mp-room-list">
                         <div class="mp-room-empty">Loading rooms…</div>
                     </div>
@@ -340,6 +385,7 @@
 
     <script src="multiplayer/auth.js"></script>
     <script src="multiplayer/authUI.js"></script>
+    <script src="multiplayer/avatarStore.js"></script>
 
     <script src="sfx.js"></script>
     <script src="weaponSound.js"></script>
@@ -348,11 +394,14 @@
     <script src="inventory.js"></script>
     <script src="map.js"></script>
     <script src="game.js"></script>
+    <script src="atmosphere.js"></script>
     <script src="enemy.js"></script>
+    <script src="survivalMode.js"></script>
     <script src="sandboxMenu.js"></script>
 
     <script src="multiplayer/roomRegistry.js"></script>
     <script src="multiplayer/multiplayer.js"></script>
+    <script src="multiplayer/avatarCustomizer.js"></script>
 
 </body>
 
