@@ -1415,49 +1415,73 @@ as the gun comes up, then returns to the grip as the gun settles. */
         }
       }
 
-      let endPoint;
-      if (hitEnemy) {
-        endPoint = origin.clone().addScaledVector(dir, hitT);
-
-        /* Route the bullet through the exact-impact entry point so the
-           carved voxel is the pixel the shot actually landed on, not a
-           random surface pick.  Falls back to the old hurtEnemy path
-           if enemy.js didn't expose hitEnemyRay for some reason. */
-        let routed = false;
-        if (g.hitEnemyRay) {
-          routed = g.hitEnemyRay(
-            endPoint.x, endPoint.y, endPoint.z,
-            def.damage,
-            dir.x, dir.y, dir.z,
-            def.carveRadius,          // ← 新增
-          );
+      /* ── Remote player ray test (PvP) ───────────────────────────────
+   Only counts if the player is CLOSER than the current best hit,
+   so an enemy or wall in front of them absorbs the bullet as usual. */
+      let hitRemotePeer = null;
+      if (window.ARiveMP && window.ARiveMP.raycastRemotePlayers) {
+        const rpHit = window.ARiveMP.raycastRemotePlayers(
+          origin.x, origin.y, origin.z,
+          dir.x, dir.y, dir.z,
+          hitT                          // stop the search at the current best
+        );
+        if (rpHit && rpHit.t < hitT) {
+          hitT = rpHit.t;
+          hitRemotePeer = rpHit.peerId;
         }
-        if (!routed && g.hurtEnemy) g.hurtEnemy(hitEnemy, def.damage, def.carveRadius);
-
-        spawnImpact(endPoint, 0xff5050, true);
-      } else if (hitVoxel) {
-        endPoint = origin.clone().addScaledVector(dir, hitVoxel.t);
-        const cx = hitVoxel.x + hitVoxel.nx;
-        const cy = hitVoxel.y + hitVoxel.ny;
-        const cz = hitVoxel.z + hitVoxel.nz;
-        /* Per-weapon block-breaking power.  Falls back to the old 1.1 radius
-           if the JSON doesn't set it, so old weapons keep working. */
-        const carveRadius = (typeof def.carveRadius === "number" && def.carveRadius > 0)
-          ? def.carveRadius : 1.1;
-        const carveDebris = (typeof def.carveDebris === "number")
-          ? def.carveDebris : 0.12;
-        const carvePenetrate = (def.carvePenetrate === true);
-
-        if (g.carveSphere) {
-          g.carveSphere(cx, cy, cz, carveRadius, { debrisChance: carveDebris });
-        }
-        if (g.net && g.net.sendCarve) {
-          g.net.sendCarve(cx, cy, cz, carveRadius, carvePenetrate);
-        }
-        spawnImpact(endPoint, def.bulletColor, false);
-      } else {
-        endPoint = origin.clone().addScaledVector(dir, MAX_RANGE);
       }
+
+      let endPoint;
+      if (hitRemotePeer) {
+        endPoint = origin.clone().addScaledVector(dir, hitT);
+        if (window.ARiveMP.dispatchPvpHit) {
+          window.ARiveMP.dispatchPvpHit(hitRemotePeer, def.damage, endPoint.x, endPoint.y, endPoint.z);
+        }
+        spawnImpact(endPoint, 0xff5050, true);
+      } else
+        
+        if (hitEnemy) {
+          endPoint = origin.clone().addScaledVector(dir, hitT);
+
+          /* Route the bullet through the exact-impact entry point so the
+             carved voxel is the pixel the shot actually landed on, not a
+             random surface pick.  Falls back to the old hurtEnemy path
+             if enemy.js didn't expose hitEnemyRay for some reason. */
+          let routed = false;
+          if (g.hitEnemyRay) {
+            routed = g.hitEnemyRay(
+              endPoint.x, endPoint.y, endPoint.z,
+              def.damage,
+              dir.x, dir.y, dir.z,
+              def.carveRadius,          // ← 新增
+            );
+          }
+          if (!routed && g.hurtEnemy) g.hurtEnemy(hitEnemy, def.damage, def.carveRadius);
+
+          spawnImpact(endPoint, 0xff5050, true);
+        } else if (hitVoxel) {
+          endPoint = origin.clone().addScaledVector(dir, hitVoxel.t);
+          const cx = hitVoxel.x + hitVoxel.nx;
+          const cy = hitVoxel.y + hitVoxel.ny;
+          const cz = hitVoxel.z + hitVoxel.nz;
+          /* Per-weapon block-breaking power.  Falls back to the old 1.1 radius
+             if the JSON doesn't set it, so old weapons keep working. */
+          const carveRadius = (typeof def.carveRadius === "number" && def.carveRadius > 0)
+            ? def.carveRadius : 1.1;
+          const carveDebris = (typeof def.carveDebris === "number")
+            ? def.carveDebris : 0.12;
+          const carvePenetrate = (def.carvePenetrate === true);
+
+          if (g.carveSphere) {
+            g.carveSphere(cx, cy, cz, carveRadius, { debrisChance: carveDebris });
+          }
+          if (g.net && g.net.sendCarve) {
+            g.net.sendCarve(cx, cy, cz, carveRadius, carvePenetrate);
+          }
+          spawnImpact(endPoint, def.bulletColor, false);
+        } else {
+          endPoint = origin.clone().addScaledVector(dir, MAX_RANGE);
+        }
 
       const d = origin.distanceTo(endPoint);
       if (d > bestDist) {

@@ -111,10 +111,16 @@
 
     function subscribeRooms(callback) {
         let unsub = null;
+        // ✅ 放到回调外部：整轮订阅期间只创建一次，才能在快照之间留存记录
+        const deletionAttempts = new Map();
+        const DELETION_RETRY_COOLDOWN = 30000;
+
         init().then(() => {
             unsub = db.collection(COLLECTION).onSnapshot((snap) => {
                 const now = Date.now();
                 const rooms = [];
+                const presentStale = new Set(); // 用于回收已消失房间的尝试记录
+
                 snap.forEach((doc) => {
                     const r = doc.data();
                     if (!r) return;
@@ -122,16 +128,38 @@
                     const isStale = now - (r.lastHeartbeat || 0) > STALE_MS;
 
                     if (isStale) {
-                        // 👇 這是關鍵：發現過期房間，直接從資料庫刪除
-                        doc.ref.delete().catch((e) => {
-                            // 如果沒有權限刪除，就在 Console 印出警告，不影響讀取
-                            console.warn("[Rooms] Failed to delete stale room:", doc.id, e.message);
-                        });
-                        return; // 不加入列表
+                        presentStale.add(doc.id);
+
+                        const lastAttempt = deletionAttempts.get(doc.id) || 0;
+                        if (now - lastAttempt < DELETION_RETRY_COOLDOWN) {
+                            return; // 冷却期内，跳过
+                        }
+
+                        deletionAttempts.set(doc.id, now);
+
+                        doc.ref.delete()
+                            .then(() => {
+                                // 删除成功后从 Map 移除；下一轮快照里该文档已不存在
+                                deletionAttempts.delete(doc.id);
+                            })
+                            .catch((e) => {
+                                const code = e.code || '';
+                                if (code !== 'permission-denied' && code !== 'not-found') {
+                                    console.warn('[Rooms] Failed to delete stale room:', doc.id, e.message);
+                                }
+                                // permission-denied 静默处理，等冷却期结束再试
+                            });
+                        return;
                     }
 
                     rooms.push(r);
                 });
+
+                // 🧹 回收：本次快照中已经不存在的陈旧房间，清掉其尝试记录，避免 Map 无限增长
+                for (const id of deletionAttempts.keys()) {
+                    if (!presentStale.has(id)) deletionAttempts.delete(id);
+                }
+
                 rooms.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
                 callback(rooms);
             }, (err) => {

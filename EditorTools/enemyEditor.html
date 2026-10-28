@@ -334,6 +334,46 @@
             cursor: crosshair;
         }
 
+        /* Divider between editor and preview */
+        #previewResizer {
+            width: 6px;
+            cursor: col-resize;
+            background: var(--line);
+            flex: 0 0 auto;
+            transition: background 0.15s;
+            position: relative;
+            z-index: 10;
+        }
+
+        #previewResizer:hover,
+        #previewResizer.active {
+            background: var(--accent);
+        }
+
+        /* Little visual dots in the middle of the divider */
+        #previewResizer::after {
+            content: "";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 2px;
+            height: 24px;
+            background: var(--dim);
+            border-radius: 2px;
+        }
+
+        #previewResizer:hover::after,
+        #previewResizer.active::after {
+            background: #fff;
+        }
+
+        /* Prevent text selection while dragging */
+        body.resizing {
+            cursor: col-resize !important;
+            user-select: none !important;
+        }
+
         #stats {
             padding: 6px 10px;
             border-top: 1px solid var(--line);
@@ -491,6 +531,8 @@
                 </div>
             </div>
         </section>
+
+        <div id="previewResizer" title="Drag to resize · Double-click to reset"></div>
 
         <section id="preview">
             <div id="previewHead">
@@ -699,6 +741,7 @@
         }
 
         const POSE_CONSTS = [
+            // ── base pose ──
             'torsoBaseX', 'torsoBaseY', 'torsoBaseZ', 'torsoDrop',
             'headBaseX', 'headBaseY', 'headBaseZ',
             'armLBaseX', 'armLBaseY', 'armLBaseZ',
@@ -706,6 +749,16 @@
             'legLBaseX', 'legLBaseY', 'legLBaseZ',
             'legRBaseX', 'legRBaseY', 'legRBaseZ',
             'legSwingX', 'armSwingX', 'headSwingY', 'torsoSwingZ',
+
+            // ── throw timeline ──
+            'ARM_REACH', 'ARM_ABOVE', 'ARM_WINDUP', 'ARM_RELEASE', 'ARM_FOLLOW',
+
+            // ── slam timeline ──
+            'ARM_UP', 'ARM_DOWN',
+
+            // ── punch timeline (break-through attack) ──
+            'PUNCH_WINDUP', 'PUNCH_STRIKE', 'PUNCH_HOLD', 'PUNCH_RECOVER',
+            'ARM_WINDUP_UP', 'ARM_STRIKE_FWD', 'TORSO_BACK', 'TORSO_FWD',
         ];
 
         const POSE_CONST_GROUPS = [
@@ -716,7 +769,14 @@
             { label: 'legL', names: ['legLBaseX', 'legLBaseY', 'legLBaseZ'] },
             { label: 'legR', names: ['legRBaseX', 'legRBaseY', 'legRBaseZ'] },
             { label: 'swing', names: ['legSwingX', 'armSwingX', 'headSwingY', 'torsoSwingZ'] },
+
+            // ── attack phases ──
+            { label: 'throw', names: ['ARM_REACH', 'ARM_ABOVE', 'ARM_WINDUP', 'ARM_RELEASE', 'ARM_FOLLOW'] },
+            { label: 'slam', names: ['ARM_UP', 'ARM_DOWN'] },
+            { label: 'punch · timing', names: ['PUNCH_WINDUP', 'PUNCH_STRIKE', 'PUNCH_HOLD', 'PUNCH_RECOVER'] },
+            { label: 'punch · pose', names: ['ARM_WINDUP_UP', 'ARM_STRIKE_FWD', 'TORSO_BACK', 'TORSO_FWD'] },
         ];
+
         const POSE_PARTS = ['legL', 'legR', 'torso', 'head', 'armL', 'armR'];
         const POSE_AXES = ['x', 'y', 'z'];
 
@@ -946,7 +1006,11 @@
             const chunks = [];
 
             const ev = /const\s+ENEMY_VOXEL\s*=\s*[^;]+;/.exec(src);
-            chunks.push(ev ? ev[0] : "const ENEMY_VOXEL = 0.07;");
+            chunks.push(ev ? ev[0] : "const ENEMY_VOXEL = 0.035;");
+
+            // buildZombie / buildAlien multiply every walk/run speed by this constant.
+            const ess = /const\s+ENEMY_SPEED_SCALE\s*=\s*[^;]+;/.exec(src);
+            chunks.push(ess ? ess[0] : "const ENEMY_SPEED_SCALE = 1;");
 
             for (const fn of [
                 "boxVoxels", "darkenColor", "lightenColor", "mirrorX",
@@ -993,7 +1057,7 @@
                     };
                     const origBZ = buildZombie;
                     buildZombie = function (p) { return origBZ(__deepMerge(p, preset)); };
-                    try { return bossFn(); }
+                    try { return bossFn(preset); } 
                     finally { buildZombie = origBZ; Math.random = origRandom; }
                 }
             `);
@@ -1702,7 +1766,7 @@
                     "border-radius:7px;background:var(--panel);font-size:11px;color:var(--dim)";
                 info.innerHTML =
                     "<span style='color:var(--accent2)'>ℹ Boss entry</span><br>" +
-                    "Preset edits rewrite the <code>buildZombie({...})</code> call inside " +
+                    "Preset edits (including <b>voxel overrides</b>) rewrite the <code>buildZombie({...})</code> call inside " +
                     "<b>" + (e.builder === "_miniBoss" ? "_miniBoss()" : "_finalBoss()") + "</b>. " +
                     "New pose overrides are appended to the end of the animator so they win " +
                     "over the built-in pose logic.";
@@ -1919,6 +1983,54 @@
             ndc: null,
         };
 
+        /* ============================================================================
+           PREVIEW RESIZER
+           ========================================================================== */
+        (function setupResizer() {
+            const resizer = $('#previewResizer');
+            const previewPanel = $('#preview');
+            let isResizing = false;
+
+            resizer.addEventListener('pointerdown', (e) => {
+                isResizing = true;
+                resizer.classList.add('active');
+                document.body.classList.add('resizing');
+                resizer.setPointerCapture(e.pointerId);
+                e.preventDefault();
+            });
+
+            window.addEventListener('pointermove', (e) => {
+                if (!isResizing) return;
+
+                // Calculate new width based on mouse distance from right edge
+                const newWidth = window.innerWidth - e.clientX;
+
+                // Keep it within sane bounds
+                const minWidth = 250;
+                const maxWidth = window.innerWidth - 300; // leave at least 300px for the editor
+
+                if (newWidth >= minWidth && newWidth <= maxWidth) {
+                    previewPanel.style.width = newWidth + 'px';
+                    previewPanel.style.flex = 'none'; // ensures flexbox respects the width
+                }
+            });
+
+            window.addEventListener('pointerup', (e) => {
+                if (isResizing) {
+                    isResizing = false;
+                    resizer.classList.remove('active');
+                    document.body.classList.remove('resizing');
+                    resizer.releasePointerCapture(e.pointerId);
+                }
+            });
+
+            // Double-click to reset to default 400px
+            resizer.addEventListener('dblclick', () => {
+                previewPanel.style.width = '400px';
+                previewPanel.style.flex = '0 0 auto';
+            });
+        })();
+
         function initPreview() {
             const canvas = $("#previewCanvas");
             const r = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -2062,7 +2174,7 @@
 
             if (!model || !model.parts) { updateStats("no parts"); return; }
 
-            if (e.preset.voxelOverrides && !e.isBoss) {
+            if (e.preset.voxelOverrides) {
                 for (const k in e.preset.voxelOverrides) {
                     if (model.parts[k]) {
                         model.parts[k].voxels = e.preset.voxelOverrides[k].map(v => v.slice());
@@ -2122,11 +2234,11 @@
 
                 // Build base rotations from constants — every axis for every part.
                 const baseRot = {
-                    legL: { x: g('legLBaseX', 0.55), y: g('legLBaseY', 0), z: g('legLBaseZ', -0.16) },
-                    legR: { x: g('legRBaseX', 0.55), y: g('legRBaseY', 0), z: g('legRBaseZ', 0.15) },
+                    legL: { x: g('legLBaseX', 0), y: g('legLBaseY', 0), z: g('legLBaseZ', -0.16) },
+                    legR: { x: g('legRBaseX', 0), y: g('legRBaseY', 0), z: g('legRBaseZ', 0.15) },
                     armL: { x: g('armLBaseX', 1), y: g('armLBaseY', 0), z: g('armLBaseZ', -0.13) },
                     armR: { x: g('armRBaseX', 1), y: g('armRBaseY', 0), z: g('armRBaseZ', 0.11) },
-                    torso: { x: g('torsoBaseX', 1.05), y: g('torsoBaseY', 0), z: g('torsoBaseZ', 0) },
+                    torso: { x: g('torsoBaseX', -7), y: g('torsoBaseY', 0), z: g('torsoBaseZ', 0) },
                     head: { x: g('headBaseX', 0.56), y: g('headBaseY', 0), z: g('headBaseZ', 0) },
                 };
 
@@ -2139,7 +2251,7 @@
                     pivot.rotation.z = baseRot[partName].z;
                 }
                 if (P.torso && P.torso.base) {
-                    P.torso.pivot.position.y = P.torso.base.y - g('torsoDrop', 0.38);
+                    P.torso.pivot.position.y = P.torso.base.y - g('torsoDrop', 0.19);
                 }
 
                 // Swing on top of the freshly-written base.
@@ -2217,11 +2329,7 @@
             const canvas = $("#previewCanvas");
 
             btnEdit.onclick = () => {
-                const sel = state.selected;
-                if (sel && sel.isBoss) {
-                    toast("Voxel editing isn't available for bosses — edit the pose or preset instead", true);
-                    return;
-                }
+                // REMOVED THE BOSS CHECK HERE
                 PV.editMode = !PV.editMode;
                 btnEdit.classList.toggle("on", PV.editMode);
                 tools.classList.toggle("on", PV.editMode);
@@ -2252,7 +2360,6 @@
             $("#btnResetVox").onclick = () => {
                 const e = state.selected;
                 if (!e) return;
-                if (e.isBoss) { toast("Bosses have no voxel overrides", true); return; }
                 if (!e.preset.voxelOverrides) { toast("Nothing to reset"); return; }
                 if (!confirm("Discard all voxel edits for “" + e.name + "”?")) return;
                 delete e.preset.voxelOverrides;
@@ -2264,7 +2371,7 @@
 
         function applyVoxelTool(ev) {
             const entry = state.selected;
-            if (!entry || entry.isBoss) return;
+            if (!entry) return;
 
             const pick = pickVoxel(ev);
             if (!pick) return;

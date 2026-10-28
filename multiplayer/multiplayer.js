@@ -26,6 +26,20 @@
     const ENEMY_STATE_INTERVAL = 1 / ENEMY_STATE_HZ;
 
     const Hooks = global.ARiveHooks;
+
+    /* ---- 远端武器朝向补偿（只用于第三人称） ---- */
+    const _qGunForward = new THREE.Quaternion();
+    const _eGunForward = new THREE.Euler();
+    const _qArmR = new THREE.Quaternion();
+    const _qGunLocal = new THREE.Quaternion();
+    const _qBase = new THREE.Quaternion();
+
+    /* 微调：枪口俯仰
+       0       → 水平指前
+       +0.15   → 枪口微微下压
+       -0.15   → 枪口微微上抬 */
+    const GUN_FORWARD_PITCH = 0;
+
     const Rooms = global.ARiveRooms;
     if (!Hooks) {
         console.warn('[MP] ARiveHooks missing — multiplayer disabled.');
@@ -60,6 +74,177 @@
         _enemySendTimer: 0,
     };
     global.ARiveMP = mp;
+
+    /* =====================================================================
+   PvP / TEAM KILL
+   =====================================================================
+   Any player can damage any other player.  Direct hits (bullets,
+   projectiles, melee) route through this module; AoE explosions were
+   already hitting every local player via explodeAt().
+   ===================================================================== */
+    mp.pvpEnabled = true;            // master switch — flip to false to disable
+    mp.pvpDamageMultiplier = 0.6;    // 0.6 = weapon damage * 0.6 in PvP
+
+    // NEW — mirrors the local player's physics capsule so a shot that
+    // would hit you also hits a remote peer, and vice-versa.  The
+    // `Hooks.*` read uses the live PLAYER_SCALE from game.js, so if you
+    // ever change that one number the PvP hitbox follows automatically.
+    const PLAYER_HALF_W = (typeof Hooks.basePlayerHalfW === 'number')
+        ? Hooks.basePlayerHalfW : 0.17;
+    const PLAYER_HEIGHT = (typeof Hooks.basePlayerHeight === 'number')
+        ? Hooks.basePlayerHeight : 1.377;
+
+    function _playerBox(rp) {
+        const p = rp.group.position;
+        const sy = rp.group.scale.y || 1;
+        return {
+            minX: p.x - PLAYER_HALF_W, maxX: p.x + PLAYER_HALF_W,
+            minY: p.y, maxY: p.y + PLAYER_HEIGHT * sy,
+            minZ: p.z - PLAYER_HALF_W, maxZ: p.z + PLAYER_HALF_W,
+        };
+    }
+
+    function _dispatchPvpHit(targetPeerId, dmg, hx, hy, hz) {
+        const finalDmg = Math.max(0, dmg * (mp.pvpDamageMultiplier || 1.0));
+        if (finalDmg <= 0.01) return;
+
+        const pkt = {
+            t: 'pvp-hit',
+            dmg: finalDmg,
+            hx, hy, hz,
+            attacker: mp.myName || 'a survivor',
+        };
+        if (mp.isHost) {
+            sendToClient(targetPeerId, pkt);
+        } else {
+            sendToHost(Object.assign({}, pkt, { target: targetPeerId }));
+        }
+    }
+
+    /* Point-in-AABB test — matches the semantics of Enemies.hitRay
+       (which is really "was the projectile point inside a body this frame?").
+       Called from game.js's hitEnemyRay after the enemy path returns false. */
+    mp.hitRemotePlayerPoint = function (x, y, z, dmg) {
+        if (!mp.pvpEnabled) return false;
+        if (!mp.connected || !mp.remotePlayers.size) return false;
+
+        for (const [peerId, rp] of mp.remotePlayers) {
+            const b = _playerBox(rp);
+            if (x >= b.minX && x <= b.maxX &&
+                y >= b.minY && y <= b.maxY &&
+                z >= b.minZ && z <= b.maxZ) {
+                _dispatchPvpHit(peerId, dmg, x, y, z);
+                return true;
+            }
+        }
+        return false;
+    };
+
+    /* Cone test — mirrors hitEnemiesMelee's dot-product check.
+       Called from game.js's hitEnemiesMelee after the enemy loop. */
+    mp.hitRemotePlayerMelee = function (origin, dir, range, dmg) {
+        if (!mp.pvpEnabled) return false;
+        if (!mp.connected || !mp.remotePlayers.size) return false;
+
+        const maxR = range + 0.5;
+        let hitAny = false;
+
+        for (const [peerId, rp] of mp.remotePlayers) {
+            const px = rp.group.position.x;
+            const py = rp.group.position.y + PLAYER_HEIGHT * 0.55;
+            const pz = rp.group.position.z;
+            const dx = px - origin.x;
+            const dy = py - origin.y;
+            const dz = pz - origin.z;
+            const d = Math.hypot(dx, dy, dz);
+            if (d > maxR || d < 0.001) continue;
+            const dot = (dx * dir.x + dy * dir.y + dz * dir.z) / d;
+            if (dot < 0.5) continue;
+
+            const hx = origin.x + dir.x * d * 0.9;
+            const hy = origin.y + dir.y * d * 0.9;
+            const hz = origin.z + dir.z * d * 0.9;
+            _dispatchPvpHit(peerId, dmg, hx, hy, hz);
+            hitAny = true;
+        }
+        return hitAny;
+    };
+
+    /* Ray vs AABB (slab method).  Returns t >= 0 or -1. */
+    function _rayAABB(ox, oy, oz, dx, dy, dz, b, maxDist) {
+        let tmin = 0, tmax = maxDist;
+
+        if (Math.abs(dx) < 1e-8) {
+            if (ox < b.minX || ox > b.maxX) return -1;
+        } else {
+            let t1 = (b.minX - ox) / dx, t2 = (b.maxX - ox) / dx;
+            if (t1 > t2) { const t = t1; t1 = t2; t2 = t; }
+            if (t1 > tmin) tmin = t1;
+            if (t2 < tmax) tmax = t2;
+            if (tmin > tmax) return -1;
+        }
+        if (Math.abs(dy) < 1e-8) {
+            if (oy < b.minY || oy > b.maxY) return -1;
+        } else {
+            let t1 = (b.minY - oy) / dy, t2 = (b.maxY - oy) / dy;
+            if (t1 > t2) { const t = t1; t1 = t2; t2 = t; }
+            if (t1 > tmin) tmin = t1;
+            if (t2 < tmax) tmax = t2;
+            if (tmin > tmax) return -1;
+        }
+        if (Math.abs(dz) < 1e-8) {
+            if (oz < b.minZ || oz > b.maxZ) return -1;
+        } else {
+            let t1 = (b.minZ - oz) / dz, t2 = (b.maxZ - oz) / dz;
+            if (t1 > t2) { const t = t1; t1 = t2; t2 = t; }
+            if (t1 > tmin) tmin = t1;
+            if (t2 < tmax) tmax = t2;
+            if (tmin > tmax) return -1;
+        }
+        return tmin;
+    }
+
+    /* Ray-test all remote players against a hitscan ray.  Returns the
+       CLOSEST hit as { peerId, t, x, y, z } or null.  Called by weapons.js. */
+    mp.raycastRemotePlayers = function (ox, oy, oz, dx, dy, dz, maxDist) {
+        if (!mp.pvpEnabled) return null;
+        if (!mp.connected || !mp.remotePlayers.size) return null;
+
+        // Normalize direction so `t` is a real world-space distance.
+        const len = Math.hypot(dx, dy, dz) || 1;
+        const nx = dx / len, ny = dy / len, nz = dz / len;
+
+        let best = null;
+        for (const [peerId, rp] of mp.remotePlayers) {
+            const t = _rayAABB(ox, oy, oz, nx, ny, nz, _playerBox(rp), maxDist);
+            if (t < 0) continue;
+            if (best && t >= best.t) continue;
+            best = {
+                peerId,
+                t,                                  // distance along the ray
+                x: ox + nx * t,
+                y: oy + ny * t,
+                z: oz + nz * t,
+            };
+        }
+        return best;
+    };
+
+    /* Public dispatcher — same routing as _dispatchPvpHit but exported for
+       weapons.js to call directly once the shooter decided "that's the hit". */
+    mp.dispatchPvpHit = function (targetPeerId, dmg, hx, hy, hz) {
+        _dispatchPvpHit(targetPeerId, dmg, hx, hy, hz);
+    };
+
+    /* Called on the victim's client when a pvp-hit message arrives. */
+    function onPvpHit(msg) {
+        if (!Hooks.damagePlayer) return;
+        const dmg = Math.max(0, +msg.dmg || 0);
+        if (dmg <= 0.01) return;
+
+        Hooks.damagePlayer(dmg, false, msg.attacker || 'another survivor');
+        if (Hooks.shakeCamera) Hooks.shakeCamera(0.18);
+    }
 
     /* =====================================================================
        UTILITIES
@@ -159,7 +344,22 @@
             heldPickupPid: null,
             currentToolId: null,
             toolUseAnimT: 1,
+
+            /* NEW — 远端持枪姿势混合 */
+            hasWeapon: false,
+            targetHoldT: 0,
+            holdT: 0,
         };
+
+        /* 记录每个武器 holder 的初始旋转，用于切枪/未持枪时恢复 */
+        if (model.weaponHolders) {
+            for (const k in model.weaponHolders) {
+                const h = model.weaponHolders[k];
+                if (!h.userData.baseQuat) {
+                    h.userData.baseQuat = h.quaternion.clone();
+                }
+            }
+        }
 
         mp.remotePlayers.set(id, rp);
         updateSessionUI();
@@ -284,6 +484,76 @@
         }
     }
 
+    function onRemoteAvatarUpdate(msg, senderId) {
+        const id = msg.id || senderId;
+        const rp = mp.remotePlayers.get(id);
+        if (!rp) return;
+
+        let remoteModel = null;
+        if (msg.avatar && global.ARiveAvatar) {
+            try { remoteModel = global.ARiveAvatar.toRemoteModelData(msg.avatar); }
+            catch (e) { console.warn('[MP] avatar convert failed:', e); }
+        }
+        if (!remoteModel) return;
+
+        // 保存需要保留的状态
+        const oldGroup = rp.group;
+        const pos = oldGroup.position.clone();
+        const rotY = oldGroup.rotation.y;
+        const scaleY = oldGroup.scale.y;
+        const name = rp.name;
+        const heldPid = rp.heldPickupPid;
+        const toolId = rp.currentToolId;
+
+        // 移除旧模型
+        if (oldGroup.parent) oldGroup.parent.remove(oldGroup);
+        oldGroup.traverse(o => {
+            if (o.geometry) o.geometry.dispose();
+            if (o.material) {
+                if (o.material.map) o.material.map.dispose();
+                o.material.dispose();
+            }
+        });
+
+        // 创建新模型
+        const model = Hooks.buildRemotePlayerMesh(remoteModel);
+        const newGroup = model.group;
+        newGroup.position.copy(pos);
+        newGroup.rotation.y = rotY;
+        newGroup.scale.y = scaleY;
+        const tag = makeNameTag(name);
+        newGroup.add(tag);
+        Hooks.scene.add(newGroup);
+
+        rp.model = model;
+        rp.group = newGroup;
+        rp.tag = tag;
+        rp.hasWeapon = rp.hasWeapon || false;
+        rp.targetHoldT = rp.hasWeapon ? 1 : 0;
+        /* rp.holdT 已保留，重建后第一帧会继续沿着当前进度混合 */
+
+        // 重新把手里的 pickup 挂到新的 armR 上
+        if (heldPid) {
+            for (const p of Hooks.pickups) {
+                if (p.pid === heldPid) {
+                    if (p.mesh.parent) p.mesh.parent.remove(p.mesh);
+                    p.mesh.position.set(0, -0.58, -0.10);
+                    p.mesh.rotation.set(0, 0, 0);
+                    p.mesh.scale.setScalar(0.85);
+                    rp.model.armR.add(p.mesh);
+                    break;
+                }
+            }
+        }
+
+        // 恢复工具可见性
+        if (rp.model.toolHolders && toolId && toolId.indexOf('W:') !== 0) {
+            for (const tid in rp.model.toolHolders) {
+                rp.model.toolHolders[tid].visible = (tid === toolId);
+            }
+        }
+    }
+
     /* =====================================================================
        MESSAGE DISPATCH
        ===================================================================== */
@@ -302,6 +572,7 @@
                 if (!mp.isHost) { mp.clients.delete(msg.id); removeRemotePlayer(msg.id); }
                 break;
             case 'state': onRemoteState(msg, isFromHost); break;
+            case 'avatar-update': onRemoteAvatarUpdate(msg, senderId); break;
             case 'carve': applyRemoteCarve(msg.x, msg.y, msg.z, msg.r, msg.ignite); break;
             case 'boom': applyRemoteExplosion(msg.x, msg.y, msg.z, msg.r); break;
             case 'pickup-spawn': applyRemotePickupSpawn(msg); break;
@@ -313,12 +584,13 @@
             case 'set-blocks': Hooks.applyBlockBatch(msg.blocks); break;
             case 'tool-use': onRemoteToolUse(msg, senderId); break;
             case 'proj-spawn': Hooks.spawnRemoteProjectile(msg); break;
+            case 'pvp-hit': onPvpHit(msg); break;
 
             case 'enemy-spawn': onRemoteEnemySpawn(msg); break;
             case 'enemy-batch': onRemoteEnemyBatch(msg); break;
             case 'enemy-carve': onRemoteEnemyCarve(msg); break;
             case 'enemy-death': onRemoteEnemyDeath(msg); break;
-            case 'weapon-shot': spawnRemoteTracer(msg); break;
+            case 'weapon-shot': spawnRemoteTracer(msg, msg.fromId || senderId); break;
         }
     }
 
@@ -476,11 +748,9 @@
     }
 
     function onRemoteEnemyHurt(msg) {
-        if (!mp.isHost) return;
-        if (!window.Enemies || !window.Enemies.hitRemote) return;
         window.Enemies.hitRemote(
             msg.eid, msg.hx, msg.hy, msg.hz,
-            msg.dmg, msg.dx, msg.dy, msg.dz,
+            msg.dmg, msg.dx, msg.dy, msg.dz, msg.cr,
         );
     }
 
@@ -515,6 +785,10 @@
         }
         rp.currentToolId = (wantSlot < 0) ? wantTool : ('W:' + wantWepKey);
         rp.currentWeaponKey = (wantSlot >= 0) ? wantWepKey : null;
+
+        /* NEW — 有枪就抬起手臂，切枪/收枪就放下 */
+        rp.hasWeapon = !!(wantSlot >= 0 && wantWepKey);
+        rp.targetHoldT = rp.hasWeapon ? 1 : 0;
     }
 
     /* =====================================================================
@@ -526,6 +800,15 @@
             try { mp._hostConn.send(msg); } catch (e) { }
         }
     }
+
+    function sendToClient(clientId, msg) {
+        if (!mp.isHost) return;
+        const c = mp.clients.get(clientId);
+        if (c && c.conn && c.conn.open) {
+            try { c.conn.send(msg); } catch (e) { }
+        }
+    }
+
     function broadcastToClients(msg, exceptId) {
         if (!mp.isHost) return;
         for (const [id, c] of mp.clients) {
@@ -555,6 +838,24 @@
     /* =====================================================================
        LOCAL EVENT HOOKS  (called by game.js)  — unchanged
        ===================================================================== */
+    /* ---- 本地头像变更 → 缓存 + 广播给其他玩家 ---- */
+    mp.onLocalAvatarChanged = function (rawAvatar) {
+        if (!rawAvatar) return;
+
+        // 缓存最新头像。这样即便用户只点 APPLY NOW 未保存、
+        // 之后掉线重连，也能重新发给 host，不需要读旧 localStorage。
+        window.__ariveMyRemoteAvatar = rawAvatar;
+
+        if (!mp.connected) return;   // 单人游戏，无需广播
+
+        const msg = { t: 'avatar-update', id: mp.myId, avatar: rawAvatar };
+        if (mp.isHost) {
+            // host 广播给所有 client；同时更新本地 mp.clients 以便新玩家看到最新
+            broadcastToClients(msg, null);
+        } else {
+            sendToHost(msg);
+        }
+    };
     mp.onLocalCarve = function (x, y, z, rVox, ignite) {
         const msg = { t: 'carve', x, y, z, r: rVox, ignite: !!ignite };
         if (mp.isHost) broadcastRelay(msg, null);
@@ -693,15 +994,9 @@
     };
 
     /* ---- Enemy hurt (client → host) ---- */
-    mp.sendEnemyHurt = function (eid, hx, hy, hz, dmg, dx, dy, dz) {
+    mp.sendEnemyHurt = function (eid, hx, hy, hz, dmg, dx, dy, dz, cr) {
         if (!mp.connected || mp.isHost) return;
-        sendToHost({
-            t: 'enemy-hurt',
-            eid: eid,
-            hx: hx, hy: hy, hz: hz,
-            dmg: dmg,
-            dx: dx, dy: dy, dz: dz,
-        });
+        sendToHost({ t: 'enemy-hurt', eid, hx, hy, hz, dmg, dx, dy, dz, cr });
     };
 
     /* ---- Weapon fire (any → all) ---- */
@@ -748,16 +1043,42 @@
         broadcastToClients({ t: 'enemy-batch', list }, null);
     }
 
-    function spawnRemoteTracer(msg) {
+    function spawnRemoteTracer(msg, senderId) {
         if (typeof THREE === 'undefined') return;
         const scene = Hooks.scene;
         if (!scene) return;
 
-        const from = new THREE.Vector3(msg.fx, msg.fy, msg.fz);
+        /* ─── 起点：优先用远端玩家真实的第三人称枪口 ─── */
+        let from = null;
+        const rp = senderId ? mp.remotePlayers.get(senderId) : null;
+
+        if (rp && rp.currentWeaponKey && rp.model && rp.model.weaponHolders) {
+            const holder = rp.model.weaponHolders[rp.currentWeaponKey];
+            if (holder) {
+                // 从 WEAPON_MODEL_DATA 找该武器的 muzzleLocal
+                let wdef = null;
+                const defs = window.WEAPON_MODEL_DATA || [];
+                for (let i = 0; i < defs.length; i++) {
+                    if (defs[i] && defs[i].key === rp.currentWeaponKey) {
+                        wdef = defs[i];
+                        break;
+                    }
+                }
+                const ml = (wdef && wdef.muzzleLocal) || [0, 0, -0.3];
+                // holder.localToWorld → 得到世界坐标（包含 armR / handAttach 全部变换）
+                from = holder.localToWorld(new THREE.Vector3(ml[0], ml[1], ml[2]));
+            }
+        }
+
+        /* 兜底：远端玩家模型不存在或还没同步过 weaponKey 时，用原消息里的位置
+           （会在头部附近，但至少不会是 NaN 或原点） */
+        if (!from) from = new THREE.Vector3(msg.fx, msg.fy, msg.fz);
+
         const to = new THREE.Vector3(msg.tx, msg.ty, msg.tz);
         const dist = from.distanceTo(to);
         if (dist < 0.05) return;
 
+        /* ─── 剩余代码（tracer + muzzle flash）完全不变 ─── */
         const size = msg.s || 0.03;
         const geo = new THREE.BoxGeometry(size, size, dist);
         const mat = new THREE.MeshBasicMaterial({
@@ -787,7 +1108,7 @@
         }
         requestAnimationFrame(fade);
 
-        // Muzzle flash — quick, additive sphere.
+        // Muzzle flash — 现在正确地从枪口冒火
         const fGeo = new THREE.SphereGeometry(0.1, 8, 6);
         const fMat = new THREE.MeshBasicMaterial({
             color: msg.c || 0xffddaa,
@@ -1014,6 +1335,14 @@
                     // spawnEnemy auto-fires onEnemySpawned → broadcast to all clients
                 }
                 break;
+            case 'avatar-update':
+                // 记录该 client 的最新头像，以便后续新加入者收到正确快照
+                if (mp.clients.has(senderId)) mp.clients.get(senderId).avatar = msg.avatar;
+                // 更新 host 本地对该玩家的渲染
+                onRemoteAvatarUpdate({ id: senderId, avatar: msg.avatar }, senderId);
+                // 广播给其它 client（用 senderId 做权威 id，防止被伪造）
+                broadcastToClients({ t: 'avatar-update', id: senderId, avatar: msg.avatar }, senderId);
+                break;
             case 'pickup-move':
                 handleMessage(msg, senderId, false);
                 broadcastRelay(msg, senderId);
@@ -1026,12 +1355,39 @@
                 handleMessage(msg, senderId, false);
                 broadcastToClients(msg, senderId);
                 break;
-
+            case 'pvp-hit': {
+                const target = msg.target;
+                if (!target) break;
+                if (target === mp.myId) {
+                    // Host is the victim
+                    onPvpHit(msg);
+                } else if (mp.clients.has(target)) {
+                    // Relay to the target client (strip the target field — the
+                    // client just reads `dmg` + `attacker`)
+                    sendToClient(target, {
+                        t: 'pvp-hit',
+                        dmg: msg.dmg,
+                        hx: msg.hx, hy: msg.hy, hz: msg.hz,
+                        attacker: msg.attacker || 'another survivor',
+                    });
+                }
+                break;
+            }
             case 'enemy-spawn': onRemoteEnemySpawn(msg); break;
             case 'enemy-batch': onRemoteEnemyBatch(msg); break;
             case 'enemy-carve': onRemoteEnemyCarve(msg); break;
             case 'enemy-hurt': if (mp.isHost) onRemoteEnemyHurt(msg); break;
-            case 'weapon-shot': spawnRemoteTracer(msg); break;
+
+            case 'weapon-shot': {
+                // 1) 先在 host 本地渲染这个 client 的开火效果（用真实 senderId）
+                spawnRemoteTracer(msg, senderId);
+
+                // 2) 中继给其它 client，并把原始 senderId 塞进消息里，
+                //    这样其它 client 知道该用哪个 remote player 的枪口
+                const relay = Object.assign({}, msg, { fromId: senderId });
+                broadcastToClients(relay, senderId);
+                break;
+            }
             case 'enemy-death': onRemoteEnemyDeath(msg); break;
         }
     }
@@ -1155,11 +1511,18 @@
         }
 
         setJoinStatus('Syncing world…');
+
+        let avatarToSend = window.__ariveMyRemoteAvatar || null;
+        if (!avatarToSend && window.ARiveAvatar) {
+            try { avatarToSend = await window.ARiveAvatar.loadLocal(); } catch (e) { }
+        }
+        if (!avatarToSend) avatarToSend = window.__ariveMyRemoteAvatar || null;
+
         sendToHost({
             t: 'hello',
             name: mp.myName,
             passwordProof: proof,
-            avatar: myAvatar,               // ← NEW
+            avatar: avatarToSend,
         });
     }
 
@@ -1248,8 +1611,62 @@
             const sw = Math.sin(rp.bob);
             if (rp.model.legL) rp.model.legL.rotation.x = sw * amp;
             if (rp.model.legR) rp.model.legR.rotation.x = -sw * amp;
-            if (rp.model.armL) rp.model.armL.rotation.x = -sw * amp * 0.55;
-            if (rp.model.armR) rp.model.armR.rotation.x = sw * amp * 0.55;
+
+            /* ─── 手臂：走路 bob ↔ 持枪姿势 的线性混合 ─── */
+            const holdTarget = rp.targetHoldT || 0;
+            rp.holdT = (rp.holdT || 0) + (holdTarget - (rp.holdT || 0)) * Math.min(1, dt * 8);
+            const holdT = rp.holdT;
+
+            const walkArmL = -sw * amp * 0.55;
+            const walkArmR = sw * amp * 0.55;
+
+            /* 持枪姿势常量 —— 旋转约定：+X 抬臂向前，-X 甩向身后
+               翻正号以后手臂指向前方，枪跟着朝前 */
+            const HOLD_ARM_LX = 1.15;   // 原 -1.15 → 正号向前
+            const HOLD_ARM_RX = 1.30;   // 原 -1.30 → 正号向前
+            const HOLD_ARM_LZ = 0.28;   // 保持不变 —— 左臂内收
+            const HOLD_ARM_RZ = -0.22;   // 保持不变 —— 右臂内收
+            const HOLD_ARM_LY = 0.06;   // 保持不变（Y 影响很小）
+            const HOLD_ARM_RY = -0.06;   // 保持不变
+
+            if (rp.model.armL) {
+                rp.model.armL.rotation.x = walkArmL * (1 - holdT) + HOLD_ARM_LX * holdT;
+                rp.model.armL.rotation.z = HOLD_ARM_LZ * holdT;
+                rp.model.armL.rotation.y = HOLD_ARM_LY * holdT;
+            }
+            if (rp.model.armR) {
+                rp.model.armR.rotation.x = walkArmR * (1 - holdT) + HOLD_ARM_RX * holdT;
+                rp.model.armR.rotation.z = HOLD_ARM_RZ * holdT;
+                rp.model.armR.rotation.y = HOLD_ARM_RY * holdT;
+            }
+
+            /* ─── 让枪的朝向锁定角色前方，不跟随手臂倾斜 ─── */
+            if (rp.model.weaponHolders) {
+                // 目标朝向：枪管沿角色 -Z（带可选俯仰）
+                _qGunForward.setFromEuler(
+                    _eGunForward.set(GUN_FORWARD_PITCH, 0, 0, 'YXZ')
+                );
+
+                if (holdT > 0.01 && rp.currentWeaponKey) {
+                    const holder = rp.model.weaponHolders[rp.currentWeaponKey];
+                    if (holder && holder.userData.baseQuat && rp.model.armR) {
+                        // 反向抵消 armR 的旋转
+                        _qArmR.copy(rp.model.armR.quaternion);
+                        _qGunLocal.copy(_qArmR).invert().multiply(_qGunForward);
+
+                        // 从 baseQuat 平滑混合到目标（切枪过程不跳变）
+                        _qBase.copy(holder.userData.baseQuat).slerp(_qGunLocal, Math.min(1, holdT));
+                        holder.quaternion.copy(_qBase);
+                    }
+                } else {
+                    // 未持枪：把每个武器的朝向恢复到初始值（虽然不可见，但避免下次
+                    // 拿起武器时短暂晃一下）
+                    for (const k in rp.model.weaponHolders) {
+                        const h = rp.model.weaponHolders[k];
+                        if (h.userData.baseQuat) h.quaternion.copy(h.userData.baseQuat);
+                    }
+                }
+            }
 
             const cTgt = rp.targetCrouchT || 0;
             if (Math.abs(rp.crouchT - cTgt) > 0.001) {

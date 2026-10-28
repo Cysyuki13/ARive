@@ -31,40 +31,293 @@
             Math.random().toString(36).slice(2, 5);
     }
 
+    /* =========================================================================
+   ZOMBIE SPECIES  — zombie-only sounds are gated on this list.
+   ========================================================================= */
+    const ZOMBIE_KINDS = new Set([
+        "walker", "runner", "rotter", "brute", "crawler",
+        "hatty", "hooded", "oldblood", "capboy", "beanie",
+        "blondie", "demon", "skull", "formal", "vested", "stripey",
+    ]);
+
+    function isZombie(e) {
+        return e && ZOMBIE_KINDS.has(e.kind);
+    }
+
     const GRAVITY = 22;
 
-    /* ---- Hit-stagger tuning ---- */
-    const HIT_SLOW_DURATION = 1.0;     // cap on total stacking (1 hit ≈ 0.5 s)
-    const HIT_SLOW_MULTIPLIER = 0.35;  // speed × this while staggered
-    const HIT_SLOW_MIN_ADD = 0.4;      // ≈ 0.5 s added per hit
-    const HIT_SLOW_MAX_ADD = 0.6;
+    /* Global speed multiplier applied to every enemy archetype.
+   Tweak this single number to make the whole horde faster / slower. */
+    const ENEMY_SPEED_SCALE = 2;
+
+    /* ---- Random chase sprint ----
+   While chasing, every enemy periodically surcharges forward at a
+   random multiplier for a short random window.  Each burst picks its
+   own duration + speed so no two feel identical. */
+    const SPRINT_INTERVAL_MIN = 2.5;   // sec of normal walk between bursts
+    const SPRINT_INTERVAL_MAX = 5.5;
+    const SPRINT_DURATION_MIN = 0.5;   // how long each burst lasts
+    const SPRINT_DURATION_MAX = 1.2;
+    const SPRINT_SPEED_MIN = 1.30;  // speed × this during a burst
+    const SPRINT_SPEED_MAX = 1.80;
+
+    /* ---- Void rules ---- */
+    const VOID_DEATH_Y = -4;   // below this world-y ⇒ dead
+    const VOID_CHECK_DEPTH = 8;    // voxels to scan straight down per step
+    const VOID_LOOKAHEAD = 0;    // (reserved) extra look-ahead distance
+
+    /* =========================================================================
+       ENEMY FOOTSTEP AUDIO
+       -------------------------------------------------------------------------
+       Real 3D: the sound originates at the enemy's feet and the PannerNode
+       handles distance attenuation + stereo panning via the listener set up
+       in game.js.  We keep a cheap distance gate so we don't spin up PannerNodes
+       for enemies the player can't hear anyway.
+       ========================================================================= */
+    function playEnemyFootstep(e) {
+        if (!window.Sfx) return;
+        if (!player || !player.alive) return;
+
+        const dx = e.pos.x - player.pos.x;
+        const dz = e.pos.z - player.pos.z;
+        if (dx * dx + dz * dz > 22 * 22) return;   // out of audible range
+
+        // Bigger enemy → deeper pitch (handled in genEnemyFootstep)
+        const size = clamp((e.model.colH || 1.45) / 1.45, 0.6, 2.0);
+
+        Sfx.play('enemy_footstep', {
+            position: e.pos,   // THREE.Vector3 → {x,y,z} is read as-is
+            size,
+            maxDistance: 22,
+        });
+    }
+
+    /* =========================================================================
+       ENEMY ALERT SCREAM  — one-shot when an enemy first becomes aggro.
+       ========================================================================= */
+    function playEnemyAlert(e) {
+        if (!window.Sfx || !player || !player.alive) return;
+        if (!isZombie(e)) return;
+
+        const dx = e.pos.x - player.pos.x;
+        const dz = e.pos.z - player.pos.z;
+        if (dx * dx + dz * dz > 30 * 30) return;
+
+        const colH = e.model.colH || 1.45;
+        const voicePos = {
+            x: e.pos.x,
+            y: e.pos.y + colH * 0.75,
+            z: e.pos.z,
+        };
+
+        if (Sfx.playRandom) {
+            Sfx.playRandom(['zombie_scream_1', 'zombie_scream_2'], {
+                position: voicePos,
+                maxDistance: 30,
+            });
+        }
+    }
+
+    /* =========================================================================
+       ENEMY ATTACK GRUNT  — fires when a zombie lands a hit on the player.
+       ========================================================================= */
+    function playEnemyAttackSound(e) {
+        if (!window.Sfx || !player || !player.alive) return;
+        if (!isZombie(e)) return;
+
+        const dx = e.pos.x - player.pos.x;
+        const dz = e.pos.z - player.pos.z;
+        if (dx * dx + dz * dz > 18 * 18) return;
+
+        const colH = e.model.colH || 1.45;
+
+        if (Sfx.playRandom) {
+            Sfx.playRandom(['zombie_1', 'zombie_2'], {
+                position: { x: e.pos.x, y: e.pos.y + colH * 0.75, z: e.pos.z },
+                maxDistance: 18,
+            });
+        }
+    }
+
+    /* =========================================================================
+       AMBIENT ZOMBIE GROAN — random while alive.
+       ========================================================================= */
+    function playEnemyIdleSound(e) {
+        if (!window.Sfx || !player || !player.alive) return;
+        if (!isZombie(e)) return;
+
+        const dx = e.pos.x - player.pos.x;
+        const dz = e.pos.z - player.pos.z;
+        if (dx * dx + dz * dz > 20 * 20) return;
+
+        const colH = e.model.colH || 1.45;
+
+        if (Sfx.playRandom) {
+            Sfx.playRandom(['zombie_1', 'zombie_2'], {
+                position: { x: e.pos.x, y: e.pos.y + colH * 0.75, z: e.pos.z },
+                maxDistance: 20,
+            });
+        }
+    }
+
+    /* =========================================================================
+       MINI-BOSS ROAR — one-shot, positional.
+       ========================================================================= */
+    function playMiniBossRoar(e) {
+        if (!window.Sfx || !player || !player.alive) return;
+
+        const dx = e.pos.x - player.pos.x;
+        const dz = e.pos.z - player.pos.z;
+        if (dx * dx + dz * dz > 35 * 35) return;
+
+        const colH = e.model.colH || 2.8;
+
+        Sfx.play('miniBoss_roar', {
+            position: { x: e.pos.x, y: e.pos.y + colH * 0.8, z: e.pos.z },
+            maxDistance: 40,
+            refDistance: 3.0,       // 2.8 m boss is loud to ~3 m
+            rolloffFactor: 1.0,     // gentler rolloff for a full-body bellow
+        });
+    }
+
+    /**
+     * Is there solid ground within `maxDepth` voxels straight below this
+     * position?  Empty column ⇒ "would fall into void" ⇒ refuse the step.
+     * Exits on the first voxel found, so flat ground costs a single getV.
+     */
+    function hasGroundBelow(pos, maxDepth) {
+        maxDepth = maxDepth || VOID_CHECK_DEPTH;
+        const startY = Math.floor(pos.y / VOXEL) - 1;
+        if (startY < 0) return false;           // already below world floor
+        const endY = Math.max(0, startY - maxDepth);
+        const gx = Math.floor(pos.x / VOXEL);
+        const gz = Math.floor(pos.z / VOXEL);
+        for (let y = startY; y >= endY; y--) {
+            if (getV(gx, y, gz) !== 0) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Instant "removed from the world" death — no tip-over animation, no
+     * ammo drop (would just fall forever), just bookkeeping + cleanup so
+     * the entity doesn't linger in the update loop.
+     */
+    function killEnemyInVoid(e, i) {
+        if (e.alive) {
+            e.alive = false;
+            if (e.heldBlock) {
+                scene.remove(e.heldBlock.mesh);
+                if (e.heldBlock.mesh.geometry) e.heldBlock.mesh.geometry.dispose();
+                e.heldBlock = null;
+            }
+            if (window.SurvivalMode) {
+                try { window.SurvivalMode.onEnemyKilled(e); } catch (_) { }
+            }
+            if (!e._remoteOwned && window.ARiveMP && window.ARiveMP.onEnemyKilled) {
+                try { window.ARiveMP.onEnemyKilled(e); } catch (_) { }
+            }
+        }
+        e.dying = false;
+        scene.remove(e.rig.root);
+        for (const key in e.parts) {
+            const p = e.parts[key];
+            if (p.mesh && p.mesh.geometry &&
+                !DETACHED_PARTS.some(d => d.mesh === p.mesh)) {
+                p.mesh.geometry.dispose();
+            }
+        }
+        enemies.splice(i, 1);
+    }
+
+    /* ---- Enemy range clamp ----
+   Any enemy farther than MAP_RADIUS from the player gets teleported
+   back to engagement distance.  "Map radius" = half the larger map
+   dimension; tune the second line if your maps are very large. */
+    const MAP_RADIUS = Math.max(WORLD_W, WORLD_D) * 0.5;
+    const ENEMY_MAX_RANGE_FROM_PLAYER = MAP_RADIUS;
+    const ENEMY_TELEPORT_MIN_DIST = 10;
+    const ENEMY_TELEPORT_MAX_DIST = 20;
+
+    function teleportEnemyNearPlayer(e) {
+        const p = player.pos;
+        for (let attempt = 0; attempt < 16; attempt++) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = ENEMY_TELEPORT_MIN_DIST
+                + Math.random() * (ENEMY_TELEPORT_MAX_DIST - ENEMY_TELEPORT_MIN_DIST);
+            const tx = clamp(p.x + Math.cos(angle) * dist, 2, WORLD_W - 2);
+            const tz = clamp(p.z + Math.sin(angle) * dist, 2, WORLD_D - 2);
+
+            // Find the top of the column at (tx, tz)
+            const vx = Math.floor(tx / VOXEL);
+            const vz = Math.floor(tz / VOXEL);
+            let groundY = -1;
+            for (let y = SY - 1; y > 0; y--) {
+                if (getV(vx, y, vz) !== 0) {
+                    groundY = (y + 1) * VOXEL + 0.05;
+                    break;
+                }
+            }
+            if (groundY < 0) continue;  // no solid ground here — retry
+
+            e.pos.set(tx, groundY, tz);
+            e.vel.set(0, 0, 0);
+            e.yaw = Math.atan2(p.x - tx, p.z - tz) + Math.PI;
+            e.rig.root.position.set(
+                tx,
+                groundY + (e._visualYOffset || 0),
+                tz,
+            );
+            e.rig.root.rotation.y = e.yaw;
+            return true;
+        }
+        return false;   // retry next frame
+    }
+
+    /* ---- Hit-reaction tuning ----
+     *   On hit     → 1.0 s slow   (×0.35 speed)
+     *   Right after → 3.0 s ENDURE (immune to further slow, ×1.5 speed)
+     *   After that → normal, vulnerable to a fresh slow.
+     * The whole state cannot be re-triggered while it is running — that is
+     * what makes it an "endure" window rather than a stun-lock.
+     */
+    const HIT_SLOW_DURATION = 1.0;    // seconds of the initial slow
+    const HIT_SLOW_MULTIPLIER = 0.35;   // speed multiplier during slow
+    const ENDURE_DURATION = 3.0;    // seconds of endure/rage
+    const ENDURE_SPEED_MULT = 1.5;    // speed multiplier during endure
 
     const ENEMY_VOXEL = 0.035;
 
     /* ==== BEHAVIOR ARCHETYPES ==== */
     const BEHAVIORS = {
         rusher: {
-            speedMul: 1.2, weave: 0.15, pauseChance: 0, lungeChance: 0,
+            speedMul: 1.2, weave: 0.08,          // was 0.15  → ±4.6°
+            pauseChance: 0, lungeChance: 0,
             orbitRadius: 0, preferredRange: 0, strafeChance: 0,
         },
         circler: {
-            speedMul: 1.0, weave: 0.30, pauseChance: 0, lungeChance: 0,
+            speedMul: 1.0, weave: 0.15,          // was 0.30  → ±8.6°
+            pauseChance: 0, lungeChance: 0,
             orbitRadius: 3.5, preferredRange: 3.5, strafeChance: 0.75,
         },
         ambusher: {
-            speedMul: 1.15, weave: 0.55, pauseChance: 0, lungeChance: 0,
+            speedMul: 1.15, weave: 0.28,         // was 0.55  → ±16°
+            pauseChance: 0, lungeChance: 0,
             orbitRadius: 4.5, preferredRange: 4.0, strafeChance: 0.55,
         },
         shuffler: {
-            speedMul: 0.75, weave: 0.75, pauseChance: 0.45, lungeChance: 0,
+            speedMul: 0.75, weave: 0.35,         // was 0.75  → ±20°
+            pauseChance: 0.45, lungeChance: 0,
             orbitRadius: 0, preferredRange: 0, strafeChance: 0,
         },
         leaper: {
-            speedMul: 0.9, weave: 0.25, pauseChance: 0, lungeChance: 0.85,
+            speedMul: 0.9, weave: 0.12,          // was 0.25  → ±6.9°
+            pauseChance: 0, lungeChance: 0.85,
             orbitRadius: 2.0, preferredRange: 2.0, strafeChance: 0.35,
         },
         pack: {
-            speedMul: 1.05, weave: 0.2, pauseChance: 0, lungeChance: 0,
+            speedMul: 1.05, weave: 0.10,         // was 0.20  → ±5.7°
+            pauseChance: 0, lungeChance: 0,
             orbitRadius: 0, preferredRange: 1.6, strafeChance: 0.2,
         },
     };
@@ -82,6 +335,50 @@
         voidtwin: 'circler', bloom: 'leaper',
         /* bosses (drafts) — they self-declare below */
         __mini_boss__: 'rusher', __final_boss__: 'rusher',
+    };
+
+    /* =========================================================================
+   AI TUNING — aggro circle / leash / step height / break chance
+   ========================================================================= */
+    const LEASH_DROP_TIME = 10;     // 秒：连续 10s 在 leash 外 → 脱战
+    const BREAK_CHANCE = 0.05;   // 每次 roll 的破坏概率
+    const BREAK_ROLL_MIN_MS = 800;    // roll 冷却（避免 60fps×5%）
+    const BREAK_ROLL_JITTER_MS = 400;
+
+    const ENEMY_TUNING = {
+        default: { detR: 9, step: 0.5 },
+
+        /* zombies */
+        walker: { detR: 7, step: 0.5 },
+        runner: { detR: 10, step: 0.5 },
+        crawler: { detR: 6, step: 0.3 },
+        brute: { detR: 11, step: 0.8 },
+        rotter: { detR: 7, step: 0.5 },
+        hatty: { detR: 8, step: 0.5 },
+        blondie: { detR: 9, step: 0.5 },
+        beanie: { detR: 9, step: 0.5 },
+        hooded: { detR: 10, step: 0.5 },
+        oldblood: { detR: 8, step: 0.5 },
+        skull: { detR: 9, step: 0.5 },
+        capboy: { detR: 10, step: 0.5 },
+        formal: { detR: 8, step: 0.5 },
+        vested: { detR: 10, step: 0.5 },
+        stripey: { detR: 9, step: 0.5 },
+        demon: { detR: 11, step: 0.6 },
+
+        /* aliens */
+        greyscout: { detR: 11, step: 0.5 },
+        blobtron: { detR: 9, step: 0.4 },
+        trilens: { detR: 10, step: 0.5 },
+        imp: { detR: 11, step: 0.6 },
+        wisp: { detR: 9, step: 0.4 },
+        serpent: { detR: 8, step: 0.3 },
+        voidtwin: { detR: 10, step: 0.5 },
+        bloom: { detR: 10, step: 0.4 },
+
+        /* bosses */
+        __mini_boss__: { detR: 14, step: 1.0 },
+        __final_boss__: { detR: 16, step: 1.2 },
     };
 
     function createBehavior(archetype) {
@@ -915,8 +1212,8 @@
             voxelSize: vs,
             bodyType: "humanoid",
             hp: preset.hp != null ? preset.hp : 60,
-            speedWalk: preset.speedWalk != null ? preset.speedWalk : 1.6,
-            speedRun: preset.speedRun != null ? preset.speedRun : 3.4,
+            speedWalk: (preset.speedWalk != null ? preset.speedWalk : 1.6) * ENEMY_SPEED_SCALE,
+            speedRun: (preset.speedRun != null ? preset.speedRun : 3.4) * ENEMY_SPEED_SCALE,
             attackDamage: preset.attackDamage != null ? preset.attackDamage : 10,
             attackRange: preset.attackRange != null ? preset.attackRange : 1.5,
 
@@ -1660,10 +1957,11 @@
             voxelSize: vs,
             bodyType: R.bodyType,
             hp: preset.hp != null ? preset.hp : 60,
-            speedWalk: preset.speedWalk != null ? preset.speedWalk : 1.6,
-            speedRun: preset.speedRun != null ? preset.speedRun : 3.4,
+            speedWalk: (preset.speedWalk != null ? preset.speedWalk : 1.6) * ENEMY_SPEED_SCALE,
+            speedRun: (preset.speedRun != null ? preset.speedRun : 3.4) * ENEMY_SPEED_SCALE,
             attackDamage: preset.attackDamage != null ? preset.attackDamage : 10,
             attackRange: preset.attackRange != null ? preset.attackRange : 1.5,
+
             eyeY: R.eyeY,
             colHW: preset.colHW != null ? preset.colHW : R.colHW,
             colH: preset.colH != null ? preset.colH : R.colH,
@@ -1959,7 +2257,8 @@
 
     /* ==== BOSS DRAFTS ==== */
 
-    function _miniBoss() {
+    function _miniBoss(preset) {
+        preset = preset || {};
         const m = buildZombie({
             face: "shadow", voxelSize: 0.1, armLen: 34, legLen: 16, torsoH: 24,
             palette: {
@@ -1974,9 +2273,7 @@
             },
             hp: 4000, speedWalk: 0.4, speedRun: 2.0, attackDamage: 45,
             attackRange: 3.0, colHW: 1.1, colH: 2.8,
-            hitHW: 1.5,        // was 1.2
-            hitHH: 2.2,        // was 1.6
-            hitCenterY: 2.2,   // was 1.6  → box now spans 0 m to 4.4 m
+            hitHW: 1.5, hitHH: 2.2, hitCenterY: 2.2,
         });
 
         const torso = m.parts.torso.voxels;
@@ -1985,65 +2282,69 @@
         const head = m.parts.head.voxels;
 
         /* ---- 1. HULKING SHOULDERS & ARMS ---- */
-        for (const arm of [armL, armR]) {
-            const extraVoxels = [];
-            for (let i = 0; i < arm.length; i++) {
-                const v = arm[i];
-                // Expand the upper arm/shoulder area
-                if (v[1] > -16 && v[1] < -2) {
-                    extraVoxels.push([v[0] + (v[0] > 0 ? 1 : -1), v[1], v[2], v[3]]);
-                    if (Math.random() < 0.3) extraVoxels.push([v[0], v[1], v[2] + 1, v[3]]);
+        if (!preset.voxelOverrides || (!preset.voxelOverrides.armL && !preset.voxelOverrides.armR)) {
+            for (const arm of [armL, armR]) {
+                const extraVoxels = [];
+                for (let i = 0; i < arm.length; i++) {
+                    const v = arm[i];
+                    if (v[1] > -16 && v[1] < -2) {
+                        extraVoxels.push([v[0] + (v[0] > 0 ? 1 : -1), v[1], v[2], v[3]]);
+                        if (Math.random() < 0.3) extraVoxels.push([v[0], v[1], v[2] + 1, v[3]]);
+                    }
+                    if (v[1] <= -16 && v[1] > -34) {
+                        extraVoxels.push([v[0] + (v[0] > 0 ? 1 : -1), v[1], v[2], v[3]]);
+                    }
                 }
-                // Expand the forearms/fists
-                if (v[1] <= -16 && v[1] > -34) {
-                    extraVoxels.push([v[0] + (v[0] > 0 ? 1 : -1), v[1], v[2], v[3]]);
-                }
+                for (let i = 0; i < extraVoxels.length; i++) arm.push(extraVoxels[i]);
             }
-            for (let i = 0; i < extraVoxels.length; i++) {
-                arm.push(extraVoxels[i]);
-            }
-        }
 
-        /* ---- 2. TEAL VEINS & BLOODY HANDS ---- */
-        for (const arm of [armL, armR]) {
-            for (const v of arm) {
-                if ((v[0] + v[1] + v[2]) % 7 === 0 && v[3] === 0x9a9a92) {
-                    v[3] = 0x40b0a0;
-                }
-                // Bloody hands/fists at the bottom
-                if (v[1] <= -28) {
-                    v[3] = 0x6a1010;
-                    if (Math.random() < 0.3) v[3] = 0xa02020;
+            /* ---- 2. TEAL VEINS & BLOODY HANDS ---- */
+            for (const arm of [armL, armR]) {
+                for (const v of arm) {
+                    if ((v[0] + v[1] + v[2]) % 7 === 0 && v[3] === 0x9a9a92) v[3] = 0x40b0a0;
+                    if (v[1] <= -28) {
+                        v[3] = 0x6a1010;
+                        if (Math.random() < 0.3) v[3] = 0xa02020;
+                    }
                 }
             }
         }
 
         /* ---- 3. EXPOSED RIBS ---- */
-        for (let y = 6; y < 24; y += 2) {
-            for (let x = -4; x <= 4; x++) {
-                if (Math.abs(x) < 2) continue;
-                if (y === 8 || y === 12 || y === 16 || y === 20) {
-                    torso.push([x, y, -5 - Math.floor(Math.abs(x) * 0.2), 0xd8d0c0]);
+        if (!preset.voxelOverrides || !preset.voxelOverrides.torso) {
+            for (let y = 6; y < 24; y += 2) {
+                for (let x = -4; x <= 4; x++) {
+                    if (Math.abs(x) < 2) continue;
+                    if (y === 8 || y === 12 || y === 16 || y === 20) {
+                        torso.push([x, y, -5 - Math.floor(Math.abs(x) * 0.2), 0xd8d0c0]);
+                    }
                 }
             }
         }
 
         /* ---- 4. SMALL HEAD ON BIG BODY ---- */
-        for (let x = -4; x <= 3; x++) {
-            head.push([x, 2, -4, 0x2a2a2a]);
-            head.push([x, 1, -4, 0x1a1a1a]);
+        if (!preset.voxelOverrides || !preset.voxelOverrides.head) {
+            for (let x = -4; x <= 3; x++) {
+                head.push([x, 2, -4, 0x2a2a2a]);
+                head.push([x, 1, -4, 0x1a1a1a]);
+            }
+            head.push([-2, 5, -5, 0xff2020]);
+            head.push([1, 5, -5, 0xff2020]);
         }
-        head.push([-2, 5, -5, 0xff2020]);
-        head.push([1, 5, -5, 0xff2020]);
 
         /* ---- 5. HUNCHED POSTURE ---- */
-        for (const v of torso) v[2] -= 1;
-        for (const v of head) v[2] -= 1;
+        if (!preset.voxelOverrides || !preset.voxelOverrides.torso) {
+            for (const v of torso) v[2] -= 1;
+        }
+        if (!preset.voxelOverrides || !preset.voxelOverrides.head) {
+            for (const v of head) v[2] -= 1;
+        }
 
         return m;
     }
 
-    function _finalBoss() {
+    function _finalBoss(preset) {
+        preset = preset || {};
         const m = buildZombie({
             face: 'roar',
             voxelSize: 0.12,
@@ -2065,51 +2366,54 @@
             hitHW: 1.2, hitHH: 2.0, hitCenterY: 2.0,
         });
 
-        /* ---- Jagged back spine ---- */
         const torso = m.parts.torso.voxels;
-        for (let y = 4; y < 30; y += 2) {
-            const h = Math.round(2 + Math.sin(y * 0.4) * 1.5);
-            for (let i = 0; i < h; i++) {
-                torso.push([0, y + i, 4 + i, i === 0 ? 0x101010 : 0x201010]);
-            }
-        }
+        const head = m.parts.head.voxels;
 
-        /* ---- Barbed wing stubs on the shoulders ---- */
-        for (const sx of [-1, 1]) {
-            for (let i = 0; i < 5; i++) {
-                torso.push([sx * (9 + i), 20 - i, 0, 0x2a1010]);
-                torso.push([sx * (9 + i), 19 - i, 1, 0x1a0808]);
+        /* ---- Jagged back spine ---- */
+        if (!preset.voxelOverrides || !preset.voxelOverrides.torso) {
+            for (let y = 4; y < 30; y += 2) {
+                const h = Math.round(2 + Math.sin(y * 0.4) * 1.5);
+                for (let i = 0; i < h; i++) {
+                    torso.push([0, y + i, 4 + i, i === 0 ? 0x101010 : 0x201010]);
+                }
             }
-        }
-
-        /* ---- Glowing rib-cage runes ---- */
-        for (let y = 10; y < 22; y += 2) {
-            for (let x = -5; x <= 5; x++) {
-                if (Math.abs(x) < 2) continue;
-                if ((x + y) % 3 === 0) {
-                    torso.push([x, y, -5 - Math.floor(Math.abs(x) * 0.2), 0xd04020]);
+            /* ---- Barbed wing stubs on the shoulders ---- */
+            for (const sx of [-1, 1]) {
+                for (let i = 0; i < 5; i++) {
+                    torso.push([sx * (9 + i), 20 - i, 0, 0x2a1010]);
+                    torso.push([sx * (9 + i), 19 - i, 1, 0x1a0808]);
+                }
+            }
+            /* ---- Glowing rib-cage runes ---- */
+            for (let y = 10; y < 22; y += 2) {
+                for (let x = -5; x <= 5; x++) {
+                    if (Math.abs(x) < 2) continue;
+                    if ((x + y) % 3 === 0) {
+                        torso.push([x, y, -5 - Math.floor(Math.abs(x) * 0.2), 0xd04020]);
+                    }
                 }
             }
         }
 
         /* ---- Demon crown: gold with bone spikes ---- */
-        const head = m.parts.head.voxels;
-        for (let dx = -6; dx <= 6; dx++) {
-            head.push([dx, 14, 0, 0xd8b040]);
-            head.push([dx, 15, 0, 0xffd860]);
-            if (dx % 2 === 0) head.push([dx, 16, 0, 0xffd860]);
-        }
-        /* Bone horns curling forward */
-        for (const side of [-1, 1]) {
-            const hx0 = side * 6;
-            for (let i = 0; i < 8; i++) {
-                head.push([hx0 + side * Math.round(i * 0.4), 14 + i, -Math.round(i * 0.3), 0x1a0a06]);
+        if (!preset.voxelOverrides || !preset.voxelOverrides.head) {
+            for (let dx = -6; dx <= 6; dx++) {
+                head.push([dx, 14, 0, 0xd8b040]);
+                head.push([dx, 15, 0, 0xffd860]);
+                if (dx % 2 === 0) head.push([dx, 16, 0, 0xffd860]);
             }
-            head.push([hx0 + side * 3, 22, -3, 0xf0e0c0]);
+            /* Bone horns curling forward */
+            for (const side of [-1, 1]) {
+                const hx0 = side * 6;
+                for (let i = 0; i < 8; i++) {
+                    head.push([hx0 + side * Math.round(i * 0.4), 14 + i, -Math.round(i * 0.3), 0x1a0a06]);
+                }
+                head.push([hx0 + side * 3, 22, -3, 0xf0e0c0]);
+            }
+            /* Glowing eyes set into the crown base */
+            head.push([-3, 13, -5, 0xffe020]);
+            head.push([2, 13, -5, 0xffe020]);
         }
-        /* Glowing eyes set into the crown base */
-        head.push([-3, 13, -5, 0xffe020]);
-        head.push([2, 13, -5, 0xffe020]);
 
         return m;
     }
@@ -2762,6 +3066,52 @@
     const BOSS_THROW_BLAST = 1.5;  // impact blast radius in METRES (was 0.3 m!)
     const BOSS_THROW_HIT_R = 2.0;  // trigger radius vs. player (metres, was ~1.2 m)
 
+    /* ---- Mini-boss break-through punch ----
+   Triggered by _blockedThisFrame (blocked going forward) or by a
+   sustained block streak (stuck on terrain).  Carves one large
+   sphere directly in front of the boss. */
+    const MB_PUNCH_COOLDOWN = 2.5;    // sec between punches
+    const MB_PUNCH_STUCK_TIME = 0.30;   // sec of continuous block → trigger
+    const MB_PUNCH_REACH = 1.5;    // forward distance (m) to carve centre
+    const MB_PUNCH_RADIUS_VOX = 15;     // carve radius (world voxels)
+    const MB_PUNCH_TOTAL_TIME = 1.0;    // full animation duration
+    const MB_PUNCH_IMPACT_T = 0.42;   // when the hit lands (sec)
+
+    function doMiniBossPunchImpact(e) {
+        if (!Hooks.carveSphere) return;
+
+        const colH = e.model.colH || 2.8;
+        const fx = -Math.sin(e.yaw);
+        const fz = -Math.cos(e.yaw);
+
+        const cx = e.pos.x + fx * MB_PUNCH_REACH;
+        const cy = e.pos.y + colH * 0.45;
+        const cz = e.pos.z + fz * MB_PUNCH_REACH;
+
+        const vx = Math.floor(cx / VOXEL);
+        const vy = Math.floor(cy / VOXEL);
+        const vz = Math.floor(cz / VOXEL);
+
+        Hooks.carveSphere(vx, vy, vz, MB_PUNCH_RADIUS_VOX, {
+            ignite: false, debrisChance: 0.45,
+        });
+        if (Hooks.net && Hooks.net.sendCarve) {
+            Hooks.net.sendCarve(vx, vy, vz, MB_PUNCH_RADIUS_VOX, false);
+        }
+
+        spawnDustBurst(cx, cy, cz, 35);
+        spawnDustBurst(e.pos.x + fx * 0.8, e.pos.y + 0.2,
+            e.pos.z + fz * 0.8, 15);
+        if (window.Sfx) {
+            Sfx.play("explosion", {
+                position: { x: cx, y: cy, z: cz },   // the punch impact point
+                maxDistance: 45,
+                refDistance: 2.5,
+            });
+        }
+        if (Hooks.shakeCamera) Hooks.shakeCamera(0.75);
+    }
+
     /* ---- MINI-BOSS THROW: find & break a nearby world voxel CLUSTER ---- */
 
     /* Convert the raw voxel value from getV() into a usable hex colour.
@@ -3052,7 +3402,12 @@
         // must be disposed when the projectile dies.
         bossProjectiles.push({ mesh, vel, life: 6.0, ownsGeometry: true });
         e.attackPhase = 0.001;
-        if (window.Sfx) Sfx.play("voxel_break");
+        if (window.Sfx) {
+            Sfx.play("voxel_break", {
+                position: e.pos,           // boss picked it up in front of itself
+                maxDistance: 30,
+            });
+        }
     }
 
     function spawnBossBlock(e) {
@@ -3096,7 +3451,12 @@
         bossProjectiles.push({ mesh, vel, life: 6.0 });
 
         e.attackPhase = 0.001;
-        if (window.Sfx) Sfx.play("voxel_break");
+        if (window.Sfx) {
+            Sfx.play("voxel_break", {
+                position: e.pos,
+                maxDistance: 30,
+            });
+        }
     }
 
     /* =========================================================================
@@ -3166,7 +3526,7 @@
     function getStoneHillGeometry() {
         if (_stoneHillGeo) return _stoneHillGeo;
         const voxels = [];
-        const R = 4;
+        const R = 8;
         for (let dy = 0; dy <= R; dy++) {
             const ringR2 = (R - dy + 0.5) * (R - dy + 0.5);
             for (let dx = -R; dx <= R; dx++) {
@@ -3183,7 +3543,7 @@
                 }
             }
         }
-        _stoneHillGeo = buildVoxelGeometry(voxels, 0.1);
+        _stoneHillGeo = buildVoxelGeometry(voxels, 0.15);
         return _stoneHillGeo;
     }
 
@@ -3222,7 +3582,13 @@
         spawnDustBurst(startX, groundY + 0.2, startZ, 25);
         spawnDustBurst(e.pos.x + dirX * 0.5, e.pos.y + 0.2, e.pos.z + dirZ * 0.5, 15);
 
-        if (window.Sfx) Sfx.play("explosion");
+        if (window.Sfx) {
+            Sfx.play("explosion", {
+                position: e.pos,
+                maxDistance: 40,
+                refDistance: 2.5,
+            });
+        }
         if (Hooks.shakeCamera) Hooks.shakeCamera(0.85);
     }
 
@@ -3338,6 +3704,38 @@
     const _dUp = new THREE.Vector3(0, 1, 0);
     const _dDown = new THREE.Vector3(0, -1, 0);
 
+    /* 空闲动作权重（总和 100）
+   越"危险"的动作权重越低，这样 idle 敌人多半只是简单动作。 */
+    const IDLE_ACTIONS = [
+        { name: 'none', weight: 10, dur: () => 1.5 + Math.random() * 1.5 },
+        { name: 'wander_run', weight: 25, dur: () => 1.5 + Math.random() * 1.5 },
+        { name: 'roar', weight: 12, dur: () => 1.5 + Math.random() * 1.0 },
+        { name: 'punch_block', weight: 12, dur: () => 0.6 },
+        { name: 'punch_enemy', weight: 5, dur: () => 0.6 },     // ← 明确 5%
+        { name: 'sit', weight: 10, dur: () => 3.0 + Math.random() * 3.0 },
+    ];
+    const _IDLE_TOTAL = IDLE_ACTIONS.reduce((a, b) => a + b.weight, 0);
+
+    function pickIdleAction(e) {
+        let roll = Math.random() * _IDLE_TOTAL;
+        let chosen = IDLE_ACTIONS[0];
+        for (const a of IDLE_ACTIONS) {
+            roll -= a.weight;
+            if (roll <= 0) { chosen = a; break; }
+        }
+
+        e._idleAction = chosen.name;
+        e._idleTimer = chosen.dur();
+        e._idleData = { fired: false };
+
+        if (chosen.name === 'wander_run') {
+            const ang = Math.random() * Math.PI * 2;
+            e._idleData.dirX = Math.cos(ang);
+            e._idleData.dirZ = Math.sin(ang);
+            e._idleData.speed = 2.5 + Math.random() * -2.0;
+        }
+    }
+
     function spawnEnemy(type, atPos, mpId) {          // <-- new third arg
         let _aliveCount = 0;
         for (let i = 0; i < enemies.length; i++) if (enemies[i].alive) _aliveCount++;
@@ -3370,6 +3768,8 @@
         const rig = buildEnemyRig(model);
         rig.root.position.set(sx, sy, sz);
         scene.add(rig.root);
+
+        const tune = ENEMY_TUNING[type] || ENEMY_TUNING.default;
         const e = {
             kind: type, model, rig, mesh: rig.root,
             pos: new THREE.Vector3(sx, sy, sz),
@@ -3380,10 +3780,51 @@
             walkPhase: Math.random() * Math.PI * 2,
             attackPhase: 0, attackTimer: 0, hitFlash: 0,
             hitSlowTimer: 0,
-            state: "wander", wanderTarget: null, wanderTimer: 0,
+            _endureTimer: 0,
+
+            /* ── 新 AI ── */
+            state: "idle",
+            aggro: false,
+            _hitAggroOverride: false,
+            _idleAction: 'none',
+            _idleTimer: 0,
+            leashTimer: 0,
+            detectionRadius: tune.detR,
+            leashRadius: tune.detR * 2,
+            stepHeight: tune.step,
+
+            /* 旧字段保留（动画/技能/兼容） */
+            wanderTarget: null, wanderTimer: 0,
             losTimer: 0, canSeePlayer: false, stuckTimer: 0,
+
+            /* 阻挡处理状态 */
+            _blockedThisFrame: false,
+            _steppedThisFrame: false,
+            _unstickT: 0,
+            _unstickDir: 1,
+            _nextBreakRollAt: 0,
+
+
+            /* Random chase sprint state */
+            _sprintTimer: 1.0 + Math.random() * 4.0,   // first burst after 1–5 s of chasing
+            _sprintActive: 0,
+            _sprintMult: 1,
+
+            /* Mini-boss break-through punch */
+            isPunching: false,
+            punchTimer: 0,
+            punchYaw: 0,
+            _punchCooldown: 0,
+            _punchImpactDone: false,
+            _blockStreak: 0,
+            _blockedLastFrame: false,
+
             lastX: sx, lastZ: sz, parts: rig.parts,
             crawlMode: false, crawlBlend: 0, _anim: null,
+
+            /* NEW — audio timers */
+            _ambientSoundTimer: 3 + Math.random() * 5,   // first groan at 3–8 s
+            roarCooldown: 6 + Math.random() * 4,          // first roar at 6–10 s
         };
 
         e.behavior = createBehavior(BEHAVIOR_BY_KIND[type] || 'shuffler');
@@ -3435,16 +3876,68 @@
         return e;
     }
 
+    /**
+     * 敌人被命中时调用：
+     *   · 无论如何立即仇恨、进入 chase
+     *   · 设 _hitAggroOverride = true —— 一直追到玩家进入自身 detectionRadius
+     *     一次后，才恢复正常的 leash 逻辑
+     *   · 广播给 detectionRadius * 2 内的所有同伴（单跳，不连锁）
+     */
+    function triggerEnemyAggro(e) {
+        if (!e || !e.alive) return;
+
+        /* Direct target */
+        const wasNotAggro = !e.aggro;
+        if (!e.aggro) {
+            e.aggro = true;
+            e.leashTimer = 0;
+            e.state = "chase";
+        }
+        e._hitAggroOverride = true;
+        e._idleAction = 'none';
+        e._idleTimer = 0;
+
+        if (wasNotAggro) playEnemyAlert(e);
+
+        /* Neighbours (single hop, no chain) */
+        const alertR = e.detectionRadius * 2;
+        const alertR2 = alertR * alertR;
+        for (let i = 0; i < enemies.length; i++) {
+            const other = enemies[i];
+            if (other === e || !other.alive) continue;
+            const dx = other.pos.x - e.pos.x;
+            const dz = other.pos.z - e.pos.z;
+            if (dx * dx + dz * dz > alertR2) continue;
+
+            const otherWasNotAggro = !other.aggro;
+            if (!other.aggro) {
+                other.aggro = true;
+                other.leashTimer = 0;
+                other.state = "chase";
+                other._idleAction = 'none';
+                other._idleTimer = 0;
+            }
+            other._hitAggroOverride = true;
+
+            if (otherWasNotAggro) playEnemyAlert(other);
+        }
+    }
+
     /* Apply (or refresh) the hit-stagger debuff.  Called by every
-   damage entry point — projectile, melee, splash. */
+    damage entry point — projectile, melee, splash. */
     function applyHitSlow(e) {
         if (!e || !e.alive) return;
-        const add = HIT_SLOW_MIN_ADD +
-            Math.random() * (HIT_SLOW_MAX_ADD - HIT_SLOW_MIN_ADD);
-        e.hitSlowTimer = Math.min(
-            HIT_SLOW_DURATION * 1.5,
-            (e.hitSlowTimer || 0) + add,
-        );
+
+        // Already in endure → fully immune to new slow.
+        if (e._endureTimer > 0) return;
+
+        // Already in the 1 s slow window → don't refresh.
+        // (This keeps the timing predictable; delete this line if you'd rather
+        // every hit refresh the full 1 s.)
+        if (e.hitSlowTimer > 0) return;
+
+        e.hitSlowTimer = HIT_SLOW_DURATION;
+        // _endureTimer stays 0 for now — it is started when the slow expires.
     }
 
     /* =========================================================================
@@ -3452,8 +3945,9 @@
        ========================================================================= */
     const _centre = new THREE.Vector3();
 
-    function hurtEnemy(e, dmg, carveRadiusWorld) {
+    function hurtEnemy(e, dmg, carveRadiusWorld, noAggro) {
         if (!e || !e.alive) return;
+        if (!noAggro) triggerEnemyAggro(e);
         const _infinite = window.ARiveSandboxFlags && window.ARiveSandboxFlags.infiniteEnemyHealth;
         applyHitSlow(e);
         const pool = [];
@@ -3622,7 +4116,7 @@
            makes the far-side corner drop below the pivot by
            colHW * sin(angle).  Lift the whole rig by that much so the
            body never penetrates the ground.
-
+    
            If the enemy was killed in mid-air, `deathGroundY` is far
            below and we fall back to `deathStartY` — the body then just
            tips over in the air instead of being yanked to the ground. */
@@ -3771,8 +4265,8 @@
     const _hitV = new THREE.Vector3();
 
     /* Local-space scratch for the hit / aim paths — we transform the
-   query point ONCE into part-local space and then do pure arithmetic,
-   instead of forcing a full subtree matrix update per voxel. */
+    query point ONCE into part-local space and then do pure arithmetic,
+    instead of forcing a full subtree matrix update per voxel. */
     const _hitInv = new THREE.Matrix4();
     const _hitLocal = new THREE.Vector3();
     const _tmpCarve = new THREE.Vector3();
@@ -3831,6 +4325,7 @@
         }
 
         applyHitSlow(bestE);
+        triggerEnemyAggro(bestE);
 
         const part = bestE.parts[bestPart];
         const vs = bestE.model.voxelSize;
@@ -3901,21 +4396,21 @@
     }
 
     /* =========================================================================
-   ANIMATION — v3 with per-enemy variants
-   -------------------------------------------------------------------------
-   Every enemy rolls THREE animation profiles at spawn:
+    ANIMATION — v3 with per-enemy variants
+    -------------------------------------------------------------------------
+    Every enemy rolls THREE animation profiles at spawn:
        · walkProfile   — gait (legAmp, armReach, torsoLean, …)
        · idleProfile   — standing-around posture (sway, breath, twitch)
        · attackProfile — strike style (lunge / bite / slash / pounce)
-
-   Profiles are pure data.  The animators read them and apply the numbers,
-   so a horde reads as INDIVIDUALS — one walker drags, another stumbles,
-   a third sidles.  A per-type style object further specializes the base
-   archetype numbers (rotters lean more, oldbloods tremble more, etc.).
-
-   The state machine is smoothed: idle ↔ walk blends via `A.stateBlend`,
-   and attack overrides legs/arms while active.
-   ========================================================================= */
+    
+    Profiles are pure data.  The animators read them and apply the numbers,
+    so a horde reads as INDIVIDUALS — one walker drags, another stumbles,
+    a third sidles.  A per-type style object further specializes the base
+    archetype numbers (rotters lean more, oldbloods tremble more, etc.).
+    
+    The state machine is smoothed: idle ↔ walk blends via `A.stateBlend`,
+    and attack overrides legs/arms while active.
+    ========================================================================= */
 
     function _pickRandom(arr) {
         return arr[(Math.random() * arr.length) | 0];
@@ -4167,10 +4662,14 @@
         if (A.blinkT > 0) A.blinkT = Math.max(0, A.blinkT - dt * 9);
         else if (A.blinkPhase > 5.7) { A.blinkT = 1; A.blinkPhase = 0; }
 
-        if (e.hitFlash > 0) {
+        /* 只有已进入 aggro 的敌人被击中才显示 flinch。
+           未 aggro 的敌人被击中不会做出反应 —— 既保证了 stealth 击杀的可行性，
+           也让玩家能通过"有没有反应"清楚地区分"仇恨已触发"和"仇恨未触发"。 */
+        if (e.hitFlash > 0 && e.aggro) {
             A.flinch = Math.max(A.flinch, e.hitFlash * 0.9);
             A.flinchRoll = (Math.random() - 0.5) * 0.4;
         }
+
         A.flinch = Math.max(0, A.flinch - dt * 2.4);
         A.flinchRoll *= Math.max(0, 1 - dt * 5);
 
@@ -4188,12 +4687,55 @@
         const crawlTarget = e.crawlMode ? 1 : 0;
         e.crawlBlend += (crawlTarget - e.crawlBlend) * Math.min(1, dt * 6);
 
+        /* ── Enemy footsteps ──────────────────────────────────────────
+    `moving` is already `spd > 0.4 && e.onGround` — computed at the
+    top of animateEnemyBase — so this fires exactly while the
+    enemy is grounded and actually walking.
+    
+    Step rate is per-stride, not per-frame:
+     · Bigger enemies step more slowly (size factor)
+     · Faster movement = shorter interval
+    This keeps a brute's stomps heavy and slow while a runner's
+    taps feel quick and light. */
+        if (moving) {
+            const spd = Math.hypot(e.vel.x, e.vel.z);
+            const sizeForStep = clamp((e.model.colH || 1.45) / 1.45, 0.6, 2.0);
+            const baseSpd = e.model.speedWalk || 1.6;
+            const speedRatio = spd / baseSpd;
+            const stepInterval = 0.48 * sizeForStep / Math.max(0.7, speedRatio);
+
+            A._stepTimer = (A._stepTimer || 0) + dt;
+            if (A._stepTimer >= stepInterval) {
+                A._stepTimer = 0;
+                playEnemyFootstep(e);
+            }
+        } else {
+            A._stepTimer = 0;
+        }
+
+        /* ── Ambient zombie groan ──────────────────────────────────────
+   Plays occasionally while the zombie is alive.  Combined with
+   the per-attack grunt and the one-shot alert scream, this
+   gives every zombie three distinct vocalisations at different
+   moments.  Aliens are excluded by isZombie(). */
+        if (isZombie(e) && e.alive) {
+            e._ambientSoundTimer = (e._ambientSoundTimer || 4) - dt;
+            if (e._ambientSoundTimer <= 0) {
+                e._ambientSoundTimer = 5 + Math.random() * 7;   // 5–12 s apart
+                playEnemyIdleSound(e);
+            }
+        }
+
         return attackReach;
     }
 
     /* ---- Dispatcher --------------------------------------------------------- */
-
     function animateEnemy(e, dt) {
+        animateEnemyBase(e, dt);
+        applyIdleActionAnimation(e, dt);
+    }
+
+    function animateEnemyBase(e, dt) {
         const A = ensureAnimState(e);
         let attackReach = 0;
         const spd = Math.hypot(e.vel.x, e.vel.z);
@@ -4891,8 +5433,13 @@
 
             // Release the block as a projectile
             if (T >= 4.0 && !e._blockThrown) {
-                e._blockThrown = true;
-                if (!e._remoteOwned) launchHeldBlock(e);
+                if (!e._remoteOwned) {
+                    launchHeldBlock(e);        // sets _blockThrown internally
+                } else {
+                    // Remote mirror — host already fired the projectile
+                    // over the wire; just stop the local hand animation.
+                    e._blockThrown = true;
+                }
             }
 
             // Keep the chunk glued between the two hands
@@ -4948,6 +5495,126 @@
             torsoDeltaX = torsoD;
         }
 
+        if (e.isPunching && !e.isThrowing && !e.isSlamming) {
+            throwOverride = true;
+            e.punchTimer += dt;
+            const T = e.punchTimer;
+
+            const PUNCH_WINDUP = 0.30;
+            const PUNCH_STRIKE = 0.15;
+            const PUNCH_HOLD = 0.15;
+            const PUNCH_RECOVER = 0.40;
+
+            const ARM_WINDUP_UP = 3.2;    // fists raise overhead
+            const ARM_STRIKE_FWD = 0.3;    // fists smash forward-down
+            const TORSO_BACK = -0.5;
+            const TORSO_FWD = 0.9;
+
+            let armX = armLBaseX;
+            let torsoD = 0;
+
+            if (T < PUNCH_WINDUP) {
+                const t = T / PUNCH_WINDUP;
+                const et = _ease(t);
+                armX = armLBaseX + (ARM_WINDUP_UP - armLBaseX) * et;
+                torsoD = TORSO_BACK * et;
+            } else if (T < PUNCH_WINDUP + PUNCH_STRIKE) {
+                const t = (T - PUNCH_WINDUP) / PUNCH_STRIKE;
+                const et = _easeOut(t);
+                armX = ARM_WINDUP_UP + (ARM_STRIKE_FWD - ARM_WINDUP_UP) * et;
+                torsoD = TORSO_BACK + (TORSO_FWD - TORSO_BACK) * et;
+            } else if (T < PUNCH_WINDUP + PUNCH_STRIKE + PUNCH_HOLD) {
+                armX = ARM_STRIKE_FWD;
+                torsoD = TORSO_FWD;
+            } else {
+                const t = Math.min(1,
+                    (T - PUNCH_WINDUP - PUNCH_STRIKE - PUNCH_HOLD) / PUNCH_RECOVER);
+                const et = _ease(t);
+                armX = ARM_STRIKE_FWD + (armLBaseX - ARM_STRIKE_FWD) * et;
+                torsoD = TORSO_FWD * (1 - et);
+                if (T >= MB_PUNCH_TOTAL_TIME) e.isPunching = false;
+            }
+
+            armLX = armX;
+            armRX = armX;
+            armLZ = armLBaseZ;
+            armRZ = armRBaseZ;
+            torsoDeltaX = torsoD;
+
+            /* Carve the world the moment the fists reach the wall. */
+            if (!e._punchImpactDone && T >= MB_PUNCH_IMPACT_T) {
+                e._punchImpactDone = true;
+                if (!e._remoteOwned) doMiniBossPunchImpact(e);
+            }
+        }
+
+        /* ─── ROAR ──────────────────────────────────────────────────
+   Slow telegraph: hunch → rear back → bellow → recover.
+   Timeline matches the sound (played at the peak of the bellow). */
+        if (e.isRoaring && !e.isThrowing && !e.isSlamming && !e.isPunching) {
+            throwOverride = true;
+            e.roarTimer = (e.roarTimer || 0) + dt;
+            const T = e.roarTimer;
+
+            const ROAR_WINDUP = 0.40;
+            const ROAR_PEAK = 0.50;
+            const ROAR_HOLD = 0.70;
+            const ROAR_RECOVER = 0.50;
+            const ROAR_TOTAL = ROAR_WINDUP + ROAR_PEAK + ROAR_HOLD + ROAR_RECOVER;
+
+            let headX = headBaseX;
+            let torsoD = 0;
+            let armX = armLBaseX;
+            let armZ = 0;
+
+            if (T < ROAR_WINDUP) {
+                // Hunch down, arms tuck in
+                const t = T / ROAR_WINDUP;
+                const et = _ease(t);
+                headX = headBaseX + 0.40 * et;
+                torsoD = 0.35 * et;
+                armX = armLBaseX + 0.30 * et;
+            } else if (T < ROAR_WINDUP + ROAR_PEAK) {
+                // Rear back: head up, torso back, arms out
+                const t = (T - ROAR_WINDUP) / ROAR_PEAK;
+                const et = _easeOut(t);
+                headX = (headBaseX + 0.40) - 1.60 * et;
+                torsoD = 0.35 - 0.75 * et;
+                armX = (armLBaseX + 0.30) - 2.30 * et;
+                armZ = 0.60 * et;
+            } else if (T < ROAR_WINDUP + ROAR_PEAK + ROAR_HOLD) {
+                // Hold the roar pose
+                headX = headBaseX - 1.20;
+                torsoD = -0.40;
+                armX = armLBaseX - 2.00;
+                armZ = 0.60;
+            } else {
+                // Recover
+                const t = Math.min(1,
+                    (T - ROAR_WINDUP - ROAR_PEAK - ROAR_HOLD) / ROAR_RECOVER);
+                const et = _ease(t);
+                headX = (headBaseX - 1.20) + 1.20 * et;
+                torsoD = -0.40 + 0.40 * et;
+                armX = (armLBaseX - 2.00) + 2.00 * et;
+                armZ = 0.60 - 0.60 * et;
+                if (T >= ROAR_TOTAL) e.isRoaring = false;
+            }
+
+            armLX = armX;
+            armRX = armX;
+            armLZ = armLBaseZ - armZ;
+            armRZ = armRBaseZ + armZ;
+            torsoDeltaX = torsoD;
+            e._roarHeadX = headX;
+
+            // Fire the sound at the peak of the bellow
+            const ROAR_SOUND_AT = ROAR_WINDUP + ROAR_PEAK * 0.4;
+            if (T >= ROAR_SOUND_AT && !e._roarSoundPlayed) {
+                e._roarSoundPlayed = true;
+                playMiniBossRoar(e);
+            }
+        }
+
         // ─── legs ────────────────────────────────────────────────────
         if (parts.legL.connected) {
             parts.legL.pivot.rotation.x = legLBaseX + legSwing;
@@ -4983,9 +5650,72 @@
 
         // ─── head ────────────────────────────────────────────────────
         if (parts.head && parts.head.connected) {
-            parts.head.pivot.rotation.x = headBaseX + attackReach * 0.25;
+            if (e.isRoaring && typeof e._roarHeadX === "number") {
+                parts.head.pivot.rotation.x = e._roarHeadX;
+            } else {
+                parts.head.pivot.rotation.x = headBaseX + attackReach * 0.25;
+            }
             parts.head.pivot.rotation.y = headBaseY + A.headTurn * headSwingY;
             parts.head.pivot.rotation.z = headBaseZ;
+        }
+    }
+
+    /**
+    * 空闲动作的额外姿势覆盖 —— 在每种怪的专属动画器执行完之后调用，
+    * 因此可以覆盖 head/torso 等部位的基准旋转。
+    *
+    * 只在 `e.state === 'idle' && !e.aggro` 时生效，追击/攻击时永远不干扰。
+    */
+    function applyIdleActionAnimation(e, dt) {
+        if (e.state !== 'idle' || e.aggro) return;
+        const parts = e.parts;
+
+        if (e._idleAction === 'roar') {
+            // 仰头朝天空咆哮
+            if (parts.head && parts.head.connected) {
+                parts.head.pivot.rotation.x -= 0.55;
+            }
+            if (parts.torso.connected) {
+                parts.torso.pivot.rotation.x -= 0.18;
+            }
+            if (parts.armL && parts.armL.connected) {
+                parts.armL.pivot.rotation.x -= 0.35;
+                parts.armL.pivot.rotation.z -= 0.15;
+            }
+            if (parts.armR && parts.armR.connected) {
+                parts.armR.pivot.rotation.x -= 0.35;
+                parts.armR.pivot.rotation.z += 0.15;
+            }
+        } else if (e._idleAction === 'punch_block' && e._idleData && !e._idleData.fired) {
+            // 挥拳砸向面前一小块区域（破一格 voxel）
+            e._idleData.fired = true;
+            const colH = (e.model.colH || 1.45) * (1 - 0.6 * e.crawlBlend);
+            const colHW = e.model.colHW || 0.28;
+            tryBreakBlockingVoxel(e, colHW, colH);
+            // 短促前倾视觉反馈
+            if (parts.torso.connected) parts.torso.pivot.rotation.x += 0.20;
+            if (parts.armR && parts.armR.connected) parts.armR.pivot.rotation.x += 1.2;
+        } else if (e._idleAction === 'punch_enemy' && e._idleData && !e._idleData.fired) {
+            // 挥拳砸向最近的一个同伴（若在 2m 内）
+            e._idleData.fired = true;
+            let target = null, bestD2 = 4;      // 2m²
+            for (const other of enemies) {
+                if (other === e || !other.alive) continue;
+                const ddx = other.pos.x - e.pos.x;
+                const ddz = other.pos.z - e.pos.z;
+                const d2 = ddx * ddx + ddz * ddz;
+                if (d2 < bestD2) { bestD2 = d2; target = other; }
+            }
+            if (target) {
+                // 第 4 参数 noAggro = true —— 不触发对方仇恨（friendly fire）
+                hurtEnemy(target, 5, undefined, true);
+                // 视觉：右臂挥出
+                if (parts.armR && parts.armR.connected) parts.armR.pivot.rotation.x += 1.4;
+            } else {
+                // 没找到人，也做个挥空动画
+                if (parts.armR && parts.armR.connected) parts.armR.pivot.rotation.x += 0.9;
+            }
+            if (parts.torso.connected) parts.torso.pivot.rotation.x += 0.15;
         }
     }
 
@@ -5026,7 +5756,12 @@
             // NEW: remote-owned branch
             if (e._remoteOwned) {
                 if (!e.alive && e.dying) updateDeathAnim(e, dt);
-                else if (e.alive) updateRemoteEnemy(e, dt);
+                else if (e.alive) {
+                    updateRemoteEnemy(e, dt);
+                    // Safety net — if the host hasn't signalled death yet but the
+                    // mirrored position is already in the void, drop it locally.
+                    if (e.alive && e.pos.y < VOID_DEATH_Y) killEnemyInVoid(e, i);
+                }
                 continue;
             }
 
@@ -5035,51 +5770,172 @@
                 continue;
             }
 
-            if (e.hitSlowTimer > 0) e.hitSlowTimer -= dt;
+            /* ---- Slow → Endure state machine ---- */
+            if (e.hitSlowTimer > 0) {
+                e.hitSlowTimer -= dt;
+                if (e.hitSlowTimer <= 0) {
+                    // Slow just ended → endure begins.
+                    e.hitSlowTimer = 0;
+                    e._endureTimer = ENDURE_DURATION;
+                }
+            }
+            if (e._endureTimer > 0) {
+                e._endureTimer -= dt;
+                if (e._endureTimer <= 0) e._endureTimer = 0;
+            }
 
             const dx = player.pos.x - e.pos.x;
             const dz = player.pos.z - e.pos.z;
             const distToPlayer = Math.hypot(dx, dz);
-            if (distToPlayer > 60) continue;
-            e.losTimer -= dt;
-            if (e.losTimer <= 0) {
-                e.losTimer = 0.25 + Math.random() * 0.15;
-                e.canSeePlayer = distToPlayer < 30 && canSeePlayer(e);
+
+            /* Void death — highest priority, before teleport / AI.
+    Covers anything that slipped through last frame's physics. */
+            if (e.pos.y < VOID_DEATH_Y) {
+                killEnemyInVoid(e, i);
+                continue;
             }
-            const reach = e.crawlMode ? 1.0 : e.model.attackRange;
-            if (!e.isSlamming) {
-                if (e.canSeePlayer) {
-                    e.state = distToPlayer <= reach ? "attack" : "chase";
-                } else if (e.state !== "wander") {
-                    e.state = "wander";
-                    e.wanderTarget = null;
+
+            /* ---- Keep enemies near the player ----
+               Bosses mid-throw / mid-slam are left alone so their animation
+               completes cleanly, then teleport on the next frame. */
+            if (distToPlayer > ENEMY_MAX_RANGE_FROM_PLAYER) {
+                const bossMidAction =
+                    (e.kind === "__mini_boss__" || e.kind === "__final_boss__") &&
+                    (e.isThrowing || e.isSlamming);
+                if (!bossMidAction) {
+                    teleportEnemyNearPlayer(e);
+                    continue;   // skip rest of frame; next frame AI resumes
                 }
             }
 
-            const slowMul = e.hitSlowTimer > 0 ? HIT_SLOW_MULTIPLIER : 1;
+            /* Performance: if far away and not aggro, skip */
+            if (distToPlayer > 60 && !e.aggro) continue;
+
+            /* 性能优化：很远且已经脱战 → 直接跳过本轮 AI（但 agg 中的敌人无论多远都跑，
+               这样才能累计 leashTimer）。 */
+            if (distToPlayer > 60 && !e.aggro) continue;
+
+            e._blockedThisFrame = false;
+            e._steppedThisFrame = false;
+            e._voidBlocked = false;
+
+            /* ────────────────────────────────────────────────
+               环绕侦察状态机
+                 · idle   → 无动作，只监听 detectionRadius
+                 · chase  → 已仇恨，追 player，忽略 LOS
+                 · attack → 已仇恨且进入 melee 距离
+                 · 脱战   → 在 leashRadius 外连续 LEASH_DROP_TIME 秒
+               ──────────────────────────────────────────────── */
+            const reach = e.crawlMode ? 1.0 : e.model.attackRange;
+
+            if (!e.aggro) {
+                if (player.alive && distToPlayer <= e.detectionRadius) {
+                    e.aggro = true;
+                    e.leashTimer = 0;
+                    e._hitAggroOverride = false;
+                    e.state = distToPlayer <= reach ? "attack" : "chase";
+                    playEnemyAlert(e);
+                } else {
+                    e.state = "idle";
+                }
+            } else {
+                if (e._hitAggroOverride) {
+                    /* 被命中而强制追击：只要玩家进入侦测圈一次，就恢复普通 leash */
+                    if (distToPlayer <= e.detectionRadius || !player.alive) {
+                        e._hitAggroOverride = false;
+                        e.leashTimer = 0;
+                    }
+                } else {
+                    /* 普通 leash */
+                    if (!player.alive || distToPlayer > e.leashRadius) {
+                        e.leashTimer += dt;
+                        if (!player.alive || e.leashTimer >= LEASH_DROP_TIME) {
+                            e.aggro = false;
+                            e.leashTimer = 0;
+                            e.state = "idle";
+                            e.wanderTarget = null;
+                            e._idleTimer = 0.5 + Math.random() * 1.5;   // 给下一帧留点空窗
+                            e._idleAction = 'none';
+                        }
+                    } else {
+                        e.leashTimer = 0;
+                    }
+                }
+
+                if (e.aggro && !e.isSlamming && !e.isPunching && !e.isRoaring) {
+                    e.state = distToPlayer <= reach ? "attack" : "chase";
+                }
+            }
+
+            /* 兼容旧字段：动画器 / mini-boss 技能代码里引用了 canSeePlayer */
+            e.canSeePlayer = e.aggro;
+
+            const slowMul =
+                e.hitSlowTimer > 0 ? HIT_SLOW_MULTIPLIER :   // 1 s slow window
+                    e._endureTimer > 0 ? ENDURE_SPEED_MULT :   // 3 s endure window
+                        1;                                           // normal
 
             let moveSpeed = 0, dirX = 0, dirZ = 0;
 
             // --- MINI BOSS SPECIAL LOGIC ---
             if (e.kind === '__mini_boss__') {
                 e.skillTimer = (e.skillTimer || 3.0) - dt;
+                e._punchCooldown = Math.max(0, (e._punchCooldown || 0) - dt);
 
-                // Trigger a new skill if not already doing one
-                if (e.skillTimer <= 0 && e.canSeePlayer && !e.isThrowing && !e.isSlamming) {
+                /* ── Roar trigger ──
+   Never fires immediately after spawn (first roar is 6–10 s
+   in), never mid-throw/slam/punch, and cycles every 10–18 s. */
+                e.roarCooldown = (e.roarCooldown === undefined
+                    ? 6 + Math.random() * 4
+                    : e.roarCooldown) - dt;
+                if (e.roarCooldown <= 0 && e.alive &&
+                    !e.isThrowing && !e.isSlamming && !e.isPunching && !e.isRoaring) {
+                    e.isRoaring = true;
+                    e.roarTimer = 0;
+                    e.roarYaw = e.yaw;
+                    e._roarSoundPlayed = false;
+                    e.roarCooldown = 10 + Math.random() * 8;
+                    e.state = "chase";   // suppress attack damage during roar
+                }
+
+                /* Streak of frames where the boss was blocked last frame. */
+                if (e._blockedLastFrame) {
+                    e._blockStreak = (e._blockStreak || 0) + dt;
+                } else {
+                    e._blockStreak = 0;
+                }
+
+                /* Trigger the break-through punch: blocked going forward, or stuck
+                   (same collision persisting ≥ MB_PUNCH_STUCK_TIME). */
+                const canPunch =
+                    !e.isThrowing && !e.isSlamming && !e.isPunching &&
+                    e._punchCooldown <= 0 && e.aggro;
+                if (canPunch && e._blockStreak >= MB_PUNCH_STUCK_TIME) {
+                    e.isPunching = true;
+                    e.punchTimer = 0;
+                    e.punchYaw = e.yaw;
+                    e._punchImpactDone = false;
+                    e._punchCooldown = MB_PUNCH_COOLDOWN;
+                    e._blockStreak = 0;
+                    e.skillTimer = Math.max(e.skillTimer, 1.5);  // delay other skills
+                    e.state = "chase";                            // suppress attack damage
+                }
+
+                // Existing throw / slam scheduler
+                if (e.skillTimer <= 0 && e.aggro &&
+                    !e.isThrowing && !e.isSlamming && !e.isPunching) {
                     if (distToPlayer < 7.0) {
-                        // GROUND SLAM — 1.8 s animation, then a forward stone wave.
-                        // No terrain carve and no immediate damage; the wave does that.
                         e.skillTimer = 6.0;
                         e.isSlamming = true;
                         e.slamTimer = 0;
-                        e.slamYaw = e.yaw;      // lock the facing direction
+                        e.slamYaw = e.yaw;
                         e._waveSpawned = false;
-                        e.state = "chase";       // suppress attack-state damage during slam
+                        e.state = "chase";
                     } else if (distToPlayer > 12.0) {
-                        // THROW BLOCK — unchanged
                         if (e.heldBlock) {
                             scene.remove(e.heldBlock.mesh);
-                            if (e.heldBlock.mesh.geometry) e.heldBlock.mesh.geometry.dispose();
+                            if (e.heldBlock.mesh.geometry)
+                                e.heldBlock.mesh.geometry.dispose();
                             e.heldBlock = null;
                         }
                         e.skillTimer = 7.0;
@@ -5090,21 +5946,44 @@
                     }
                 }
             }
+
             // -------------------------------
 
             if (e.state === "chase") {
                 const bm = computeBehaviorMove(e, dx, dz, distToPlayer, dt);
                 dirX = bm.x;
                 dirZ = bm.z;
-                let baseSpeed = e.crawlMode ? e.model.speedWalk * 0.35 : e.model.speedRun;
+
+                /* Walk-only — no sprint for crawlers, and bosses use their own
+                   walk pace below. */
+                let baseSpeed = e.crawlMode
+                    ? e.model.speedWalk * 0.35
+                    : e.model.speedWalk;
+
+                /* --- Random chase sprint ---
+                   Only ticks while chasing, so an idle enemy never "charges up"
+                   a surprise burst the instant the player walks into range. */
+                e._sprintTimer -= dt;
+                if (e._sprintActive > 0) {
+                    e._sprintActive = Math.max(0, e._sprintActive - dt);
+                }
+                if (e._sprintTimer <= 0) {
+                    e._sprintTimer = SPRINT_INTERVAL_MIN
+                        + Math.random() * (SPRINT_INTERVAL_MAX - SPRINT_INTERVAL_MIN);
+                    e._sprintActive = SPRINT_DURATION_MIN
+                        + Math.random() * (SPRINT_DURATION_MAX - SPRINT_DURATION_MIN);
+                    e._sprintMult = SPRINT_SPEED_MIN
+                        + Math.random() * (SPRINT_SPEED_MAX - SPRINT_SPEED_MIN);
+                }
+                const sprintMult = e._sprintActive > 0 ? e._sprintMult : 1;
 
                 if (e.kind === '__mini_boss__') {
                     dirX = dx / distToPlayer;
                     dirZ = dz / distToPlayer;
-                    baseSpeed = e.model.speedRun;
+                    baseSpeed = e.model.speedWalk;
                 }
 
-                moveSpeed = baseSpeed * bm.speedMul * slowMul;   // ← added * slowMul
+                moveSpeed = baseSpeed * bm.speedMul * slowMul * sprintMult;
                 e.yaw = Math.atan2(dx, dz) + Math.PI;
             } else if (e.state === "attack") {
                 e.yaw = Math.atan2(dx, dz) + Math.PI;
@@ -5113,40 +5992,42 @@
                     if (Hooks.damagePlayer) Hooks.damagePlayer(e.model.attackDamage);
                     e.attackTimer = 1.2;
                     e.attackPhase = 0.001;
+                    playEnemyAttackSound(e);                      // ← new
                 }
             } else {
-                e.wanderTimer -= dt;
-                if (!e.wanderTarget || e.wanderTimer <= 0 ||
-                    Math.hypot(e.wanderTarget.x - e.pos.x, e.wanderTarget.z - e.pos.z) < 0.6) {
-                    const a = Math.random() * Math.PI * 2;
-                    const d = 3 + Math.random() * 6;
-                    e.wanderTarget = {
-                        x: clamp(e.pos.x + Math.cos(a) * d, 1, WORLD_W - 1),
-                        z: clamp(e.pos.z + Math.sin(a) * d, 1, WORLD_D - 1),
-                    };
-                    e.wanderTimer = 4 + Math.random() * 4;
-                }
-                const wx = e.wanderTarget.x - e.pos.x;
-                const wz = e.wanderTarget.z - e.pos.z;
-                const wd = Math.hypot(wx, wz);
-                if (wd > 0.3) {
-                    dirX = wx / wd; dirZ = wz / wd;
-                    moveSpeed = (e.crawlMode ? e.model.speedWalk * 0.25 : e.model.speedWalk) * slowMul;  // ← added * slowMul
-                    e.yaw = Math.atan2(wx, wz) + Math.PI;
-                }
-            }
-
-            // === Slam override: freeze facing + zero movement ===
-            if (e.isSlamming) {
+                /* idle —— 站原地，但周期性做小动作 */
                 moveSpeed = 0;
                 dirX = 0;
                 dirZ = 0;
-                e.yaw = e.slamYaw;   // rigid facing, no rotation
+
+                // 计时器 tick：跑完就换下一个动作
+                e._idleTimer -= dt;
+                if (e._idleTimer <= 0) {
+                    pickIdleAction(e);
+                }
+
+                // 根据当前动作接管移动 / 特殊触发
+                if (e._idleAction === 'wander_run' && e._idleData) {
+                    dirX = e._idleData.dirX;
+                    dirZ = e._idleData.dirZ;
+                    moveSpeed = e._idleData.speed;
+                    e.yaw = Math.atan2(dirX, dirZ) + Math.PI;
+                }
+            }
+
+            // === Slam / punch / roar override: freeze facing + zero movement ===
+            if (e.isSlamming || e.isPunching || e.isRoaring) {
+                moveSpeed = 0;
+                dirX = 0;
+                dirZ = 0;
+                if (e.isSlamming) e.yaw = e.slamYaw;
+                if (e.isPunching) e.yaw = e.punchYaw;
+                if (e.isRoaring) e.yaw = e.roarYaw;
             }
 
             if (moveSpeed > 0 && (dirX !== 0 || dirZ !== 0)) {
                 e._steerT = (e._steerT || Math.random() * 100) + dt;
-                const weaveAmt = e.model.weaveAmt != null ? e.model.weaveAmt : 0.30;
+                const weaveAmt = e.model.weaveAmt != null ? e.model.weaveAmt : 0.12;
                 const weaveFreq = e.model.weaveFreq != null ? e.model.weaveFreq : 1.70;
                 const weave = Math.sin(e._steerT * weaveFreq) * weaveAmt;
                 const cw = Math.cos(weave);
@@ -5208,37 +6089,100 @@
                 if (dy < 0) e.onGround = true;
                 e.vel.y = 0;
             } else e.onGround = false;
+
             function tryStep(axis, delta) {
-                const old = e.pos[axis];
-                e.pos[axis] += delta;
-                if (!enemyCollides(e.pos, colHW, colH)) return;
-                e.pos[axis] = old;
-                const savedY = e.pos.y;
-                let stepped = false;
-                for (let s = 1; s <= 5; s++) {
-                    e.pos.y = savedY + s * VOXEL;
-                    if (!enemyCollides(e.pos, colHW, colH)) { stepped = true; break; }
+                const oldAxis = e.pos[axis];
+                const oldY = e.pos.y;
+
+                /* 1. Direct horizontal move */
+                e.pos[axis] = oldAxis + delta;
+                if (!enemyCollides(e.pos, colHW, colH)) {
+                    /* Void guard — refuse to step into an empty column */
+                    if (!hasGroundBelow(e.pos)) {
+                        e.pos[axis] = oldAxis;
+                        if (axis === "x") e.vel.x = 0; else e.vel.z = 0;
+                        e._blockedThisFrame = true;
+                        e._voidBlocked = true;
+                        return;
+                    }
+                    return;
                 }
-                if (!stepped) {
-                    e.pos.y = savedY;
+                e.pos[axis] = oldAxis;
+
+                /* 2. Already stepped this frame → can't climb again */
+                if (e._steppedThisFrame) {
                     if (axis === "x") e.vel.x = 0; else e.vel.z = 0;
-                    if (e.onGround) e.vel.y = 5.5;
+                    e._blockedThisFrame = true;
+                    return;
                 }
+
+                /* 3. Combined horizontal + climb */
+                const maxSteps = Math.max(1, Math.ceil((e.stepHeight || 0.5) / VOXEL));
+                for (let s = 1; s <= maxSteps; s++) {
+                    e.pos.y = oldY + s * VOXEL;
+                    e.pos[axis] = oldAxis + delta;
+                    if (!enemyCollides(e.pos, colHW, colH)) {
+                        /* Void guard — same rule while climbing */
+                        if (!hasGroundBelow(e.pos)) {
+                            e.pos[axis] = oldAxis;
+                            continue;
+                        }
+                        e._steppedThisFrame = true;
+                        return;
+                    }
+                    e.pos[axis] = oldAxis;
+                }
+
+                /* 4. All failed */
+                e.pos.y = oldY;
+                if (axis === "x") e.vel.x = 0; else e.vel.z = 0;
+                e._blockedThisFrame = true;
             }
+
             if (e.vel.x !== 0) tryStep("x", e.vel.x * dt);
             if (e.vel.z !== 0) tryStep("z", e.vel.z * dt);
+
+            /* ── 前方被挡：优先绕路；节流后以 5% 概率破一格 ── */
+            if (e._blockedThisFrame) {
+                if (!(e._unstickT > 0)) {
+                    e._unstickT = 0.6 + Math.random() * 0.4;
+                    e._unstickDir = Math.random() < 0.5 ? -1 : 1;
+                }
+                const now = performance.now();
+                if (!e._nextBreakRollAt || now >= e._nextBreakRollAt) {
+                    e._nextBreakRollAt =
+                        now + BREAK_ROLL_MIN_MS + Math.random() * BREAK_ROLL_JITTER_MS;
+                    if (Math.random() < BREAK_CHANCE) {
+                        tryBreakBlockingVoxel(e, colHW, colH);
+                    }
+                }
+            }
+
             e.pos.x = clamp(e.pos.x, 0.4, WORLD_W - 0.4);
             e.pos.z = clamp(e.pos.z, 0.4, WORLD_D - 0.4);
-            if (e.pos.y < -4) e.pos.y = 30;
+            if (e.pos.y < VOID_DEATH_Y) {
+                killEnemyInVoid(e, i);
+                continue;
+            }
             animateEnemy(e, dt);
+
+            /* ── 空闲姿势覆盖：躺 / 坐 / 装死 ── */
+            let rootRotX = 0;
+            let rootLiftY = 0;
+            if (e.state === 'idle' && !e.aggro && e._idleAction === 'sit') {
+                rootLiftY = -0.22;   // crouch down a bit — stays upright
+            }
+
             e.rig.root.position.set(
                 e.pos.x,
-                e.pos.y + (e._visualYOffset || 0),
+                e.pos.y + (e._visualYOffset || 0) + rootLiftY,
                 e.pos.z,
             );
             e.rig.root.rotation.y = e.yaw;
+            e.rig.root.rotation.x = rootRotX;
             updateBleeding(e, dt);
             resolveEnemyDetachedCollisions(e, colHW, colH);
+            e._blockedLastFrame = e._blockedThisFrame;
         }
         resolveEnemyCollisions();
         resolvePlayerEnemyCollisions();
@@ -5339,7 +6283,7 @@
        Every piece gets kicked when the player runs into it — small debris
        flies hard, heavy pieces barely budge.  ON TOP of that, heavy pieces
        also push the player out so you can't phase through a fallen limb.
-
+    
        Heaviness is derived from the cluster's bounding radius:
          · tiny crumb (r < 0.14 m)  → almost no player resistance
          · limb / torso (r ≥ 0.14)  → real collision + a modest kick
@@ -5557,6 +6501,47 @@
         return 30;
     }
 
+    /**
+    * 敌人被墙挡住时尝试破一格。沿朝向从身体中心向前探 0.15–0.55m，
+    * 命中第一块实心 voxel 就戳一个小洞。破洞通过 net.sendCarve 广播，
+    * 与玩家 sledge 的路径一致，不会漏播给其他客户端。
+    */
+    function tryBreakBlockingVoxel(e, colHW, colH) {
+        if (!Hooks.carveSphere) return false;
+
+        const fx = -Math.sin(e.yaw);
+        const fz = -Math.cos(e.yaw);
+        const oy = e.pos.y + colH * 0.4;
+        const maxProbe = colHW + 0.55;
+
+        for (let d = 0.15; d <= maxProbe; d += 0.1) {
+            const vx = Math.floor((e.pos.x + fx * d) / VOXEL);
+            const vy = Math.floor(oy / VOXEL);
+            const vz = Math.floor((e.pos.z + fz * d) / VOXEL);
+
+            if (getV(vx, vy, vz) !== 0) {
+                Hooks.carveSphere(vx, vy, vz, 1.5, {
+                    ignite: false, debrisChance: 0.35,
+                });
+                if (Hooks.net && Hooks.net.sendCarve) {
+                    Hooks.net.sendCarve(vx, vy, vz, 1.5, false);
+                }
+                if (window.Sfx) {
+                    Sfx.play("voxel_break", {
+                        position: {
+                            x: (vx + 0.5) * VOXEL,
+                            y: (vy + 0.5) * VOXEL,
+                            z: (vz + 0.5) * VOXEL,
+                        },
+                        maxDistance: 28,
+                    });
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
     function tickSandboxWaves(dt) {
         const types = Object.keys(MODELS);
         if (!types.length) return;
@@ -5684,6 +6669,7 @@
             e.pos.z,
         );
         e.rig.root.rotation.y = e.yaw;
+        e.rig.root.rotation.x = 0;
 
         if (e._targetAlive === false && e.alive) {
             e.hp = 0;
@@ -5735,6 +6721,20 @@
                     }
                 }
 
+                const wasPunching = !!e.isPunching;
+                const nowPunching = !!s.pu;
+                e.isPunching = nowPunching;
+                if (nowPunching && !wasPunching) {
+                    e.punchTimer = s.pt || 0;
+                    e.punchYaw = s.py || e.yaw;
+                    e._punchImpactDone = true;          // remote never carves
+                } else if (nowPunching && typeof s.pt === 'number') {
+                    if (Math.abs((e.punchTimer || 0) - s.pt) > 0.15) {
+                        e.punchTimer = s.pt;
+                    }
+                    if (typeof s.py === 'number') e.punchYaw = s.py;
+                }
+
                 const wasSlamming = !!e.isSlamming;
                 const nowSlamming = !!s.sm;
                 e.isSlamming = nowSlamming;
@@ -5748,6 +6748,15 @@
                         e.slamTimer = s.st;
                     }
                     if (typeof s.sy === 'number') e.slamYaw = s.sy;
+                }
+
+                const wasRoaring = !!e.isRoaring;
+                const nowRoaring = !!s.ro;
+                e.isRoaring = nowRoaring;
+                if (nowRoaring && !wasRoaring) {
+                    e.roarTimer = s.rt || 0;
+                    e.roarYaw = s.ry || e.yaw;
+                    e._roarSoundPlayed = false;
                 }
             }
         }
@@ -5767,6 +6776,7 @@
         if (!e || !e.alive) return false;
 
         applyHitSlow(e);
+        triggerEnemyAggro(e);
 
         // Find the part whose bounding sphere is closest to the hit point.
         let bestKey = null, bestD2 = Infinity;
@@ -5908,13 +6918,13 @@
     };
 
     /* =========================================================================
-   BOSS HP BAR — floating top-of-screen bar for __mini_boss__ / __final_boss__
-   -------------------------------------------------------------------------
-   · Self-contained: creates its own DOM element + RAF loop.
-   · Reads game state via Hooks (getGameRunning, player).
-   · Shows whenever a boss exists in `enemies` — waves, sandbox, anywhere.
-   · Pauses/hides on death or game pause, auto-hides when boss is removed.
-   ========================================================================= */
+    BOSS HP BAR — floating top-of-screen bar for __mini_boss__ / __final_boss__
+    -------------------------------------------------------------------------
+    · Self-contained: creates its own DOM element + RAF loop.
+    · Reads game state via Hooks (getGameRunning, player).
+    · Shows whenever a boss exists in `enemies` — waves, sandbox, anywhere.
+    · Pauses/hides on death or game pause, auto-hides when boss is removed.
+    ========================================================================= */
     (function setupBossBar() {
         if (typeof document === "undefined" || typeof window === "undefined") return;
 

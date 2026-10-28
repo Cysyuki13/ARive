@@ -324,6 +324,10 @@
   const camera = new THREE.PerspectiveCamera(76, 1, 0.04, 200);
   camera.rotation.order = "YXZ";
 
+  /* --- 3D audio scratch --- */
+  const _sfxFwd = new THREE.Vector3();
+  const _sfxUp = new THREE.Vector3(0, 1, 0);
+
   /* =========================================================================
        8.1  FIRST-PERSON VIEW MODEL
        ========================================================================= */
@@ -580,17 +584,24 @@
     const upLen = _armDir.length();
     bones.upper.position.copy(shoulder).add(_armElbow).multiplyScalar(0.5);
     bones.upper.quaternion.setFromUnitVectors(_armUp, _armDir.normalize());
-    bones.upper.scale.set(1, upLen / UPPER_ARM_BASE_LEN, 1);
+    const armScale = side < 0 ? fpvArmScaleL : fpvArmScaleR;
+    bones.upper.scale.set(armScale, upLen / UPPER_ARM_BASE_LEN, armScale);
 
     _armDir.copy(hand.position).sub(_armElbow);
     const foreLen = _armDir.length();
     bones.fore.position.copy(_armElbow).add(hand.position).multiplyScalar(0.5);
     bones.fore.quaternion.setFromUnitVectors(_armUp, _armDir.normalize());
-    bones.fore.scale.set(1, foreLen / FOREARM_BASE_LEN, 1);
+    bones.fore.scale.set(armScale, foreLen / FOREARM_BASE_LEN, armScale);
   }
 
   let swayYaw = 0,
     swayPitch = 0;
+
+  /* ── FPV avatar sync ── */
+  let fpvArmScaleL = 1;    // 左手手臂粗细倍数
+  let fpvArmScaleR = 1;    // 右手手臂粗细倍数
+  let fpvEyeYOffset = 0;   // torso 高度变化后眼睛需要上移的量
+
   let swayYawVel = 0,
     swayPitchVel = 0;
 
@@ -622,6 +633,26 @@
   scene.add(sun);
   scene.add(new THREE.AmbientLight(0x6a3820, 0.55));
   scene.add(new THREE.HemisphereLight(0xc06030, 0x1a0808, 0.5));
+
+  /* Load the saved avatar and push it into the FPV rig + the peer-mirror
+   cache so a fresh session looks correct without opening the customizer. */
+  let _avatarAppliedAtBoot = false;
+  function applySavedAvatarAtBoot() {
+    if (_avatarAppliedAtBoot) return;
+    if (!window.ARiveAvatar || !window.ARiveAvatar.load) return;
+    _avatarAppliedAtBoot = true;   // guard against double-apply
+    Promise.resolve(window.ARiveAvatar.load())
+      .then(function (av) {
+        if (!av) return;
+        const fpv = window.ARiveAvatar.toFpvModelData(av);
+        const remote = window.ARiveAvatar.toRemoteModelData(av);
+        // Reuse the exact function the customizer already calls.
+        window.ARiveHooks.applyAvatar(fpv, remote);
+      })
+      .catch(function (e) {
+        console.warn('[ARive] boot avatar apply failed:', e);
+      });
+  }
 
   function resizeRenderer() {
     const w = window.innerWidth,
@@ -1269,7 +1300,15 @@
   }
 
   function explodeAt(vx, vy, vz, radiusMeters, silent) {
-    if (window.Sfx) Sfx.play("explosion");
+    if (window.Sfx) {
+      Sfx.play("explosion", {
+        position: {
+          x: (vx + 0.5) * VOXEL,
+          y: (vy + 0.5) * VOXEL,
+          z: (vz + 0.5) * VOXEL,
+        },
+      });
+    }
     const rv = radiusMeters / VOXEL;
     spawnExplosionBurst(vx, vy, vz, radiusMeters);
 
@@ -4917,9 +4956,16 @@
         carveSphere(cx, cy, cz, 2.8, { ignite: false, debrisChance: 0.2 });
         shakeCamera(0.08);
         net.sendCarve(cx, cy, cz, 2.8, false);
-        if (window.Sfx) Sfx.play("voxel_break");
+        if (window.Sfx) {
+          Sfx.play("voxel_break", {
+            position: {
+              x: (cx + 0.5) * VOXEL,
+              y: (cy + 0.5) * VOXEL,
+              z: (cz + 0.5) * VOXEL,
+            },
+          });
+        }
       }
-
       hitEnemiesMelee(2.4, 40);
       toolCooldown = t.cd;
     } else if (t.id === "charge") {
@@ -5066,6 +5112,11 @@
       const dot = (dx * dir.x + dy * dir.y + dz * dir.z) / Math.max(d, 0.01);
       if (dot > 0.5) hurtEnemy(e, dmg);
     }
+
+    // Team kill: same cone test against remote players
+    if (window.ARiveMP && window.ARiveMP.hitRemotePlayerMelee) {
+      window.ARiveMP.hitRemotePlayerMelee(o, dir, range, dmg);
+    }
   }
 
   /* =========================================================================
@@ -5076,11 +5127,18 @@
   function hurtEnemy(e, dmg) {
     if (window.Enemies && window.Enemies.hurt) window.Enemies.hurt(e, dmg);
   }
-  function hitEnemyRay(x, y, z, dmg, dx, dy, dz) {
-    if (window.Enemies && window.Enemies.hitRay)
-      return window.Enemies.hitRay(x, y, z, dmg, dx, dy, dz);
-    return false;
+
+  function hitEnemyRay(x, y, z, dmg, dx, dy, dz, carveRadius) {
+    let hit = false;
+    if (window.Enemies && window.Enemies.hitRay) {
+      hit = window.Enemies.hitRay(x, y, z, dmg, dx, dy, dz, carveRadius);
+    }
+    if (!hit && window.ARiveMP && window.ARiveMP.hitRemotePlayerPoint) {
+      hit = window.ARiveMP.hitRemotePlayerPoint(x, y, z, dmg);
+    }
+    return hit;
   }
+
   function updateEnemies(dt) {
     if (window.Enemies) window.Enemies.update(dt);
   }
@@ -5094,8 +5152,8 @@
 
     const inputLocked = !!player._inputLocked;
 
-    const STAND_HEIGHT = 1.62 * PLAYER_SCALE;
-    const STAND_EYE = FP_MODEL.body.eyeY;
+    const STAND_HEIGHT = 1.62 * PLAYER_SCALE + fpvEyeYOffset;
+    const STAND_EYE = FP_MODEL.body.eyeY + fpvEyeYOffset;
     const CROUCH_HEIGHT = STAND_HEIGHT * CROUCH_MUL;
     const CROUCH_EYE = STAND_EYE * CROUCH_MUL;
 
@@ -5611,7 +5669,7 @@
     }
   }
 
-  function damagePlayer(amount, continuous) {
+  function damagePlayer(amount, continuous, attackerName) {
     if (!player.alive) return;
     if (creativeMode) return;
     if (!continuous && player.invuln > 0) return;
@@ -5619,15 +5677,15 @@
     if (!continuous) {
       player.invuln = 0.32;
       hitFlash = 0.5;
-      if (window.Sfx) Sfx.play("hurt");
+      if (window.Sfx) Sfx.play("player_hurt");
     }
     if (player.health <= 0) {
       player.health = 0;
-      die();
+      die(attackerName);
     }
   }
 
-  function die() {
+  function die(attackerName) {
     player.alive = false;
     gameRunning = false;
     if (window.Sfx) Sfx.play("death");
@@ -5636,12 +5694,16 @@
     if (heldPickup) releasePickup(0);
     document.exitPointerLock();
     if (window.SurvivalMode) window.SurvivalMode.onPlayerDied();
+
     document.getElementById("deathMsg").textContent =
-      player.thirst <= 0
-        ? "You died of thirst in the ruins."
-        : player.hunger <= 0
-          ? "You starved among the rubble."
-          : "The creatures dragged you into the dark.";
+      attackerName
+        ? "You were killed by " + attackerName + "."
+        : player.thirst <= 0
+          ? "You died of thirst in the ruins."
+          : player.hunger <= 0
+            ? "You starved among the rubble."
+            : "The creatures dragged you into the dark.";
+
     document.getElementById("deathScreen").classList.remove("hidden");
     document.getElementById("hud").classList.add("hidden");
   }
@@ -5851,6 +5913,15 @@
     onMessage(m) {
       if (!m || m.id === this.id) return;
       if (m.t === "carve") {
+        if (window.Sfx) {
+          Sfx.play("voxel_break", {
+            position: {
+              x: (m.x + 0.5) * VOXEL,
+              y: (m.y + 0.5) * VOXEL,
+              z: (m.z + 0.5) * VOXEL,
+            },
+          });
+        }
         const rv = m.r;
         const R = Math.ceil(rv);
         const r2 = rv * rv;
@@ -5881,6 +5952,15 @@
         return;
       }
       if (m.t === "boom") {
+        if (window.Sfx) {
+          Sfx.play("explosion", {
+            position: {
+              x: (m.x + 0.5) * VOXEL,
+              y: (m.y + 0.5) * VOXEL,
+              z: (m.z + 0.5) * VOXEL,
+            },
+          });
+        }
         const rv = m.r / VOXEL;
         const R = Math.ceil(rv),
           r2 = rv * rv;
@@ -5921,6 +6001,7 @@
     document.getElementById("deathScreen").classList.add("hidden");
     hudEl.classList.remove("hidden");
     gameRunning = true;
+    applySavedAvatarAtBoot();
     requestPointerLockSafely();
   }
 
@@ -6571,8 +6652,10 @@
       }
       if (window.Atmosphere) window.Atmosphere.update(dt);
       renderer.render(scene, camera);
-
-      renderer.render(scene, camera);
+      if (window.Sfx && Sfx.updateListener) {
+        _sfxFwd.set(0, 0, -1).applyQuaternion(camera.quaternion);
+        Sfx.updateListener(camera.position, _sfxFwd, _sfxUp);
+      }
     } catch (err) {
       console.error("Frame error:", err);
     }
@@ -6901,17 +6984,103 @@
       skin: 0xd4a686, hair: 0x3a2418, shirt: 0x3a4a30,
       pants: 0x2a3a4a, boot: 0x18181a, accent: 0x808890,
     },
+    hairStyle: 'default',
     body: {
-      hipY: 0.53, legLen: 0.42, legW: 0.12, legD: 0.15, legSpread: 0.1,
-      bootW: 0.17, bootH: 0.095, bootD: 0.24, bootOffZ: 0.04,
-      torsoW: 0.38, torsoH: 0.72, torsoD: 0.17, torsoY: 0.86,
-      headW: 0.22, headH: 0.22, headD: 0.22, headY: 1.31,
-      hairW: 0.24, hairH: 0.06, hairD: 0.24, hairY: 1.44,
-      armW: 0.11, armLen: 0.44, armSpread: 0.045, armY: 1.17,
-      armHandW: 0.12, armHandH: 0.13, armHandD: 0.14, armHandOffset: 0.48,
+      hipY: 0.53,
+      legLen: 0.42,
+      legW: 0.12,
+      legD: 0.15,
+      legSpread: 0.06,
+
+      bootW: 0.17,
+      bootH: 0.095,
+      bootD: 0.24,
+      bootOffZ: 0.04,
+
+      torsoW: 0.38,
+      torsoH: 0.72,
+      torsoD: 0.17,
+      torsoY: 0.86,
+
+      headW: 0.22,
+      headH: 0.22,
+      headD: 0.22,
+      headY: 1.31,
+
+      hairW: 0.24,
+      hairH: 0.06,
+      hairD: 0.24,
+      hairY: 1.44,
+
+      armW: 0.11,
+      armLen: 0.44,
+      armSpread: -0.01,
+      armY: 1.17,
+
+      armHandW: 0.12,
+      armHandH: 0.13,
+      armHandD: 0.14,
+      armHandOffset: 0.48,
     },
     parts: [],
   };
+
+  /* 应用 per-part scale，并重排位置。
+   - scale 全 1 时位置与原来完全一致；
+   - torso 高度变化：底部不动，顶部随之增长；
+   - head 底部始终对齐 torso 顶部（保留原模型 0.02 的轻微重叠）；
+   - 手臂 x 随 torso 宽度外扩，y 保持相对 torso 顶部偏移；
+   - 腿 pivot 位置不动，scale 让腿变粗/长。 */
+  function applyBuiltModelScales(parts, scales, B) {
+    if (!scales) return;
+
+    const getScale = (k) => {
+      const s = scales[k];
+      if (!s || typeof s !== 'object') return { x: 1, y: 1, z: 1 };
+      return {
+        x: (typeof s.x === 'number' && isFinite(s.x)) ? s.x : 1,
+        y: (typeof s.y === 'number' && isFinite(s.y)) ? s.y : 1,
+        z: (typeof s.z === 'number' && isFinite(s.z)) ? s.z : 1,
+      };
+    };
+
+    const sTorso = getScale('torso');
+    const sHead = getScale('head');
+    const sArmL = getScale('armL');
+    const sArmR = getScale('armR');
+    const sLegL = getScale('legL');
+    const sLegR = getScale('legR');
+
+    // ---- 应用 scale ----
+    parts.torso.scale.set(sTorso.x, sTorso.y, sTorso.z);
+    parts.head.scale.set(sHead.x, sHead.y, sHead.z);
+    parts.armL.scale.set(sArmL.x, sArmL.y, sArmL.z);
+    parts.armR.scale.set(sArmR.x, sArmR.y, sArmR.z);
+    parts.legL.scale.set(sLegL.x, sLegL.y, sLegL.z);
+    parts.legR.scale.set(sLegR.x, sLegR.y, sLegR.z);
+
+    // ---- 重排位置（保证 scale=1 时与原来完全一致） ----
+    const torsoBottomOrig = B.torsoY - B.torsoH * 0.5;
+    const torsoTopOrig = B.torsoY + B.torsoH * 0.5;
+    const headBottomOrig = B.headY - B.headH * 0.5;
+    const overlap = torsoTopOrig - headBottomOrig;
+
+    const torsoH_new = B.torsoH * sTorso.y;
+    const torsoTopY_new = torsoBottomOrig + torsoH_new;
+    parts.torso.position.y = torsoBottomOrig + torsoH_new * 0.5;
+
+    const headH_new = B.headH * sHead.y;
+    const headBottomNew = torsoTopY_new - overlap;
+    parts.head.position.y = headBottomNew + headH_new * 0.5;
+
+    const torsoHalfW = (B.torsoW * sTorso.x) * 0.5;
+    parts.armL.position.x = -(torsoHalfW + B.armSpread);
+    parts.armR.position.x = (torsoHalfW + B.armSpread);
+
+    const armYOffset = B.armY - torsoTopOrig;
+    parts.armL.position.y = torsoTopY_new + armYOffset;
+    parts.armR.position.y = torsoTopY_new + armYOffset;
+  }
 
   function buildRemotePlayerMesh(avatarData) {
     const A = avatarData || window.AVATAR_MODEL_DATA || DEFAULT_AVATAR;
@@ -6932,15 +7101,30 @@
     const ACCENT = lam(C.accent);
 
     const root = new THREE.Group();
+    root.name = 'playerRoot';
 
+    // ── HIP (marker so the customizer always finds a hip) ──────────
+    const hip = new THREE.Group();
+    hip.name = 'hip';
+    hip.userData.part = 'hip';
+    hip.userData.__partKey = 'hip';
+    hip.position.set(0, B.hipY, 0);
+    root.add(hip);
+
+    // ── LEGS ───────────────────────────────────────────────────────
     function buildLeg(side) {
       const pivot = new THREE.Group();
+      const key = side < 0 ? 'legL' : 'legR';
+      pivot.name = key;
+      pivot.userData.part = key;
+      pivot.userData.__partKey = key;
       pivot.position.set(B.legSpread * side, B.hipY, 0);
 
       const leg = new THREE.Mesh(
         new THREE.BoxGeometry(B.legW, B.legLen, B.legD),
         PANTS,
       );
+      leg.name = key + '_mesh';
       leg.position.y = -B.legLen * 0.5;
       pivot.add(leg);
 
@@ -6948,43 +7132,94 @@
         new THREE.BoxGeometry(B.bootW, B.bootH, B.bootD),
         BOOT,
       );
-      boot.position.set(0, -B.legLen * 0.5 - B.bootH * 0.5 - 0.01, B.bootOffZ);
+      boot.position.set(
+        0,
+        -B.legLen * 0.5 - B.bootH * 0.5 - 0.01,
+        B.bootOffZ,
+      );
       leg.add(boot);
       return pivot;
     }
-    const legL = buildLeg(-1),
-      legR = buildLeg(+1);
+    const legL = buildLeg(-1);
+    const legR = buildLeg(+1);
     root.add(legL, legR);
 
+    // ── TORSO ──────────────────────────────────────────────────────
     const torso = new THREE.Mesh(
       new THREE.BoxGeometry(B.torsoW, B.torsoH, B.torsoD),
       SHIRT,
     );
+    torso.name = 'torso';
+    torso.userData.part = 'torso';
+    torso.userData.__partKey = 'torso';
     torso.position.y = B.torsoY;
     root.add(torso);
 
+    // ── HEAD ───────────────────────────────────────────────────────
     const head = new THREE.Mesh(
       new THREE.BoxGeometry(B.headW, B.headH, B.headD),
       SKIN,
     );
+    head.name = 'head';
+    head.userData.part = 'head';
+    head.userData.__partKey = 'head';
     head.position.y = B.headY;
     root.add(head);
 
-    const hair = new THREE.Mesh(
-      new THREE.BoxGeometry(B.hairW, B.hairH, B.hairD),
-      HAIR,
-    );
-    hair.position.y = B.hairY;
-    root.add(hair);
+    // ── HAIR STYLES ────────────────────────────────────────────────
+    const hairStyle = A.hairStyle || 'default';
+    const hY = B.hairY - B.headY; // local offset
+    const hairParts = [];
 
+    if (hairStyle === 'bald') {
+      // Do nothing
+    } else if (hairStyle === 'spiky') {
+      hairParts.push({ w: B.hairW, h: B.hairH, d: B.hairD, x: 0, y: hY, z: 0 });
+      const spkS = 0.04;
+      for (let i = 0; i < 4; i++) {
+        hairParts.push({
+          w: spkS, h: 0.08, d: spkS,
+          x: (i % 2 ? 1 : -1) * 0.06,
+          y: hY + 0.05,
+          z: (i < 2 ? 1 : -1) * 0.06
+        });
+      }
+    } else if (hairStyle === 'mohawk') {
+      hairParts.push({ w: 0.06, h: 0.16, d: B.hairD, x: 0, y: hY + 0.05, z: 0 });
+    } else if (hairStyle === 'long') {
+      hairParts.push({ w: B.hairW, h: B.hairH, d: B.hairD, x: 0, y: hY, z: 0 });
+      hairParts.push({ w: B.hairW, h: 0.26, d: 0.05, x: 0, y: hY - 0.13, z: B.headD * 0.5 - 0.02 });
+    } else if (hairStyle === 'cap') {
+      hairParts.push({ w: B.headW + 0.02, h: 0.06, d: B.headD + 0.02, x: 0, y: hY + 0.02, z: 0 });
+    } else {
+      // default
+      hairParts.push({ w: B.hairW, h: B.hairH, d: B.hairD, x: 0, y: hY, z: 0 });
+    }
+
+    for (const p of hairParts) {
+      const hairMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(p.w, p.h, p.d),
+        HAIR
+      );
+      hairMesh.name = 'hair';
+      hairMesh.position.set(p.x, p.y, p.z);
+      head.add(hairMesh); // Parent to head so it scales with the head
+    }
+
+    // ── ARMS ───────────────────────────────────────────────────────
     function buildArm(side) {
       const pivot = new THREE.Group();
+      const key = side < 0 ? 'armL' : 'armR';
+      pivot.name = key;
+      pivot.userData.part = key;
+      pivot.userData.__partKey = key;
       pivot.position.set(side * (B.torsoW * 0.5 + B.armSpread), B.armY, 0);
 
       const arm = new THREE.Mesh(
         new THREE.BoxGeometry(B.armW, B.armLen, B.armW),
         SHIRT,
       );
+      arm.name = key + '_mesh';
       arm.position.y = -B.armLen * 0.5;
       pivot.add(arm);
 
@@ -7002,13 +7237,19 @@
 
       return pivot;
     }
-    const armL = buildArm(-1),
-      armR = buildArm(+1);
+    const armL = buildArm(-1);
+    const armR = buildArm(+1);
     root.add(armL, armR);
 
+    // ── CUSTOM PARTS (from avatar data) ────────────────────────────
     const partParents = {
-      head: head, torso: torso, hip: root,
-      armL: armL, armR: armR, legL: legL, legR: legR,
+      head: head,
+      torso: torso,
+      hip: hip,          // was root — now the real hip group
+      armL: armL,
+      armR: armR,
+      legL: legL,
+      legR: legR,
     };
     for (const p of A.parts || []) {
       const parent = partParents[p.parent] || root;
@@ -7021,6 +7262,7 @@
       parent.add(cube);
     }
 
+    // ── TOOL HOLDERS ───────────────────────────────────────────────
     const toolHolders = {};
     const restR = FP_MODEL.hands.R || { rx: 0, ry: 0, rz: 0 };
     for (const t of TOOLS) {
@@ -7046,9 +7288,7 @@
       holder.userData.kick = def.anim.kick;
     }
 
-    /* ---- Weapon holders — one per WEAPON_MODEL_DATA entry.  A remote
-   player swaps between these and the toolHolders based on the
-   `weaponSlot` field carried on every state tick. */
+    // ── WEAPON HOLDERS ─────────────────────────────────────────────
     const weaponHolders = {};
     const weaponDefs = window.WEAPON_MODEL_DATA || [];
     for (const wdef of weaponDefs) {
@@ -7056,7 +7296,10 @@
       if (weaponHolders[wdef.key]) continue;
 
       const holder = new THREE.Group();
-      const hp = wdef.hipPose || { p: [0.18, -0.24, -0.36], r: [0.03, -0.16, -0.05] };
+      const hp = wdef.hipPose || {
+        p: [0.18, -0.24, -0.36],
+        r: [0.03, -0.16, -0.05],
+      };
       holder.position.set(hp.p[0], hp.p[1], hp.p[2]);
       holder.rotation.set(hp.r[0], hp.r[1], hp.r[2]);
       holder.visible = false;
@@ -7072,13 +7315,32 @@
       holder.userData.kick = 0.06;
     }
 
-    return {
-      group: root, legL, legR, armL, armR, torso, head, hair,
+    const parts = {
+      group: root,
+      legL,
+      legR,
+      armL,
+      armR,
+      torso,
+      head,
+      hair: null,
+      hip,
       toolHolders,
       weaponHolders,
       handAttachL: armL.userData.handAttach,
       handAttachR: armR.userData.handAttach,
     };
+
+    // ★ 应用 per-part scales
+    if (A.scales && typeof A.scales === 'object') {
+      try {
+        applyBuiltModelScales(parts, A.scales, B);
+      } catch (e) {
+        console.warn('[Avatar] applyBuiltModelScales failed:', e);
+      }
+    }
+
+    return parts;
   }
 
   // Expose a compact surface for multiplayer.js
@@ -7092,6 +7354,10 @@
     enemies: enemies,
     voxels: voxels,
     CROUCH_MUL: CROUCH_MUL,
+
+    basePlayerHalfW: 0.2 * PLAYER_SCALE,   // 0.17
+    basePlayerHeight: 1.62 * PLAYER_SCALE,  // 1.377
+
     BLOCKS: BLOCKS,
     VOXEL: VOXEL,
     SX: SX,
@@ -7239,19 +7505,72 @@
     },
 
     applyAvatar: function (fpvData, remoteData) {
-      // Update FPV material colors — this instantly re-colors the local player's hands/arms.
+      /* ---- 颜色 ---- */
       if (fpvData && fpvData.colors) {
         try {
           SKIN_MAT.color.setHex(fpvData.colors.skin);
           PANTS_MAT.color.setHex(fpvData.colors.pants);
           BOOT_MAT.color.setHex(fpvData.colors.boot);
           SLEEVE_MAT.color.setHex(fpvData.colors.sleeve);
-        } catch (e) { console.warn('[Avatar] FPV color update failed:', e); }
+        } catch (e) { console.warn('[Avatar] FPV colors failed:', e); }
       }
-      // Store remote model data so any FUTURE remote-player spawn on this client
-      // uses the right colors. (Cannot retroactively change other players' mirrors —
-      // each player controls their own.)
+
+      /* ---- Body scales（FPV 里能看到的所有部件）---- */
+      if (fpvData && fpvData.scales) {
+        try {
+          const getScale = (k) => {
+            const s = fpvData.scales[k];
+            if (!s || typeof s !== 'object') return { x: 1, y: 1, z: 1 };
+            return {
+              x: (typeof s.x === 'number' && isFinite(s.x)) ? s.x : 1,
+              y: (typeof s.y === 'number' && isFinite(s.y)) ? s.y : 1,
+              z: (typeof s.z === 'number' && isFinite(s.z)) ? s.z : 1,
+            };
+          };
+
+          const sTorso = getScale('torso');
+          const sArmL = getScale('armL');
+          const sArmR = getScale('armR');
+          const sLegL = getScale('legL');
+          const sLegR = getScale('legR');
+
+          /* --- 腿：pivot 挂在 hipY，改 scale 就是从 hip 向下拉伸 --- */
+          legLPivot.scale.set(sLegL.x, sLegL.y, sLegL.z);
+          legRPivot.scale.set(sLegR.x, sLegR.y, sLegR.z);
+
+          /* --- 躯干：底部固定，顶部随高度增长 --- */
+          const torsoH_orig = FP_MODEL.body.torsoH;
+          const torsoBottomOrig = FP_MODEL.body.torsoY - torsoH_orig * 0.5;
+          const torsoH_new = torsoH_orig * sTorso.y;
+          torso.scale.set(sTorso.x, sTorso.y, sTorso.z);
+          torso.position.y = torsoBottomOrig + torsoH_new * 0.5;
+
+          /* --- 眼睛 / 相机抬升量 --- */
+          fpvEyeYOffset = torsoH_new - torsoH_orig;
+
+          /* fpRoot 也要跟着上去（第一人称视角的支点） */
+          fpRoot.position.set(
+            FP_MODEL.body.eyeX,
+            FP_MODEL.body.eyeY + fpvEyeYOffset,
+            FP_MODEL.body.eyeZ,
+          );
+
+          /* --- 手：直接 scale（位置每帧由 updateFpViewModel 重设，不会被覆盖）--- */
+          handL.scale.set(sArmL.x, sArmL.y, sArmL.z);
+          handR.scale.set(sArmR.x, sArmR.y, sArmR.z);
+
+          /* --- 手臂粗细（通过 updateArmBones 里的 fpvArmScaleX 生效）--- */
+          fpvArmScaleL = Math.sqrt(sArmL.x * sArmL.z);
+          fpvArmScaleR = Math.sqrt(sArmR.x * sArmR.z);
+
+        } catch (e) {
+          console.warn('[Avatar] FPV scales failed:', e);
+        }
+      }
+
+      /* 远端镜像用（重连时重新发 hello 会读这个） */
       window.__ariveMyRemoteAvatar = remoteData || null;
+      window.myAvatar = remoteData || null;
     },
 
     /* =============== MULTIPLAYER FLOW HOOKS =============== */
@@ -7289,6 +7608,7 @@
       loadingEl.classList.add("hidden");
       hudEl.classList.remove("hidden");
       gameRunning = true;
+      applySavedAvatarAtBoot();
       if (!loopStarted) {
         loopStarted = true;
         requestAnimationFrame(animate);

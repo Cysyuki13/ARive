@@ -15,11 +15,24 @@
      Sfx.setLoopSlice(name, dur, opts) slice a long loop into short one-shots
      Sfx.mute(bool) / Sfx.unlock() / Sfx.bindAutoUnlock()
 
-   Catalog (procedural):
-     UI      ui_hover, ui_click, ui_confirm, ui_back, ui_error
-     Player  footstep (opts.variant 'grass'|'stone'|'wood'|'water'),
-             jump, land, hurt, death
-     World   voxel_break, voxel_place, explosion, splash
+   === 3D POSITIONAL AUDIO ===
+     Sfx.updateListener(pos, forward, up)   — call once per frame with the
+                                               camera/player transform
+     Sfx.play(name, { position: {x,y,z} }) — any sound becomes spatialized:
+                                               PannerNode + inverse distance
+                                               model + HRTF (configurable)
+
+   opts for 3D sounds:
+     position | pos | x,y,z    world coords (metres)
+     panningModel              'HRTF' (default) | 'equalpower'
+     distanceModel             'inverse' (default) | 'linear' | 'exponential'
+     refDistance               default 2.0 m   — full volume inside this
+     maxDistance               default 80 m    — silent past this
+     rolloffFactor             default 1.2     — inverse rolloff steepness
+
+   If you pass `position` you normally should NOT also pass `volume` for
+   distance attenuation — the panner handles it. `volume` is still applied
+   as a final trim on top of the panner's output.
 
    Load this BEFORE anything that calls Sfx.play.
    ========================================================================= */
@@ -36,6 +49,10 @@
     let masterBus = null;
     let muted = false;
     let autoUnlockBound = false;
+
+    /* ---- 3D listener state ---- */
+    let _listenerActive = false;
+    let _pannerOverride = null; // set during generator play() for 3D routing
 
     function ensureCtx() {
         if (ctx) return ctx;
@@ -59,8 +76,107 @@
 
     function bus(cat) {
         ensureCtx();
+        // When a 3D generator is running, redirect its output through
+        // the panner that play() built for it.
+        if (_pannerOverride) return _pannerOverride;
         return buses[cat] || masterBus;
     }
+
+    /* ------------------------------------------------------------------
+       3D — listener + panner helpers
+       ------------------------------------------------------------------ */
+    function updateListener(pos, forward, up) {
+        const c = ensureCtx();
+        if (!c || !pos) return;
+        const L = c.listener;
+
+        const px = pos.x !== undefined ? pos.x : pos[0];
+        const py = pos.y !== undefined ? pos.y : pos[1];
+        const pz = pos.z !== undefined ? pos.z : pos[2];
+
+        if (L.positionX) {
+            // Modern (AudioParam) API
+            L.positionX.value = px;
+            L.positionY.value = py;
+            L.positionZ.value = pz;
+            if (forward) {
+                L.forwardX.value = forward.x !== undefined ? forward.x : forward[0];
+                L.forwardY.value = forward.y !== undefined ? forward.y : forward[1];
+                L.forwardZ.value = forward.z !== undefined ? forward.z : forward[2];
+            }
+            if (up) {
+                L.upX.value = up.x !== undefined ? up.x : up[0];
+                L.upY.value = up.y !== undefined ? up.y : up[1];
+                L.upZ.value = up.z !== undefined ? up.z : up[2];
+            }
+        } else {
+            // Legacy setPosition/setOrientation
+            L.setPosition(px, py, pz);
+            if (forward && up) {
+                L.setOrientation(
+                    forward.x !== undefined ? forward.x : forward[0],
+                    forward.y !== undefined ? forward.y : forward[1],
+                    forward.z !== undefined ? forward.z : forward[2],
+                    up.x !== undefined ? up.x : up[0],
+                    up.y !== undefined ? up.y : up[1],
+                    up.z !== undefined ? up.z : up[2]
+                );
+            }
+        }
+        _listenerActive = true;
+    }
+
+    function extractPos(opts) {
+        if (!opts) return null;
+        if (opts.position) {
+            const p = opts.position;
+            return {
+                x: p.x !== undefined ? p.x : p[0],
+                y: p.y !== undefined ? p.y : p[1],
+                z: p.z !== undefined ? p.z : p[2],
+            };
+        }
+        if (opts.pos) {
+            const p = opts.pos;
+            return {
+                x: p.x !== undefined ? p.x : p[0],
+                y: p.y !== undefined ? p.y : p[1],
+                z: p.z !== undefined ? p.z : p[2],
+            };
+        }
+        if (opts.x !== undefined && opts.y !== undefined && opts.z !== undefined) {
+            return { x: opts.x, y: opts.y, z: opts.z };
+        }
+        return null;
+    }
+
+    function makePanner(pos, opts) {
+        const c = ensureCtx();
+        if (!c || !c.createPanner) return null;
+        const p = c.createPanner();
+        // HRTF is the "true 3D" mode; callers on weak devices can pass
+        // { panningModel: 'equalpower' } for a cheaper stereo-vector pan.
+        p.panningModel = (opts && opts.panningModel) || 'HRTF';
+        p.distanceModel = (opts && opts.distanceModel) || 'inverse';
+        p.refDistance = (opts && opts.refDistance != null) ? opts.refDistance : 2.0;
+        p.maxDistance = (opts && opts.maxDistance != null) ? opts.maxDistance : 80.0;
+        p.rolloffFactor = (opts && opts.rolloffFactor != null) ? opts.rolloffFactor : 1.2;
+        // Point sources only — no directional cones by default.
+        p.coneInnerAngle = 360;
+        p.coneOuterAngle = 360;
+        p.coneOuterGain = 1;
+
+        if (p.positionX) {
+            p.positionX.value = pos.x;
+            p.positionY.value = pos.y;
+            p.positionZ.value = pos.z;
+        } else {
+            p.setPosition(pos.x, pos.y, pos.z);
+        }
+        return p;
+    }
+
+    /* ------------------------------------------------------------------ */
 
     function unlock() {
         const c = ensureCtx();
@@ -88,9 +204,6 @@
         }
     }
 
-    /* Convenience: set ui + world + player buses with one call.
-       Master is intentionally separate so an SE slider can ride on
-       top of an overall master. */
     function setSeVolume(v) {
         setVolume('ui', v);
         setVolume('world', v);
@@ -118,7 +231,6 @@
         return _noiseBuf;
     }
 
-    /* Noise source — a looping buffer source; caller stops it. */
     function noise() {
         const c = ensureCtx();
         const b = noiseBuffer();
@@ -156,7 +268,6 @@
         return g;
     }
 
-    /* ADSR-ish envelope.  Times are seconds, values linear/exponential. */
     function env(gainNode, t0, attack, hold, release, peak) {
         const g = gainNode.gain;
         g.cancelScheduledValues(t0);
@@ -167,11 +278,9 @@
     }
 
     /* ------------------------------------------------------------------
-       Sound generators.  Each takes an opts object and returns nothing.
-       Everything routes through a category bus.
+       Sound generators (unchanged except genEnemyFootstep below)
        ------------------------------------------------------------------ */
 
-    /* ---------- UI ---------- */
     function genUiHover() {
         const c = ensureCtx(); if (!c) return;
         const t = c.currentTime;
@@ -233,8 +342,6 @@
         o.start(t); o.stop(t + 0.22);
     }
 
-    /* ---------- Player ---------- */
-    /* Footstep variants — each tweaks pitch, noise timbre and length. */
     const FOOTSTEP_VARIANTS = {
         grass: { thump: 0.10, bodyHz: 140, noiseAmt: 0.18, noiseFreq: 900, q: 0.9, noiseDur: 0.09 },
         stone: { thump: 0.14, bodyHz: 110, noiseAmt: 0.20, noiseFreq: 2200, q: 1.6, noiseDur: 0.06 },
@@ -247,10 +354,8 @@
         const t = c.currentTime;
         const v = (opts && opts.variant) || 'grass';
         const cfg = FOOTSTEP_VARIANTS[v] || FOOTSTEP_VARIANTS.grass;
-        /* Slight random pitch so repeated steps don't sound robotic. */
         const jitter = 0.9 + Math.random() * 0.2;
 
-        /* Low body thump */
         const o = osc('sine', cfg.bodyHz * jitter);
         o.frequency.exponentialRampToValueAtTime(cfg.bodyHz * 0.5, t + 0.09);
         const og = gnode(0);
@@ -258,7 +363,6 @@
         o.connect(og).connect(bus('player'));
         o.start(t); o.stop(t + 0.14);
 
-        /* High noise scrape */
         const n = noise();
         if (n) {
             const nf = filt('bandpass', cfg.noiseFreq * jitter, cfg.q);
@@ -266,6 +370,83 @@
             env(ng, t, 0.002, 0.008, cfg.noiseDur, cfg.noiseAmt);
             n.connect(nf).connect(ng).connect(bus('player'));
             n.start(t); n.stop(t + cfg.noiseDur + 0.05);
+        }
+    }
+
+    function genEnemyFootstep(opts) {
+        const c = ensureCtx(); if (!c) return;
+        const t = c.currentTime;
+
+        const vol = clamp(opts && opts.volume != null ? opts.volume : 1, 0, 1);
+        if (vol < 0.02) return;
+
+        const size = clamp(opts && opts.size != null ? opts.size : 1, 0.5, 2.0);
+        const pitchMul = 1 / Math.sqrt(size);
+        const jitter = 0.92 + Math.random() * 0.16;
+
+        const gainMul = 1.50 + size * 0.30;
+
+        let dest = bus('world');
+
+        // ONLY apply the manual stereo panner when we're in 2D mode.
+        // In 3D mode the PannerNode built by play() handles left/right.
+        if (!_pannerOverride && c.createStereoPanner) {
+            const panner = c.createStereoPanner();
+            panner.pan.value = clamp((opts && opts.pan) || 0, -1, 1);
+            panner.connect(dest);
+            dest = panner;
+        }
+
+        const lp = c.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.value = 1000 + vol * 7500;
+        lp.Q.value = 0.6;
+        lp.connect(dest);
+        dest = lp;
+
+        const buf = FILES.get('footstep');
+        if (buf) {
+            const src = c.createBufferSource();
+            src.buffer = buf;
+            src.playbackRate.value = 0.70 * pitchMul * jitter;
+            src.loop = false;
+
+            const g = c.createGain();
+            const sliceDur = Math.min(buf.duration, 0.35);
+            const wallDur = Math.min(0.35, sliceDur / src.playbackRate.value);
+            const peak = Math.min(0.95, vol * gainMul);
+
+            const offset = buf.duration > 0.5
+                ? Math.random() * Math.max(0, buf.duration - sliceDur)
+                : 0;
+
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.linearRampToValueAtTime(peak, t + 0.008);
+            g.gain.setValueAtTime(peak, t + 0.068);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + wallDur);
+
+            src.connect(g).connect(dest);
+            try { src.start(t, offset, sliceDur); } catch (e) { return; }
+
+            _trackVoice('enemy_footstep', src, g);
+            return;
+        }
+
+        const bodyHz = 90 * pitchMul * jitter;
+        const o = osc('sine', bodyHz);
+        o.frequency.exponentialRampToValueAtTime(bodyHz * 0.5, t + 0.16);
+        const og = gnode(0);
+        env(og, t, 0.004, 0.02, 0.18, Math.min(0.85, 0.55 * vol * gainMul));
+        o.connect(og).connect(dest);
+        o.start(t); o.stop(t + 0.26);
+
+        const n = noise();
+        if (n) {
+            const bp = filt('bandpass', 300 * pitchMul, 0.8);
+            const ng = gnode(0);
+            env(ng, t, 0.003, 0.012, 0.09, Math.min(0.35, 0.22 * vol * gainMul));
+            n.connect(bp).connect(ng).connect(dest);
+            n.start(t); n.stop(t + 0.12);
         }
     }
 
@@ -327,13 +508,11 @@
         o.start(t); o.stop(t + 0.68);
     }
 
-    /* ---------- World ---------- */
     function genVoxelBreak() {
         const c = ensureCtx(); if (!c) return;
         const t = c.currentTime;
         const pitch = 0.9 + Math.random() * 0.25;
 
-        /* Crunch — filtered noise with a downward sweep */
         const n = noise();
         if (n) {
             const lp = filt('lowpass', 3200 * pitch, 1);
@@ -345,7 +524,6 @@
             n.start(t); n.stop(t + 0.22);
         }
 
-        /* Impact thump */
         const o = osc('sine', 190 * pitch);
         o.frequency.exponentialRampToValueAtTime(60, t + 0.12);
         const og = gnode(0);
@@ -353,7 +531,6 @@
         o.connect(og).connect(bus('world'));
         o.start(t); o.stop(t + 0.18);
 
-        /* Little chip after the impact — 3 tiny high blips */
         for (let i = 0; i < 3; i++) {
             const tt = t + 0.03 + i * 0.03 + Math.random() * 0.02;
             const co = osc('triangle', 1800 + Math.random() * 800);
@@ -390,7 +567,6 @@
         const c = ensureCtx(); if (!c) return;
         const t = c.currentTime;
 
-        /* Long decaying noise bed */
         const n = noise();
         if (n) {
             const lp = filt('lowpass', 2500, 0.7);
@@ -402,7 +578,6 @@
             n.start(t); n.stop(t + 1.0);
         }
 
-        /* Sub boom */
         const o = osc('sine', 90);
         o.frequency.exponentialRampToValueAtTime(35, t + 0.5);
         const og = gnode(0);
@@ -428,22 +603,9 @@
 
     /* ------------------------------------------------------------------
        Loop-slice config
-       ------------------------------------------------------------------
-       Maps a sound name to a { duration, randomStart, start } config.
-       When set, Sfx.play(name) plays only `duration` seconds of the
-       loaded buffer, starting at a random (or fixed) offset.  Use this
-       for continuous audio loops (walk cycles, ambience) that need to
-       be used as short one-shots.
        ------------------------------------------------------------------ */
     const LOOP_CONFIG = new Map();
 
-    /**
-     * Sfx.setLoopSlice(name, duration, options)
-     *   name        sound name ('footstep', ...)
-     *   duration    length in seconds of each slice
-     *   options     { randomStart?: bool (default true), start?: number }
-     * Pass duration <= 0 (or null) to clear.
-     */
     function setLoopSlice(name, duration, options) {
         if (!name) return;
         if (typeof duration !== 'number' || duration <= 0) {
@@ -460,14 +622,10 @@
 
     /* ------------------------------------------------------------------
        Voice limiting
-       ------------------------------------------------------------------
-       Limits how many concurrent voices of a given sound can be alive at
-       once.  A new play() over the limit softly fades out the oldest one
-       and stops it.  This is the fix for footsteps/jumps piling up into
-       a continuous drone when fired faster than the buffer duration.
        ------------------------------------------------------------------ */
     const VOICE_LIMIT = {
-        footstep: 1,      // only one step audible at a time
+        footstep: 1,
+        enemy_footstep: 4,
         jump: 2,
         land: 2,
         hurt: 2,
@@ -476,9 +634,19 @@
         voxel_place: 2,
         explosion: 3,
         splash: 2,
+        zombie_1: 3,
+        zombie_2: 3,
+        zombie_scream_1: 2,
+        zombie_scream_2: 2,
+        miniBoss_roar: 1,
+        player_hurt: 2,
     };
 
-    const ACTIVE = new Map();  // name -> Array<{ src, gain, ended }>
+    const FALLBACKS = {
+        player_hurt: 'hurt',
+    };
+
+    const ACTIVE = new Map();
 
     function _trackVoice(name, src, gain) {
         const lim = VOICE_LIMIT[name];
@@ -487,12 +655,10 @@
         let list = ACTIVE.get(name);
         if (!list) { list = []; ACTIVE.set(name, list); }
 
-        /* Drop entries that already finished naturally. */
         for (let i = list.length - 1; i >= 0; i--) {
             if (list[i].ended) list.splice(i, 1);
         }
 
-        /* Steal the oldest if we're over the limit. */
         while (list.length >= lim) {
             const old = list.shift();
             try {
@@ -503,7 +669,7 @@
                     old.gain.gain.setTargetAtTime(0.0001, t, 0.008);
                     old.src.stop(t + 0.03);
                 }
-            } catch (e) { /* already stopped */ }
+            } catch (e) { }
             old.ended = true;
         }
 
@@ -523,6 +689,7 @@
         ui_error: genUiError,
 
         footstep: genFootstep,
+        enemy_footstep: genEnemyFootstep,
         jump: genJump,
         land: genLand,
         hurt: genHurt,
@@ -534,12 +701,11 @@
         splash: genSplash
     };
 
-    const FILES = new Map();      // name -> AudioBuffer
-    const PENDING = new Map();    // name -> Promise
-    const URL_BY_NAME = new Map();// name -> url (for dedupe of identical files)
+    const FILES = new Map();
+    const PENDING = new Map();
+    const URL_BY_NAME = new Map();
 
     function resolveSlice(name, buf, opts) {
-        /* Explicit per-call override (opts.start / opts.duration). */
         if (opts && (typeof opts.duration === 'number' || typeof opts.start === 'number')) {
             const wantDur = typeof opts.duration === 'number' ? opts.duration : buf.duration;
             const wantStart = typeof opts.start === 'number' ? opts.start : 0;
@@ -565,28 +731,38 @@
         if (!c) return null;
         if (c.state === 'suspended') unlock();
 
+        const pos = extractPos(opts);
+        const usePanner = !!(pos && _listenerActive);
+        const cat = (opts && opts.category) || guessCategory(name);
+
+        /* ---------- File-backed path ---------- */
         const buf = FILES.get(name);
         if (buf) {
             const vol = (opts && typeof opts.volume === 'number') ? opts.volume : 1;
             const rate = (opts && typeof opts.rate === 'number') ? opts.rate : 1;
-            const cat = (opts && opts.category) || guessCategory(name);
             const src = c.createBufferSource();
             src.buffer = buf;
             src.playbackRate.value = rate;
-
-            /* Defensive — guarantee one-shot, never loop, even if some
-               previous session left state hanging around. */
             src.loop = false;
             src.loopStart = 0;
             src.loopEnd = 0;
 
             const g = c.createGain();
-            src.connect(g).connect(bus(cat));
+
+            // Build the output chain: g -> [panner] -> categoryBus
+            let tail = bus(cat);
+            if (usePanner) {
+                const panner = makePanner(pos, opts);
+                if (panner) {
+                    panner.connect(tail);
+                    tail = panner;
+                }
+            }
+            src.connect(g).connect(tail);
 
             const slice = resolveSlice(name, buf, opts);
 
             if (slice) {
-                /* Short gain envelope so the cut doesn't click. */
                 const t0 = c.currentTime;
                 const srcDur = Math.min(slice.duration, buf.duration - slice.start);
                 const wallDur = srcDur / rate;
@@ -612,27 +788,59 @@
                 try { src.start(0); } catch (e) { return null; }
             }
 
-            /* Voice limit: fade out the oldest sibling if we're over budget. */
             _trackVoice(name, src, g);
-
             return { src: src, gain: g };
         }
 
+        /* ---------- Procedural generator path ---------- */
         const gen = PROC[name];
         if (gen) {
+            if (usePanner) {
+                const panner = makePanner(pos, opts);
+                if (panner) {
+                    _pannerOverride = panner;
+                    try { gen(opts || {}); }
+                    catch (e) { console.warn('[Sfx] generator failed for', name, e); }
+                    finally { _pannerOverride = null; }
+                    return null;
+                }
+            }
             try { gen(opts || {}); } catch (e) {
                 console.warn('[Sfx] generator failed for', name, e);
             }
             return null;
         }
+
+        if (FALLBACKS[name]) {
+            return play(FALLBACKS[name], opts);
+        }
+
+        if (PENDING.has(name)) return null;
+
         console.warn('[Sfx] no such sound:', name);
         return null;
     }
 
+    function playRandom(names, opts) {
+        if (!names || !names.length) return null;
+        const available = names.filter(n => FILES.has(n) || PROC[n]);
+        const pool = available.length > 0 ? available : names;
+        const name = pool[(Math.random() * pool.length) | 0];
+        return play(name, opts);
+    }
+
     function guessCategory(name) {
         if (name.indexOf('ui_') === 0) return 'ui';
+        if (name === 'player_hurt') return 'player';
         if (name.indexOf('voxel_') === 0 ||
-            name === 'explosion' || name === 'splash') return 'world';
+            name === 'explosion' ||
+            name === 'splash' ||
+            name === 'enemy_footstep' ||
+            name === 'zombie_1' ||
+            name === 'zombie_2' ||
+            name === 'zombie_scream_1' ||
+            name === 'zombie_scream_2' ||
+            name === 'miniBoss_roar') return 'world';
         return 'player';
     }
 
@@ -678,6 +886,7 @@
        ------------------------------------------------------------------ */
     window.Sfx = {
         play: play,
+        playRandom: playRandom,
         load: load,
         preload: preload,
         has: has,
@@ -687,6 +896,10 @@
         mute: mute,
         unlock: unlock,
         bindAutoUnlock: bindAutoUnlock,
+
+        /* ---- new ---- */
+        updateListener: updateListener,
+
         _catalog: Object.keys(PROC)
     };
 
@@ -694,18 +907,18 @@
        Real-file overrides
        ------------------------------------------------------------------ */
     if (typeof window !== 'undefined') {
-        // Single short step – no loop slice needed.
-        // If your step.mp3 is still a walk-cycle loop, uncomment the
-        // next line to slice a single step out of it:
-        // Sfx.setLoopSlice('footstep', 0.18, { randomStart: true });
-
         window.addEventListener('load', function () {
             Sfx.load('footstep', 'assets/sounds/step.mp3');
             Sfx.load('jump', 'assets/sounds/jump.mp3');
+
+            Sfx.load('zombie_1', 'assets/sounds/zombie_1.mp3');
+            Sfx.load('zombie_2', 'assets/sounds/zombie_2.mp3');
+            Sfx.load('zombie_scream_1', 'assets/sounds/zombie_scream_1.mp3');
+            Sfx.load('zombie_scream_2', 'assets/sounds/zombie_scream_2.mp3');
+            Sfx.load('miniBoss_roar', 'assets/sounds/miniBoss_roar.mp3');
+            Sfx.load('player_hurt', 'assets/sounds/player_hurt.mp3');
         });
     }
 
-    /* Wire auto-unlock immediately so the very first click anywhere in
-       the page resumes the AudioContext. */
     if (typeof window !== 'undefined') bindAutoUnlock();
 })();

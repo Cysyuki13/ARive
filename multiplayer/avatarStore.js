@@ -7,9 +7,43 @@
     const LOCAL_KEY = 'arive-avatar-v1';
     const COLLECTION = 'user-avatars';
 
-    // Matches current FP_MODEL.colors + AVATAR_MODEL_DATA.colors defaults
+    /* Per-part size modifiers. Max increased to 2.5 */
+    const SCALE_KEYS = ['head', 'torso', 'hip', 'armL', 'armR', 'legL', 'legR'];
+    const SCALE_MIN = 0.5;
+    const SCALE_MAX = 2.5;
+
+    function _clampScale(v) {
+        const n = +v;
+        if (!isFinite(n)) return 1;
+        return Math.min(SCALE_MAX, Math.max(SCALE_MIN, n));
+    }
+
+    function _normScaleObj(v) {
+        if (typeof v === 'number') {
+            const c = _clampScale(v);
+            return { x: c, y: c, z: c };
+        }
+        if (Array.isArray(v)) {
+            return { x: _clampScale(v[0]), y: _clampScale(v[1]), z: _clampScale(v[2]) };
+        }
+        if (v && typeof v === 'object') {
+            return {
+                x: _clampScale(v.x),
+                y: _clampScale(v.y),
+                z: _clampScale(v.z),
+            };
+        }
+        return { x: 1, y: 1, z: 1 };
+    }
+
+    function _defaultScales() {
+        const s = {};
+        for (let i = 0; i < SCALE_KEYS.length; i++) s[SCALE_KEYS[i]] = { x: 1, y: 1, z: 1 };
+        return s;
+    }
+
     const DEFAULT_AVATAR = {
-        version: 1,
+        version: 4,
         colors: {
             skin: '#d4a686',
             hair: '#3a2418',
@@ -18,6 +52,8 @@
             boot: '#18181a',
             accent: '#808890',
         },
+        scales: _defaultScales(),
+        hairStyle: 'default',
         parts: [],
     };
 
@@ -33,12 +69,27 @@
     function normalize(av) {
         const out = _clone(DEFAULT_AVATAR);
         if (!av) return out;
+
         if (av.colors) {
             for (const k in out.colors) {
                 if (typeof av.colors[k] === 'string') out.colors[k] = av.colors[k];
                 else if (typeof av.colors[k] === 'number') out.colors[k] = _intToHex(av.colors[k]);
             }
         }
+
+        if (typeof av.hairStyle === 'string') {
+            out.hairStyle = av.hairStyle;
+        }
+
+        if (av.scales && typeof av.scales === 'object') {
+            for (let i = 0; i < SCALE_KEYS.length; i++) {
+                const k = SCALE_KEYS[i];
+                if (av.scales[k] !== undefined && av.scales[k] !== null) {
+                    out.scales[k] = _normScaleObj(av.scales[k]);
+                }
+            }
+        }
+
         if (Array.isArray(av.parts)) {
             out.parts = av.parts
                 .filter(p => p && Array.isArray(p.s) && Array.isArray(p.p))
@@ -103,7 +154,6 @@
         await db.collection(COLLECTION).doc(user.uid).set(normalize(av));
     }
 
-    // Cloud-first if signed in (non-anonymous), then local.
     async function load() {
         if (_cached) return _cached;
         const signedIn = global.ARiveAuth && global.ARiveAuth.isSignedIn && global.ARiveAuth.isSignedIn();
@@ -130,10 +180,14 @@
         return 'local';
     }
 
-    // Conversion for buildRemotePlayerMesh — returns AVATAR_MODEL_DATA shape
     function toRemoteModelData(av) {
         const a = normalize(av);
         const base = global.AVATAR_MODEL_DATA || {};
+        const scalesOut = {};
+        for (let i = 0; i < SCALE_KEYS.length; i++) {
+            const k = SCALE_KEYS[i];
+            scalesOut[k] = { x: a.scales[k].x, y: a.scales[k].y, z: a.scales[k].z };
+        }
         return Object.assign({}, base, {
             colors: {
                 skin: _hexToInt(a.colors.skin),
@@ -143,6 +197,8 @@
                 boot: _hexToInt(a.colors.boot),
                 accent: _hexToInt(a.colors.accent),
             },
+            scales: scalesOut,
+            hairStyle: a.hairStyle,
             parts: a.parts.map(p => ({
                 parent: p.parent,
                 s: p.s,
@@ -153,10 +209,14 @@
         });
     }
 
-    // Conversion for FPV — FPV materials only use skin/pants/boot/sleeve(=shirt)
     function toFpvModelData(av) {
         const a = normalize(av);
         const base = global.PLAYER_MODEL_DATA || {};
+        const scalesOut = {};
+        for (let i = 0; i < SCALE_KEYS.length; i++) {
+            const k = SCALE_KEYS[i];
+            scalesOut[k] = { x: a.scales[k].x, y: a.scales[k].y, z: a.scales[k].z };
+        }
         return Object.assign({}, base, {
             colors: Object.assign({}, base.colors, {
                 skin: _hexToInt(a.colors.skin),
@@ -164,11 +224,14 @@
                 boot: _hexToInt(a.colors.boot),
                 sleeve: _hexToInt(a.colors.shirt),
             }),
+            scales: scalesOut,
+            hairStyle: a.hairStyle,
         });
     }
 
     global.ARiveAvatar = {
         DEFAULT: DEFAULT_AVATAR,
+        SCALE_KEYS, SCALE_MIN, SCALE_MAX,
         normalize, load, save, loadLocal, saveLocal, loadCloud, saveCloud,
         toRemoteModelData, toFpvModelData,
         getDefault: () => _clone(DEFAULT_AVATAR),
