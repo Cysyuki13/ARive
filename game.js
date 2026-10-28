@@ -2630,7 +2630,6 @@
     const g = new THREE.Group();
     for (const b of model) {
       const geo = new THREE.BoxGeometry(b.s[0], b.s[1], b.s[2]);
-
       const matOpts = { color: b.c, fog: true };
       if (b.e) {
         matOpts.emissive = b.e;
@@ -2640,6 +2639,7 @@
       const m = new THREE.Mesh(geo, mat);
       m.position.set(b.p[0], b.p[1], b.p[2]);
       if (b.r) m.rotation.set(b.r[0], b.r[1], b.r[2]);
+      if (b.tag) m.userData.tag = b.tag;   // ← NEW: tag lid parts etc.
       g.add(m);
 
       if (b.e) {
@@ -3086,6 +3086,120 @@
   const pickups = [];
   const PICKUP_GRAVITY = 22;
 
+  /* =====================================================================
+     PICKUP LIGHT BEAMS
+     ---------------------------------------------------------------------
+     Tunables at the top — change these to resize / recolor the beam.
+     ===================================================================== */
+  const BEAM_HEIGHT = 1.6;    // total column height in metres
+  const BEAM_RADIUS_TOP = 0.06;   // radius at the top of the column
+  const BEAM_RADIUS_BOTTOM = 0.09;   // radius at the base (slight flare)
+  const BEAM_INNER_SCALE = 0.45;   // inner core width (fraction of outer)
+  const BEAM_ENABLED_FOR_FURNITURE = false; // set true to give furniture beams too
+
+  const BEAM_COLOR_WEAPON = 0xffcc44;
+  const BEAM_COLOR_AMMO = 0xffe8a0;
+  const BEAM_COLOR_MED = 0x66ff88;
+  const BEAM_COLOR_FOOD = 0x66aaff;
+  const BEAM_COLOR_FURN = 0xffffff;
+  const BEAM_COLOR_DEF = 0xcccccc;
+
+  let _beamGeo = null;
+  function getBeamGeo() {
+    if (!_beamGeo) {
+      _beamGeo = new THREE.CylinderGeometry(
+        BEAM_RADIUS_TOP, BEAM_RADIUS_BOTTOM, BEAM_HEIGHT, 10, 1, true
+      );
+    }
+    return _beamGeo;
+  }
+
+  function isFurnitureItem(item) {
+    if (!item) return false;
+    return item.size === 'small' || item.size === 'medium' || item.size === 'large';
+  }
+
+  /* Returns the beam colour, or `null` if this item should get NO beam. */
+  function beamColorForItem(item) {
+    if (!item) return BEAM_COLOR_DEF;
+
+    /* Furniture: no beam unless explicitly enabled. */
+    if (isFurnitureItem(item) && !BEAM_ENABLED_FOR_FURNITURE) return null;
+
+    if (item.isWeapon) return BEAM_COLOR_WEAPON;
+    if (item.isAmmo) return BEAM_COLOR_AMMO;
+
+    const n = String(item.name || '').toUpperCase();
+    if (n === 'MEDKIT' || n === 'BANDAGE') return BEAM_COLOR_MED;
+    if (n === 'RATION' || n === 'WATER' || n === 'CANNED') return BEAM_COLOR_FOOD;
+    if (isFurnitureItem(item)) return BEAM_COLOR_FURN;
+
+    return BEAM_COLOR_DEF;
+  }
+
+  function createBeam(colorHex) {
+    const group = new THREE.Group();
+    group.renderOrder = 5;
+
+    const outerMat = new THREE.MeshBasicMaterial({
+      color: colorHex,
+      transparent: true,
+      opacity: 0.14,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      fog: false,
+    });
+    const outer = new THREE.Mesh(getBeamGeo(), outerMat);
+    outer.renderOrder = 5;
+    group.add(outer);
+
+    const innerMat = new THREE.MeshBasicMaterial({
+      color: colorHex,
+      transparent: true,
+      opacity: 0.55,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      fog: false,
+    });
+
+    const inner = new THREE.Mesh(getBeamGeo(), innerMat);
+    inner.scale.set(BEAM_INNER_SCALE, 1, BEAM_INNER_SCALE);
+
+    inner.renderOrder = 6;
+    group.add(inner);
+
+    return group;
+  }
+
+  function disposePickupVisuals(p) {
+    if (!p) return;
+    if (p.mesh) {
+      scene.remove(p.mesh);
+      p.mesh.traverse((o) => {
+        if (o.isMesh) {
+          if (o.geometry) o.geometry.dispose();
+          if (o.material) {
+            const ms = Array.isArray(o.material) ? o.material : [o.material];
+            ms.forEach((m) => m.dispose());
+          }
+        }
+      });
+    }
+    if (p.beam) {
+      scene.remove(p.beam);
+      // Beam materials are per-instance — dispose them.
+      p.beam.traverse((o) => {
+        if (o.isMesh && o.material) {
+          const ms = Array.isArray(o.material) ? o.material : [o.material];
+          ms.forEach((m) => m.dispose());
+        }
+      });
+      p.beam = null;
+    }
+  }
+
   const DROP_DISTANCE = 2.2;
   const PICKUP_RANGE = 3.0;
 
@@ -3333,11 +3447,7 @@
 
     const result = attemptInventoryAdd(p.def);
     if (result !== "none") {
-      scene.remove(p.mesh);
-      p.mesh.traverse((o) => {
-        if (o.geometry) o.geometry.dispose();
-        if (o.material) o.material.dispose();
-      });
+      disposePickupVisuals(p);
       const idx = pickups.indexOf(p);
       if (idx >= 0) pickups.splice(idx, 1);
       if (p.pid && window.ARiveMP && window.ARiveMP.connected) {
@@ -3623,6 +3733,40 @@
 
     const aabb = computeModelAABB(model);
 
+    /* --- Weapon box: pivot the lid part around its back edge --- */
+    let lidPivot = null;
+    if (item.furnitureKey === 'weaponbox') {
+      const lidMesh = mesh.children.find(c => c.userData && c.userData.tag === 'lid');
+      if (lidMesh) {
+        const params = lidMesh.geometry.parameters || {};
+        const halfD = (params.depth ? params.depth * 0.5 : 0.35);
+        lidPivot = new THREE.Group();
+        lidPivot.position.set(
+          lidMesh.position.x,
+          lidMesh.position.y,
+          lidMesh.position.z - halfD
+        );
+        mesh.remove(lidMesh);
+        lidMesh.position.set(0, 0, halfD);
+        lidPivot.add(lidMesh);
+        mesh.add(lidPivot);
+      }
+    }
+
+    /* --- Loot beam (skipped for furniture unless enabled) --- */
+    let beam = null;
+    const beamColor = beamColorForItem(item);
+    if (beamColor !== null) {
+      beam = createBeam(beamColor);
+      beam.position.set(
+        worldPos.x,
+        worldPos.y + BEAM_HEIGHT * 0.5,
+        worldPos.z
+      );
+      beam.visible = false;
+      scene.add(beam);
+    }
+
     const p = {
       pid:
         remotePid ||
@@ -3666,6 +3810,13 @@
         item.size === "medium" ||
         item.size === "large",
       locked: false,
+
+      beam: beam,
+      beamSpawnT: 0,
+      lidPivot: lidPivot,
+      opened: false,
+      opening: false,
+      openT: 0,
     };
     pickups.push(p);
 
@@ -3831,12 +3982,8 @@
 
     if (window.Sfx) Sfx.play("ui_confirm");
 
-    scene.remove(p.mesh);
+    disposePickupVisuals(p);
 
-    p.mesh.traverse((o) => {
-      if (o.geometry) o.geometry.dispose();
-      if (o.material) o.material.dispose();
-    });
     const idx = pickups.indexOf(p);
     if (idx >= 0) pickups.splice(idx, 1);
     currentPickupTarget = null;
@@ -3880,6 +4027,71 @@
       const dz = p.mesh.position.z - pz;
       p.mesh.visible = dx * dx + dz * dz <= R2;
     }
+  }
+
+  /* =====================================================================
+   WEAPON BOX — open animation + loot drop
+   ===================================================================== */
+  const LID_OPEN_ANGLE = Math.PI * 0.55;   // ~100°
+  const LID_OPEN_TIME = 0.65;             // seconds
+
+  function openWeaponBox(box) {
+    if (!box || box.opened || box.opening) return;
+    box.opening = true;
+    box.openT = 0;
+    if (window.Sfx) Sfx.play('ui_click');
+  }
+
+  function dropRandomWeaponFromBox(box) {
+    const defs = window.WEAPON_MODEL_DATA || [];
+    const weapons = defs.filter(d => d && Array.isArray(d.model) && d.key);
+    if (!weapons.length) return null;
+
+    const def = weapons[(Math.random() * weapons.length) | 0];
+
+    let finalDef = def;
+    if (window.WeaponSkins) {
+      const skins = window.WeaponSkins.getSkins(def.key);
+      if (skins.length > 1) {
+        const pick = window.WeaponSkins.randomSkin(def.key).id;
+        finalDef = window.WeaponSkins.applySkin(def, pick);
+      }
+    }
+
+    const meta = Object.assign({}, finalDef.meta || {});
+    meta.model = finalDef.model;
+
+    // Spawn above the box so it pops out of the opening lid
+    const spawnX = box.mesh.position.x;
+    const spawnY = box.mesh.position.y + 0.95;
+    const spawnZ = box.mesh.position.z;
+
+    const p = spawnPickup({
+      name: finalDef.name || finalDef.key || 'WEAPON',
+      icon: finalDef.icon || '◉',
+      iconImage: finalDef.iconImage,
+      iconImageRotated: finalDef.iconImageRotated,
+      w: finalDef.w || 3,
+      h: finalDef.h || 1,
+      color: finalDef.color || '#4a3820',
+      meta: meta,
+      isWeapon: true,
+      weaponDef: finalDef,
+    }, new THREE.Vector3(spawnX, spawnY, spawnZ));
+
+    if (p) {
+      // A little outward pop so it lands clear of the box
+      const ang = Math.random() * Math.PI * 2;
+      p.vx = Math.cos(ang) * 0.9;
+      p.vz = Math.sin(ang) * 0.9;
+      p.vy = 2.6 + Math.random() * 0.8;
+      p.avx = (Math.random() - 0.5) * 5;
+      p.avy = (Math.random() - 0.5) * 5;
+      p.avz = (Math.random() - 0.5) * 5;
+    }
+
+    if (window.Sfx) Sfx.play('ui_confirm');
+    return p;
   }
 
   function updatePickups(dt) {
@@ -3938,7 +4150,13 @@
         if (d.isAmmo && d.count) label += "  ×" + d.count;
 
         if (currentPickupTarget.isFurniture) {
-          pickupPromptEl.textContent = "HOLD [E]  1s  TO LIFT   ·   " + label;
+          const isUnopenedBox =
+            currentPickupTarget.def &&
+            currentPickupTarget.def.furnitureKey === 'weaponbox' &&
+            !currentPickupTarget.opened;
+          pickupPromptEl.textContent = isUnopenedBox
+            ? "[E]  OPEN WEAPON BOX  ·  " + label
+            : "HOLD [E]  1s  TO LIFT   ·   " + label;
         } else {
           pickupPromptEl.textContent =
             (isHand ? "[LMB]  HOLD  " : "[E]  PICK UP  ") + label;
@@ -3989,6 +4207,50 @@
            ============================================================ */
     for (let i = pickups.length - 1; i >= 0; i--) {
       const p = pickups[i];
+
+      /* ---- Weapon box lid animation ---- */
+      if (p.lidPivot) {
+        if (p.opening) {
+          p.openT = (p.openT || 0) + dt;
+          const t = Math.min(1, p.openT / LID_OPEN_TIME);
+          const ease = 1 - Math.pow(1 - t, 3);
+          p.lidPivot.rotation.x = -ease * LID_OPEN_ANGLE;
+          if (t >= 1) {
+            p.opening = false;
+            p.opened = true;
+            dropRandomWeaponFromBox(p);
+          }
+        } else if (p.opened) {
+          p.lidPivot.rotation.x = -LID_OPEN_ANGLE;
+        }
+      }
+
+      /* ---- Loot beam (must run BEFORE the carriedBy skip, so a
+   carried / furnMode pickup actually turns its beam off) ---- */
+      if (p.beam) {
+        const isHidden =
+          (p.carriedBy && p !== heldPickup) ||
+          (furnMode && p === furnMode.p) ||
+          (p.def && p.def.furnitureKey === 'weaponbox' && p.opened) ||
+          (!p.mesh.visible && p !== heldPickup && !(furnMode && p === furnMode.p));
+
+        if (isHidden) {
+          p.beam.visible = false;
+        } else {
+          p.beamSpawnT = Math.min(1, (p.beamSpawnT || 0) + dt * 4);
+          p.beam.position.set(
+            p.mesh.position.x,
+            p.mesh.position.y + BEAM_HEIGHT * 0.5,
+            p.mesh.position.z
+          );
+          p.beam.visible = true;
+          const ease = 1 - Math.pow(1 - p.beamSpawnT, 2);
+          const pulse = 1 + Math.sin(performance.now() * 0.0035 + (p.pid.length || 0)) * 0.08;
+          const s = ease * pulse;
+          p.beam.scale.set(s, 1, s);
+        }
+      }
+
       if (
         !p.mesh.visible &&
         p !== heldPickup &&
@@ -4385,6 +4647,8 @@
   let mouseDown = false;
   let reacquiringLock = false;
 
+  let sandboxKeyGUnlocked = false;
+
   document.addEventListener("keydown", (e) => {
     if (Minimap && Minimap.isOpen()) {
       if (e.code === "KeyM") {
@@ -4428,11 +4692,17 @@
 
       const tgt = findLookAtPickup(PICKUP_RANGE);
       if (tgt && tgt.isFurniture) {
-        eHeldFurniture = tgt;
-        eHeldStart = performance.now();
+        if (tgt.def && tgt.def.furnitureKey === 'weaponbox' && !tgt.opened) {
+          e.preventDefault();
+          openWeaponBox(tgt);
+        } else {
+          eHeldFurniture = tgt;
+          eHeldStart = performance.now();
+        }
       } else {
         tryPickup();
       }
+
       return;
     }
 
@@ -4449,9 +4719,14 @@
       if (
         gameRunning &&
         player.alive &&
-        currentMapType === "sandbox" &&
         !inventory.isOpen
       ) {
+        // Key G is only allowed in sandbox mode, or after being
+        // unlocked once via toggleSandBoxMenu() in the console.
+        const allowed =
+          currentMapType === "sandbox" || sandboxKeyGUnlocked;
+        if (!allowed) return;          // silent ignore in city / survival
+
         e.preventDefault();
         if (window.SandboxMenu) window.SandboxMenu.toggle();
       }
@@ -6355,11 +6630,7 @@
     for (const p of projectiles) scene.remove(p.mesh);
     projectiles.length = 0;
     for (const p of pickups) {
-      scene.remove(p.mesh);
-      p.mesh.traverse((o) => {
-        if (o.geometry) o.geometry.dispose();
-        if (o.material) o.material.dispose();
-      });
+      disposePickupVisuals(p);
     }
     pickups.length = 0;
 
@@ -7776,4 +8047,104 @@
       if (window.AvatarCustomizer) window.AvatarCustomizer.open();
     });
   })();
+
+  window.toggleSandBoxMenu = function () {
+    // Console invocation permanently unlocks Key G for this session
+    // (useful when you're in city / survival mode and need dev tools).
+    if (!sandboxKeyGUnlocked) {
+      sandboxKeyGUnlocked = true;
+      console.log(
+        "[ARive] Sandbox menu unlocked — Key G is now active this session.",
+      );
+    }
+    if (window.SandboxMenu) {
+      window.SandboxMenu.toggle();
+    } else {
+      console.warn("SandboxMenu is not loaded yet.");
+    }
+  };
+
+  /* =========================================================================
+   CONSOLE FORCE HELP  —  prints on load, or call window.ariveHelp()
+   ========================================================================= */
+  function printAriveConsoleHelp() {
+    const T = 'color:#e8c86a;font-weight:bold;font-size:13px';
+    const S = 'color:#e8c86a;font-weight:bold;font-size:11px;margin-top:8px';
+    const K = 'color:#66aaff;font-weight:bold';
+    const D = 'color:#aaaaaa';
+    const C = 'color:#7a7a7a;font-style:italic';
+
+    console.log('%c╔══════════════════════════════════════════════════════════════╗', T);
+    console.log('%c║   ARIVE — CONSOLE FORCE COMMANDS                             ║', T);
+    console.log('%c╚══════════════════════════════════════════════════════════════╝', T);
+    console.log('%cType window.ariveHelp() any time to reprint this list.', C);
+
+    /* ---------- DEV MENU ---------- */
+    console.log('%c\n▸ DEV MENU', S);
+    console.log('%ctoggleSandBoxMenu()      %c— Unlock Key G this session + open dev menu', K, D);
+    console.log('%cSandboxMenu.toggle()     %c— Toggle dev menu (sandbox map only, no unlock)', K, D);
+    console.log('%cSandboxMenu.isOpen()     %c— Dev menu currently open?', K, D);
+
+    /* ---------- WORLD ---------- */
+    console.log('%c\n▸ WORLD', S);
+    console.log('%cARiveHooks.regenerateWorld(seed, mapType)  %c— New world  (mapType: "city" | "sandbox" | "survival")', K, D);
+    console.log('%cARiveHooks.getCurrentSeed()               %c— Get current seed', K, D);
+    console.log('%cARiveHooks.getCurrentMapType()            %c— Get current map type', K, D);
+    console.log('%cARiveHooks.getCityLayout()                %c— City layout object (roads, blocks, plots)', K, D);
+    console.log('%c__ariveBigStructureSpot                   %c— Big-structure {x, z} spot', K, D);
+
+    /* ---------- SPAWN (items / ammo / weapons / furniture) ---------- */
+    console.log('%c\n▸ SPAWN  —  use getCrosshairTarget() for x / y / z', S);
+    console.log('%cARiveHooks.getCrosshairTarget()                 %c— {vx,vy,vz, x,y,z}', K, D);
+    console.log('%cARiveHooks.spawnItemAt(x, y, z, def)            %c— Spawn item from getItemDefs()', K, D);
+    console.log('%cARiveHooks.spawnAmmoAt(x, y, z, def)            %c— Spawn ammo stack (30 / 20 shells)', K, D);
+    console.log('%cARiveHooks.spawnWeaponAt(x, y, z, def, skinId)  %c— Spawn weapon (skinId optional)', K, D);
+    console.log('%cARiveHooks.spawnFurnitureAt(x, y, z, def)       %c— Spawn furniture', K, D);
+    console.log('%cARiveHooks.getItemDefs()                         %c— All item definitions', K, D);
+    console.log('%cARiveHooks.getFurnitureDefs()                    %c— All furniture definitions', K, D);
+
+    /* ---------- WORLD EDIT ---------- */
+    console.log('%c\n▸ WORLD EDIT', S);
+    console.log('%cARiveHooks.placeBlockAt(vx, vy, vz, blockId)           %c— Place a block', K, D);
+    console.log('%cARiveHooks.spawnStructurePresetAt(vx, vy, vz, preset)  %c— Preset:', K, D);
+    console.log('%c   cube-wood | cube-concrete | cube-metal | cube-glass', C);
+    console.log('%c   wall | pillar | house | stairs | barrel | rubble', C);
+
+    /* ---------- PLAYER ---------- */
+    console.log('%c\n▸ PLAYER', S);
+    console.log('%cARiveHooks.setCreativeMode(true | false)  %c— Fly / no damage / instant block break', K, D);
+    console.log('%cARiveHooks.getCreativeMode()              %c— Creative on?', K, D);
+    console.log('%cARiveHooks.player                         %c— Player object (pos, vel, health, hunger, thirst, yaw…)', K, D);
+    console.log('%cARiveHooks.getInventory()                 %c— Inventory object', K, D);
+    console.log('%cARiveHooks.getCurrentToolId()             %c— Current hotbar tool id', K, D);
+
+    /* ---------- SURVIVAL ---------- */
+    console.log('%c\n▸ SURVIVAL MODE', S);
+    console.log('%cSurvivalMode.skipPrep()   %c— Skip prep phase', K, D);
+    console.log('%cSurvivalMode.start(20)    %c— Start 20 waves', K, D);
+    console.log('%cSurvivalMode.stop(true)   %c— Stop survival', K, D);
+
+    /* ---------- CHEAT FLAGS ---------- */
+    console.log('%c\n▸ CHEAT FLAGS  —  set to true / false', S);
+    console.log('%cARiveSandboxFlags.infiniteAmmo         %c— Unlimited ammo', K, D);
+    console.log('%cARiveSandboxFlags.infiniteEnemyHealth  %c— Enemies don\'t die', K, D);
+    console.log('%cARiveSandboxFlags.enemyLoop            %c— Endless enemy spawns', K, D);
+
+    /* ---------- EXAMPLES ---------- */
+    console.log('%c\n▸ EXAMPLES', S);
+    console.log('%c// Teleport up 2 m\n%cARiveHooks.player.pos.y += 2;', C, K);
+    console.log('%c// Full health\n%cARiveHooks.player.health = 100;', C, K);
+    console.log('%c// Spawn a weapon at the crosshair\n%cvar t = ARiveHooks.getCrosshairTarget();\nARiveHooks.spawnWeaponAt(t.x, t.y, t.z, WEAPON_MODEL_DATA[0]);', C, K);
+    console.log('%c// Place a metal block at the crosshair\n%cvar t = ARiveHooks.getCrosshairTarget();\nARiveHooks.placeBlockAt(t.vx, t.vy, t.vz, 7);', C, K);
+    console.log('%c// Regenerate with a random seed\n%cARiveHooks.regenerateWorld(Math.random()*1e9|0, "city");', C, K);
+    console.log('%c// Turn on infinite ammo + creative\n%cARiveSandboxFlags.infiniteAmmo = true;\nARiveHooks.setCreativeMode(true);', C, K);
+    console.log('%c// Wave 20 right now\n%cSurvivalMode.skipPrep();', C, K);
+
+    console.log('%c\nReload the page to relock Key G in city / survival.', C);
+  }
+
+  window.ariveHelp = printAriveConsoleHelp;
+
+  // Auto-print on load — delayed slightly so any other modals/consoles settle first
+  setTimeout(printAriveConsoleHelp, 200);
 })();

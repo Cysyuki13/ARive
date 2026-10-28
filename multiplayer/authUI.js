@@ -101,5 +101,4 @@
         onChange: (cb) => { if (typeof cb === "function") listeners.push(cb); },
     };
 
-    console.log("[AuthUI] module ready");
 })(window);

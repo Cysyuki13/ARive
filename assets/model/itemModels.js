@@ -22,6 +22,9 @@ window.ITEM_DEFS_DATA = [
         key: "ammo_9mm", name: "9MM",
         w: 1, h: 1, color: "#b09040",
         /* Editor fields — tweak freely, they only affect the thumbnail. */
+        isAmmo: true,
+        ammoType: "9mm",
+        maxStack: 200,
         iconR: [0, 0, 0],
         iconScale: 1,
         model: [
@@ -35,6 +38,9 @@ window.ITEM_DEFS_DATA = [
     {
         key: "ammo_556", name: "5.56",
         w: 1, h: 1, color: "#a0803a",
+        isAmmo: true,
+        ammoType: "5.56",
+        maxStack: 200,
         iconR: [0, 0, 0],
         iconScale: 1,
         model: [
@@ -48,6 +54,9 @@ window.ITEM_DEFS_DATA = [
     {
         key: "ammo_shell", name: "SHELL",
         w: 1, h: 1, color: "#b04030",
+        isAmmo: true,
+        ammoType: "shell",
+        maxStack: 200,
         iconR: [0, 0, 0],
         iconScale: 1,
         model: [

@@ -182,3 +182,27 @@ ARIVE_FURNITURE.push({
         ]
     }
 });
+
+/* ------------------------------------------------- WEAPON BOX (lootable) */
+ARIVE_FURNITURE.push({
+    key: 'weaponbox', name: 'WEAPON BOX', size: 'medium',
+    w: 2, h: 2, color: '#4a3520',
+    meta: {
+        mass: 12.0,
+        model: [
+            // Main body
+            { p: [0, 0.275, 0], s: [0.90, 0.55, 0.65], c: 0x4a3520 },
+            // Front panel + lock plate
+            { p: [0, 0.30, 0.33], s: [0.70, 0.40, 0.02], c: 0x2a1a08 },
+            { p: [0, 0.30, 0.345], s: [0.15, 0.15, 0.02], c: 0xb0a040 },
+            // Corner braces
+            { p: [-0.44, 0.275, 0.325], s: [0.06, 0.55, 0.02], c: 0x808890 },
+            { p: [0.44, 0.275, 0.325], s: [0.06, 0.55, 0.02], c: 0x808890 },
+            // Side handles
+            { p: [-0.47, 0.30, 0], s: [0.05, 0.12, 0.30], c: 0x808890 },
+            { p: [0.47, 0.30, 0], s: [0.05, 0.12, 0.30], c: 0x808890 },
+            // Lid — tagged so game.js can pivot it around its back edge
+            { p: [0, 0.59, 0], s: [0.95, 0.08, 0.70], c: 0x3a2510, tag: 'lid' }
+        ]
+    }
+});

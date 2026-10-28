@@ -859,11 +859,6 @@
                 FILES.set(name, dec);
                 PENDING.delete(name);
                 URL_BY_NAME.set(name, url);
-                console.log(
-                    '[Sfx] \u2713 loaded',
-                    name, url,
-                    '\u00b7 duration', dec.duration.toFixed(2) + 's',
-                );
             })
             .catch(function (e) {
                 PENDING.delete(name);

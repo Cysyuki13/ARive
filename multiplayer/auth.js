@@ -172,7 +172,6 @@
                 }
             });
 
-            console.log("[Auth] Firebase initialised");
         } catch (e) {
             console.error("[Auth] init failed:", e);
             auth = null;
@@ -268,5 +267,4 @@
         init();
     }
 
-    console.log("[Auth] module ready");
 })(window);

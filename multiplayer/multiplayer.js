@@ -2084,5 +2084,4 @@
         initUI();
     }
 
-    console.log('[MP] module ready');
 })(window);

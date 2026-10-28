@@ -463,6 +463,4 @@
     window.skipToWave = function (n) { return SurvivalMode.jumpToWave(n); };
     window.skipToMiniBoss = function () { return SurvivalMode.skipToMiniBoss(); };
     window.skipToFinalBoss = function () { return SurvivalMode.skipToFinalBoss(); };
-
-    console.log('[SurvivalMode] ready  ·  debug: skipToWave(n), skipToMiniBoss(), skipToFinalBoss()');
 })();
